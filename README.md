@@ -117,6 +117,11 @@ tags: [model, benchmark]
 
 ---
 
+## 远程使用
+
+人在外面、Studio 在家：用 Tailscale 组网，手机继续用 Web/PWA、笔记本 SSH 进 Studio。
+详见 **[远程使用指南](docs/remote.md)**。
+
 ## 设计文档
 
 架构决策记录见 [`docs/adr/`](docs/adr/README.md)：
