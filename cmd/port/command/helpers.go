@@ -16,6 +16,8 @@ func relPath(v *store.Vault, abs string) string {
 
 func statusZH(s string) string {
 	switch s {
+	case store.StatusDraft:
+		return "草稿  "
 	case store.StatusReady:
 		return "待领取"
 	case store.StatusInProgress:

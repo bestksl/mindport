@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/bestksl/mindport/internal/store"
+	"github.com/spf13/cobra"
 )
 
 var vaultFlag string

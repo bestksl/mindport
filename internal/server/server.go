@@ -115,6 +115,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /thoughts/promote", s.handlePromoteThought)
 	mux.HandleFunc("POST /tasks", s.handleCreateTask)
 	mux.HandleFunc("GET /tasks/{id}", s.handleTaskDetail)
+	mux.HandleFunc("POST /tasks/{id}/publish", s.handlePublish)
 	mux.HandleFunc("POST /tasks/{id}/claim", s.handleClaim)
 	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
 	mux.HandleFunc("POST /tasks/{id}/block", s.handleBlock)
@@ -125,6 +126,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tasks", s.handleAPITasks)
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
+	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 
 	sub, _ := fs.Sub(staticFS, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
@@ -138,17 +140,22 @@ func (s *Server) Routes() http.Handler {
 // ---------- 视图模型 ----------
 
 type boardData struct {
-	Actor   string
+	Actor    string
+	IsTask   bool
+	BackID   string
 	Thoughts []store.Record
-	Cols    []column
-	Now     time.Time
-	Error   string
+	Drafts   []store.Record
+	Cols     []column
+	Agents   []store.Presence
+	ByTask   map[string]store.Presence // 在线执行者 → 正在做的任务
+	Now      time.Time
+	Error    string
 }
 
 type column struct {
-	Key    string
-	Title  string
-	Tasks  []store.Record
+	Key   string
+	Title string
+	Tasks []store.Record
 }
 
 type acceptItem struct {
@@ -160,6 +167,10 @@ type acceptItem struct {
 type taskView struct {
 	R               *store.Record
 	Actor           string
+	IsTask          bool
+	BackID          string
+	Agents          []store.Presence
+	Agent           *store.Presence // 归属执行者的实时心跳（可能为 nil）
 	DescriptionHTML template.HTML
 	Accept          []acceptItem
 	AcceptDone      int
@@ -176,8 +187,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	thoughts, _ := s.V.ListThoughts()
 	all, _ := s.V.ListTasks("")
+	agents, byTask := s.presenceIndex()
 	d := boardData{
 		Actor: actor(r), Thoughts: thoughts, Now: time.Now(),
+		Agents: agents, ByTask: byTask,
 		Error: r.URL.Query().Get("error"),
 		Cols: []column{
 			{Key: "ready", Title: "⚓ 待领取"},
@@ -187,6 +200,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, t := range all {
 		switch t.Meta.Status {
+		case store.StatusDraft:
+			d.Drafts = append(d.Drafts, t)
 		case store.StatusReady:
 			d.Cols[0].Tasks = append(d.Cols[0].Tasks, t)
 		case store.StatusInProgress, store.StatusBlocked:
@@ -207,6 +222,18 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := buildTaskView(rec, actor(r))
+	v.IsTask = true
+	v.BackID = rec.Meta.ID
+	agents, _ := s.presenceIndex()
+	v.Agents = agents
+	if a := rec.Meta.AssigneeValue(); a != "" {
+		for i := range agents {
+			if agents[i].Actor == a {
+				v.Agent = &agents[i]
+				break
+			}
+		}
+	}
 	render(w, http.StatusOK, taskTmpl, v)
 }
 
@@ -248,12 +275,40 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if imp == "" {
 		imp = store.ImpNormal
 	}
-	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "")
+	// 网页默认进草稿打磨；勾选「直接发布」才立即出港。
+	draft := r.PostFormValue("publish") != "1"
+	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "", draft)
 	if err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
 	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
+}
+
+func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	id := r.PathValue("id")
+	if _, err := s.V.Publish(id, actor(r), r.PostFormValue("assignee")); err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
+	if r.PostFormValue("from") == "task" {
+		http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// presenceIndex 返回全部心跳，以及「在线且正在做某任务」的 task→Presence 索引。
+func (s *Server) presenceIndex() ([]store.Presence, map[string]store.Presence) {
+	agents, _ := s.V.ListPresence()
+	byTask := map[string]store.Presence{}
+	for _, p := range agents {
+		if p.Online && p.Task != "" {
+			byTask[p.Task] = p
+		}
+	}
+	return agents, byTask
 }
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
@@ -380,6 +435,18 @@ func (s *Server) handleAPINext(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, rec.Meta)
 }
 
+func (s *Server) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
+	agents, err := s.V.ListPresence()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if agents == nil {
+		agents = []store.Presence{}
+	}
+	writeJSON(w, agents)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(v)
@@ -455,6 +522,7 @@ var funcMap = template.FuncMap{
 	"impZH":    impZH,
 	"impClass": impClass,
 	"baseName": filepath.Base,
+	"ago":      agoText,
 	"actorName": func(s string) string {
 		if i := strings.Index(s, "@"); i > 0 {
 			return s[:i]
@@ -508,6 +576,8 @@ func atoiDefault(s string, def int) int {
 
 func statusZH(s string) string {
 	switch s {
+	case store.StatusDraft:
+		return "草稿"
 	case store.StatusReady:
 		return "待领取"
 	case store.StatusInProgress:
@@ -535,6 +605,21 @@ func impZH(s string) string {
 }
 
 func impClass(s string) string { return "imp-" + s }
+
+// agoText 渲染心跳的相对时间：刚刚 / x 分钟前 / x 小时前。
+func agoText(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "刚刚"
+	case d < time.Hour:
+		return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d 小时前", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d 天前", int(d.Hours()/24))
+	}
+}
 
 func serveStatic(name, ctype string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

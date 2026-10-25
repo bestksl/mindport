@@ -75,7 +75,7 @@ func TestThoughtPromoteAndTaskLifecycle(t *testing.T) {
 
 func TestBlockUnblock(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	_, _ = v.NewTask("x", "", "")
+	_, _ = v.NewTask("x", "", "", false)
 	_, _ = v.Claim("T0001", "a@studio")
 
 	if _, err := v.Block("T0001", "", "a@studio"); err == nil {
@@ -90,7 +90,7 @@ func TestBlockUnblock(t *testing.T) {
 		t.Fatal("受阻任务应允许显式归港")
 	}
 
-	_, _ = v.NewTask("y", "", "")
+	_, _ = v.NewTask("y", "", "", false)
 	_, _ = v.Claim("T0002", "a@studio")
 	_, _ = v.Block("T0002", "缺数据", "a@studio")
 	r, err := v.Unblock("T0002", "a@studio")
@@ -104,10 +104,10 @@ func TestBlockUnblock(t *testing.T) {
 
 func TestImportanceOrderingAndNext(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	_, _ = v.NewTask("普通", "", "")         // T0001 normal
-	_, _ = v.NewTask("关键", ImpCritical, "") // T0002
-	_, _ = v.NewTask("也许", ImpSomeday, "")  // T0003
-	_, _ = v.NewTask("重要", ImpHigh, "")     // T0004
+	_, _ = v.NewTask("普通", "", "", false)          // T0001 normal
+	_, _ = v.NewTask("关键", ImpCritical, "", false) // T0002
+	_, _ = v.NewTask("也许", ImpSomeday, "", false)  // T0003
+	_, _ = v.NewTask("重要", ImpHigh, "", false)     // T0004
 
 	next, err := v.Next()
 	if err != nil {
@@ -125,7 +125,7 @@ func TestImportanceOrderingAndNext(t *testing.T) {
 		}
 	}
 
-	if _, err := v.NewTask("bad", "urgent!!", ""); !errors.Is(err, ErrInvalidImportance) {
+	if _, err := v.NewTask("bad", "urgent!!", "", false); !errors.Is(err, ErrInvalidImportance) {
 		t.Fatalf("非法 importance 应拒绝，得到 %v", err)
 	}
 }
@@ -158,14 +158,14 @@ func TestPriorityMigrationAndEdit(t *testing.T) {
 
 func TestDoubleClaimInvalidDoneAndMissing(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	_, _ = v.NewTask("x", "", "")
+	_, _ = v.NewTask("x", "", "", false)
 	if _, err := v.Claim("T0001", "a@studio"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := v.Claim("T0001", "b@studio"); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("重复领取应拒绝，得到 %v", err)
 	}
-	if _, err := v.NewTask("y", "", ""); err != nil {
+	if _, err := v.NewTask("y", "", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := v.Done("T0002", "a@studio"); !errors.Is(err, ErrInvalidTransition) {
@@ -173,6 +173,82 @@ func TestDoubleClaimInvalidDoneAndMissing(t *testing.T) {
 	}
 	if _, err := v.Claim("T9999", "a@studio"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("不存在任务应 ErrNotFound，得到 %v", err)
+	}
+}
+
+func TestDraftPublishAndAssignment(t *testing.T) {
+	v, _ := Open(t.TempDir())
+	rec, err := v.NewTask("打磨中", ImpHigh, "G", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := rec.Meta.ID
+	if rec.Meta.Status != StatusDraft {
+		t.Fatalf("草稿初始状态应为 draft，得到 %s", rec.Meta.Status)
+	}
+	// 草稿不进 next，也不能被领取
+	if _, err := v.Next(); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("草稿期间 next 应空，得到 %v", err)
+	}
+	if _, err := v.Claim(id, "a@studio"); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("草稿应禁止 claim，得到 %v", err)
+	}
+	// 发布并指派
+	pub, err := v.Publish(id, "jmzx@studio", "claude@studio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub.Meta.Status != StatusReady || pub.Meta.AssigneeValue() != "claude@studio" {
+		t.Fatalf("发布后应为 ready 且带指派，得到 %s/%q", pub.Meta.Status, pub.Meta.AssigneeValue())
+	}
+	// 二次发布拒绝
+	if _, err := v.Publish(id, "jmzx@studio", ""); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("非草稿再次发布应拒绝，得到 %v", err)
+	}
+	// 被指派的任务可被领取，领取后心跳在线且绑定任务
+	if _, err := v.Claim(id, "claude@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps, err := v.ListPresence()
+	if err != nil || len(ps) != 1 || !ps[0].Online || ps[0].Task != id {
+		t.Fatalf("领取后应有一条在线心跳绑定 %s，得到 %+v err=%v", id, ps, err)
+	}
+	// 归港后心跳仍在但任务号清空
+	if _, err := v.Done(id, "claude@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ = v.ListPresence()
+	if ps[0].Task != "" {
+		t.Fatalf("归港后心跳任务号应清空，得到 %q", ps[0].Task)
+	}
+}
+
+func TestPresenceAwayTTLAndDebounce(t *testing.T) {
+	v, _ := Open(t.TempDir())
+	if _, err := v.Present("", "T1", ""); err == nil {
+		t.Fatal("空 actor 应报错")
+	}
+	wrote, err := v.Present("claude@studio", "T1", "写代码")
+	if err != nil || !wrote {
+		t.Fatalf("首次心跳应写盘，wrote=%v err=%v", wrote, err)
+	}
+	// 20s 防抖：同内容再来一次不写盘
+	if wrote, _ := v.Present("claude@studio", "T1", "写代码"); wrote {
+		t.Fatal("相同内容短时间内心跳应被防抖")
+	}
+	// 状态行变化立即写
+	if wrote, _ := v.Present("claude@studio", "T1", "跑测试"); !wrote {
+		t.Fatal("状态变化应立即写盘")
+	}
+	if err := v.Away("claude@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ := v.ListPresence()
+	if len(ps) != 0 {
+		t.Fatalf("away 后不应再有心跳，得到 %+v", ps)
+	}
+	if err := v.Away("claude@studio"); err != nil {
+		t.Fatal("重复 away 应当幂等无错")
 	}
 }
 

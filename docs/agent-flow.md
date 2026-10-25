@@ -1,22 +1,35 @@
 # Agent 工作流：Claude Code / Codex 如何与思港协作
 
 思港采用 **pull（拉取）模型**：agent 不是 7×24 守护进程，而是在会话启动时
-自己来港口领活。人类负责把念头澄清成任务、标注**重要程度与目标**；agent 负责
-领取、叙事式同步进展、对照验收标准归港。
+自己来港口领活。**人是发布者**：把念头澄清成任务、打磨验收标准、标注
+**重要程度与目标**，以草稿形态打磨、发布（可指派）；**agent 是执行者**：
+只领已发布任务，叙事式同步进展、对照验收标准归港。
 
-## 一次完整协作
+## 人：从念头到发布
+
+网页建任务默认是**草稿（draft）**——打磨中、不可领取、不进 `port next`。
+在详情页补好「验收标准」（完成定义）后，点「发布出港」，可同时指派：
+
+- **留空 · 任领**：任何 agent 按重要程度自取；
+- **指派 Claude/Codex**：表达期望执行者（任务仍需该执行者 claim 接走）。
+
+CLI 也可走同一流程：`port new "..." --draft` → `port publish T0001 [--to claude@studio]`；
+不加 `--draft` 则直接发布。
+
+## 一次完整协作（agent 侧）
 
 ```bash
 # 0.（可选）声明身份，一次会话设置一次
 export PORT_ACTOR=claude@studio      # codex@studio / 你的名字@studio
 
-# 1. 拉：现在最重要的活是哪个？
+# 1. 拉：现在最重要的活是哪个？（只看已发布任务，草稿不出现）
 port next                 # 按重要程度（关键 > 重要 > 普通 > 也许）输出
 port next --json          # 给程序用
 
 # 2. 读：领取前先看完整上下文
 port show T0002           # 描述 + 验收标准 + 历史日志
 port claim T0002          # 原子领取（flock），两个 agent 不可能撞单
+                          # 领取即心跳：网页上立即显示 claude 在线、正在做 T0002
 
 # 3. 干：进度只有两种「有意义的单位」——叙事日志、验收勾选
 port log T0002 "int8 基准跑完，单帧 27.4ms，满足预算"
@@ -24,9 +37,17 @@ port check T0002 1        # 勾选第 1 条验收标准
 port block T0002 "等 Vs3 真机实测数据"   # 卡住立刻上浮，必须给原因
 port unblock T0002
 
-# 4. 归港：全部验收项完成后
+# 4. 归港：全部验收项完成后（归港后心跳自动清掉任务号）
 port done T0002
 ```
+
+## 在线心跳（网页顶栏可见）
+
+`port present [T编号] [--note "..."]` 报到，心跳 2 分钟内有效，相同内容 20 秒
+防抖；`port away` 下线。通常不用手动调——项目 `.claude/settings.json` 已配置
+Claude Code 钩子：会话开始与每次提问自动 present、会话结束自动 away；
+claim/done 自动维护任务号。Codex 或其他 agent 可在项目提示里要求
+开工先 `port present`、收工 `port away`。
 
 ## 设计原则
 
@@ -50,8 +71,10 @@ port done T0002
 | 方法与路径 | 作用 |
 |---|---|
 | `GET /api/next` | 最重要的 ready 任务 |
-| `GET /api/tasks?status=ready` | 任务列表（按重要程度排序） |
-| `POST /tasks/{id}/claim` | 领取（身份走 cookie/表单，v0.2 从简） |
+| `GET /api/tasks?status=ready` | 任务列表（按重要程度排序；草稿用 `status=draft`） |
+| `GET /api/agents` | 执行者心跳列表（在线标志、任务号、状态行） |
+| `POST /tasks/{id}/publish` | 发布草稿（表单 `assignee` 可空=任领） |
+| `POST /tasks/{id}/claim` | 领取（身份走 cookie/表单，v0.x 从简；领取自动带心跳） |
 | `POST /tasks/{id}/done` `/block` `/unblock` `/log` `/check` | 状态推进 |
 
 CLI 与网页走的是同一个 store：**无论哪边写入，另一边 SSE 实时刷新**。

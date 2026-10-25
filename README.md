@@ -131,10 +131,12 @@ tags: [model, benchmark]
 - **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
 - **ADR-0003** Vault 结构与文件格式 v0：Markdown + YAML frontmatter 统一信封，thought / task / note 三类型，T 编号、状态机、flock 锁协议，持久数据与运行时状态分离。
 
-## 当前可用的最小闭环（v0.2）
+## 当前可用的最小闭环（v0.3）
 
 CLI + 内嵌 Web（零前端构建，资源 `go:embed` 进同一二进制），网页与 CLI 经
-**SSE 实时互刷新**（CLI/agent 一写，手机页面立刻变）。
+**SSE 实时互刷新**（CLI/agent 一写，手机页面立刻变）。v0.3 起：**人发布、
+agent 领取**（网页默认建草稿，打磨验收后发布/指派，agent 只领已发布任务），
+网页顶栏显示执行者**在线心跳**，桌面/直板手机双端响应式。
 
 ```bash
 go build -o bin/port ./cmd/port
@@ -146,33 +148,41 @@ go build -o bin/port ./cmd/port
 
 # 目标导向：不谈紧急，只标重要程度
 ./bin/port new "验证 int8 耗时" --importance critical --goal "Vs3 上 NPU 方案定稿"
+# 网页建任务默认是草稿；CLI 加 --draft 先进草稿，再发布，可指派
+./bin/port publish T0001 --to claude@studio
 #                 importance: critical(关键) high(重要) normal(普通) someday(也许)
 
 # agent（Claude Code / Codex）的 pull 工作流
-./bin/port next                    # 现在最重要的 ready 任务
+./bin/port next                    # 现在最重要的已发布任务（草稿不进 next）
 ./bin/port show T0001 [--json]     # 读全文：描述/验收标准/历史日志
-./bin/port claim T0001             # 原子领取（PORT_ACTOR 或 --by 指定身份）
+./bin/port claim T0001             # 原子领取（PORT_ACTOR 或 --by 指定身份），自动带心跳
 ./bin/port log T0001 "基准 27ms"   # 叙事式进展同步
 ./bin/port check T0001 1           # 勾选第 1 条验收标准（进度=验收清单）
 ./bin/port block T0001 "等真机"    # 受阻上浮 / unblock
-./bin/port done T0001              # 归港
+./bin/port done T0001              # 归港（心跳自动清任务号）
+./bin/port present [T0001] --note "正在跑测试"  # 手动报到（通常由会话钩子自动完成）
+./bin/port away                    # 在线灯灭
 ./bin/port list [--status ready] [--json]
 
 ./bin/port serve --host 0.0.0.0 --port 8787
-# 手机浏览器（同 WiFi 或 Tailscale）：看板三列（待领取/进行中/已归港）、
-# 闪念转任务、任务详情、勾选验收、追加日志、编辑、身份切换；SSE 实时更新
+# 手机浏览器（同 WiFi 或 Tailscale）：草稿区、看板三列、发布/指派、
+# 执行者在线灯与「正在做」状态行、任务详情、勾选验收、日志、编辑、身份切换；
+# SSE 实时更新，在线状态 20s 轮询；手机单列大触控区，归港/发布需二次确认
 ```
 
-详见 [Agent 工作流](docs/agent-flow.md)、[远程使用指南](docs/remote.md)
-与[运维手册](docs/ops.md)（生产 launchd 托管、测试/生产 vault 分离、升级流程）。
+Claude Code 在本仓开会话时，`.claude/settings.json` 钩子自动 present/away。
+
+详见 [Agent 工作流](docs/agent-flow.md)、[ADR-0004](docs/adr/0004-presence-and-publish.md)、
+[远程使用指南](docs/remote.md)与[运维手册](docs/ops.md)（测试/生产 vault 分离、升级流程）。
 
 代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机、
-重要程度排序，含表驱动测试）、`internal/server`（net/http + go:embed +
+草稿/发布、在线心跳，含表驱动测试）、`internal/server`（net/http + go:embed +
 fsnotify/SSE + goldmark 渲染）、`cmd/port`（cobra 子命令）。
 
 ## 状态
 
-🚧 **Pre-alpha · 孵化阶段**。v0 最小闭环已通（CLI ↔ 文件 ↔ 局域网 Web/PWA），设计讨论与任务拆解在 Issues 与 ADR 中进行。
+🚧 **Pre-alpha · 孵化阶段**。v0.3 闭环已通：草稿/发布/指派、agent 在线心跳、
+CLI ↔ 文件 ↔ 桌面/移动 Web 实时同步；设计讨论在 ADR 中进行。
 
 ---
 

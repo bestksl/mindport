@@ -58,8 +58,10 @@ type Record struct {
 	Path string
 }
 
-// 任务状态（ADR-0003 状态机）。
+// 任务状态（ADR-0003 状态机；v0.3 加入 draft）。
+// 人是发布者：任务先以 draft 进港打磨，发布后才允许 agent 领取。
 const (
+	StatusDraft      = "draft"
 	StatusReady      = "ready"
 	StatusInProgress = "in_progress"
 	StatusBlocked    = "blocked"
@@ -228,8 +230,9 @@ func (v *Vault) PromoteThought(filename, importance string) (*Record, error) {
 
 // ---------- 任务 ----------
 
-// NewTask 创建一个 ready 任务并分配 T 编号。
-func (v *Vault) NewTask(title, importance, goal string) (*Record, error) {
+// NewTask 创建任务并分配 T 编号。draft=true 时为草稿（打磨中，不可领取、
+// 不进 next），发布走 Publish；draft=false 直接进待领取泊位（CLI 常用）。
+func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, errors.New("任务标题不能为空")
@@ -248,13 +251,19 @@ func (v *Vault) NewTask(title, importance, goal string) (*Record, error) {
 		if imp == "" {
 			imp = ImpNormal
 		}
+		status := StatusReady
+		createdNote := "created by port"
+		if draft {
+			status = StatusDraft
+			createdNote = "created as draft by port"
+		}
 		m := Meta{
 			Type: "task", ID: id, Title: title,
-			Status: StatusReady, Importance: imp, Goal: strings.TrimSpace(goal),
+			Status: status, Importance: imp, Goal: strings.TrimSpace(goal),
 			Created: now,
 		}
 		body := "## 描述\n\n" + title + "\n\n## 验收标准\n\n## 日志\n" +
-			"- " + now.Format("2006-01-02 15:04 -0700") + " — created by port\n"
+			"- " + now.Format("2006-01-02 15:04 -0700") + " — " + createdNote + "\n"
 		path, err := v.uniquePath(filepath.Join(v.Root, "tasks", id+"-"+slug(title)+".md"))
 		if err != nil {
 			return err
@@ -268,14 +277,62 @@ func (v *Vault) NewTask(title, importance, goal string) (*Record, error) {
 	return rec, err
 }
 
-// Claim 领取任务：ready → in_progress。
+// Claim 领取任务：ready → in_progress。领取即心跳：该执行者显示在线且在做此任务。
 func (v *Vault) Claim(id, by string) (*Record, error) {
-	return v.transition(id, "claim", "", by)
+	rec, err := v.transition(id, "claim", "", by)
+	if err != nil {
+		return rec, err
+	}
+	_, _ = v.Present(by, id, "") // 心跳失败不影响领取本身
+	return rec, nil
 }
 
-// Done 完成任务：in_progress（或 blocked 显式归港）→ done。
+// Done 完成任务：in_progress（或 blocked 显式归港）→ done，并清掉心跳上的任务号。
 func (v *Vault) Done(id, by string) (*Record, error) {
-	return v.transition(id, "done", "", by)
+	rec, err := v.transition(id, "done", "", by)
+	if err != nil {
+		return rec, err
+	}
+	_, _ = v.Present(by, "", "")
+	return rec, nil
+}
+
+// Publish 发布草稿：draft → ready。assignee 非空时为「委派」——
+// 任务带着指派对象出港，被指使者仍需显式 claim 接走。
+func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
+	assignee = strings.TrimSpace(assignee)
+	var rec *Record
+	err := v.withLock(func() error {
+		path, err := v.findTaskPath(id)
+		if err != nil {
+			return err
+		}
+		r, err := parseFile(path)
+		if err != nil {
+			return err
+		}
+		if r.Meta.Status != StatusDraft {
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有草稿可发布", ErrInvalidTransition, id, r.Meta.Status)
+		}
+		now := time.Now()
+		r.Meta.Status = StatusReady
+		if assignee != "" {
+			a := assignee
+			r.Meta.Assignee = &a
+		}
+		touch(&r.Meta)
+		note := "published by " + by
+		if assignee != "" {
+			note += "，指派给 " + assignee
+		}
+		r.Body = appendLog(r.Body, now, note)
+		if err := v.rewrite(path, r); err != nil {
+			return err
+		}
+		rec = r
+		return nil
+	})
+	return rec, err
 }
 
 // Block 阻塞任务：in_progress → blocked，必须给原因。

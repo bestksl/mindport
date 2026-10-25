@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	logBy   string
+	logBy    string
 	logQuiet bool
 )
 
