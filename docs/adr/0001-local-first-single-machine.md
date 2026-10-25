@@ -11,7 +11,7 @@
 1. **所有 agent（Claude Code、Codex）都运行在用户本人的 Mac Studio 上**，即与任务库同一台机器；Mac Studio 长期开机、固定电源。
 2. 任务库需要能被人类用 Obsidian / 任意编辑器直接阅读，因此任务以 Markdown 文件存放。
 3. 用户不在 Studio 前时的远程需求有两类：
-   - **B. 手机快速录念头**（外出时把想法丢进 inbox，以捕获为主）；
+   - **B. 手机快速录念头**（外出时把想法丢进 inbox，以捕获为主）；手机只有一台 **Android（Honor Vs3）**，无 iPhone；
    - **C. 笔记本通过 SSH 登录 Studio 干活**（完整命令行能力）。
 4. 不存在「远程服务器上的 agent」这一场景；多 agent 实时抢单的分布式冲突不存在。
 
@@ -49,7 +49,7 @@
 ### 第 2 层：daemon + Web（满足需求 B）
 
 - `port serve` 在本机启动常驻服务：HTTP API（localhost）+ 极简 Web/PWA；
-- 手机通过 **Tailscale**（虚拟内网，端到端加密，免费档够用）访问 Studio 的 Tailscale IP，浏览器即开即用，**不做原生 app**；
+- 手机（Android / Honor Vs3）安装 **Tailscale Android 客户端**，用 Chrome 访问 Studio 的 Tailscale 地址；页面以 **PWA 安装（WebAPK）**到主屏幕，有独立图标与全屏体验，**不做原生 app**；Android/Chrome 对 PWA 与 Service Worker 的支持完整，未来的「断网暂存、恢复后补传」在 PWA 内即可解决；
 - Web 的 v1 只做两件事：**快速录入 inbox** 和 **只读看板/任务详情**；编辑类操作仍以 CLI 为主；
 - 关键原则：**daemon 只是文件的一扇门，文件永远是主存储**。daemon 挂掉、卸载，数据与 git 历史完好。
 
@@ -71,7 +71,7 @@
 |----|--------|------|----------|
 | Claude Code / Codex | Mac Studio 本机 | 文件 I/O / `port` CLI | 全部操作 |
 | 用户本人 | Studio 前 | CLI / Obsidian / Web | 全部操作 |
-| 用户手机 | 任何网络 | Tailscale → Web/PWA | 录入 inbox、查看看板（v1） |
+| Honor Vs3（Android） | 任何网络 | Tailscale Android → Chrome PWA | 录入 inbox、查看看板（v1） |
 | 用户笔记本 | 任何网络 | Tailscale → 系统 SSH | 全部 CLI 操作 |
 | （未来）第二台机器 | — | git clone + `port sync` | 离线协作（暂不实现） |
 
@@ -95,8 +95,8 @@
 - 优点：v1 只需实现「文件格式 + CLI」即可让全部本机 agent 开工，daemon 与 SSH 不阻塞地基；无运维成本；数据零锁定。
 - 代价：手机能力依赖 Studio 在线（已确认常开）；离开 Tailscale 无法录入（v1 接受，未来可做 PWA 离线缓存 + 上线补传）。
 
-## 待定
+## 后续决策
 
-1. **实现语言**：拟采用 **Go**——单静态二进制分发（`brew install` 即可）、CLI / HTTP daemon / 未来内置 SSH 都是一等公民、交叉编译简单；待确认。
-2. Vault 目录结构与任务文件格式（frontmatter schema、ID 规则、状态机、锁文件格式）→ ADR-0002。
-3. daemon API 形态（REST/JSON 为主，是否需要 WebSocket 做看板实时刷新）→ ADR-0003。
+1. ~~实现语言~~ → 已定 Go，见 [ADR-0002](0002-language-go.md)。
+2. Vault 目录结构与任务文件格式（frontmatter schema、ID 规则、状态机、锁文件格式）→ [ADR-0003](0003-task-file-format.md)。
+3. daemon API 形态（REST/JSON 为主，是否需要 WebSocket/SSE 做看板实时刷新）→ ADR-0004（待写）。

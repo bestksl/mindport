@@ -119,7 +119,11 @@ tags: [model, benchmark]
 
 ## 设计文档
 
-- [ADR-0001：本地优先 · 单机拓扑与连接方式](docs/adr/0001-local-first-single-machine.md) — Mac Studio 单机为中心，CLI 直接读写文件，手机走 Tailscale + Web/PWA，笔记本走系统 SSH，git 负责备份与未来扩展。
+架构决策记录见 [`docs/adr/`](docs/adr/README.md)：
+
+- **ADR-0001** 本地优先 · 单机拓扑：CLI 直接读写文件，Android 手机走 Tailscale + Chrome PWA，笔记本走系统 SSH，git 负责备份；
+- **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
+- **ADR-0003** Vault 结构与任务文件格式 v0：Markdown + frontmatter、T 编号、状态机、flock 锁协议。
 
 ## 状态
 
