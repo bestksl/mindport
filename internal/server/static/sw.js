@@ -1,6 +1,6 @@
 // 思港 Service Worker：MVP 阶段仅缓存应用外壳，页面永远走网络
-// （任务状态必须实时；未来再加断网暂存与补传）。
-const CACHE = "mindport-v0";
+// （任务状态必须实时；实时推送走 /events 的 SSE，不经 SW）。
+const CACHE = "mindport-v02";
 const SHELL = ["/", "/static/style.css", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -19,9 +19,11 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const req = e.request;
+  const url = new URL(req.url);
+  if (url.pathname === "/events" || url.pathname.startsWith("/api/")) return; // 直连，不拦截
   if (req.method !== "GET") return; // POST（录入/领单）一律直连
-  // 页面与 API 永远网络优先，失败才回退缓存
-  if (req.mode === "navigate" || req.url.includes("/api/")) {
+  // 页面永远网络优先，失败才回退缓存
+  if (req.mode === "navigate") {
     e.respondWith(
       fetch(req).catch(() => caches.match(req).then((r) => r || caches.match("/")))
     );

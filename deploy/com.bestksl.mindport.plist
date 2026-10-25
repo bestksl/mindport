@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  思港 MindPort 生产服务（launchd / LaunchAgent）。
+
+  安装（需要本人明确执行一次）：
+    cp deploy/com.bestksl.mindport.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bestksl.mindport.plist
+
+  行为：登录后自动启动；崩溃（非 0 退出）10s 后自动拉起；
+       正常 SIGTERM 退出不重启（便于升级）。日志见 vault 内 .port/serve.log。
+  升级：换好 ~/.local/bin/port 后 `launchctl kickstart -k gui/$(id -u)/com.bestksl.mindport`。
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.bestksl.mindport</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/jmzx/.local/bin/port</string>
+		<string>serve</string>
+		<string>--host</string>
+		<string>0.0.0.0</string>
+		<string>--port</string>
+		<string>8787</string>
+	</array>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PORT_VAULT</key>
+		<string>/Users/jmzx/MindPort</string>
+		<key>HOME</key>
+		<string>/Users/jmzx</string>
+	</dict>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+
+	<key>StandardOutPath</key>
+	<string>/Users/jmzx/MindPort/.port/serve.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/jmzx/MindPort/.port/serve.log</string>
+</dict>
+</plist>

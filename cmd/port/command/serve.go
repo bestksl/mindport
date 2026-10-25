@@ -1,12 +1,17 @@
 package command
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -31,7 +36,16 @@ var serveCmd = &cobra.Command{
 		port := envOr("PORT_PORT", fmt.Sprint(servePort))
 		addr := net.JoinHostPort(host, port)
 
-		srv := &http.Server{Addr: addr, Handler: (&server.Server{V: v}).Routes()}
+		// 生产加固：限制读慢/空闲连接；WriteTimeout 必须为 0（SSE 是长连接流式响应）。
+		srv := &http.Server{
+			Addr:              addr,
+			Handler:           server.New(v).Routes(),
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+
+		errCh := make(chan error, 1)
+		go func() { errCh <- srv.ListenAndServe() }()
 
 		w := cmd.OutOrStdout()
 		fmt.Fprintf(w, "⚓ 思港港口已开\n")
@@ -43,7 +57,24 @@ var serveCmd = &cobra.Command{
 		if host == "127.0.0.1" {
 			fmt.Fprintln(w, "   （仅本机能访问；手机同 WiFi 访问请加 --host 0.0.0.0）")
 		}
-		return srv.ListenAndServe()
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case err := <-errCh:
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			return err
+		case sig := <-sigCh:
+			fmt.Fprintf(w, "\n收到 %s，优雅停港（最多等 10s）…\n", sig)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(ctx); err != nil {
+				return err
+			}
+			return nil
+		}
 	},
 }
 

@@ -120,7 +120,8 @@ tags: [model, benchmark]
 ## 远程使用
 
 人在外面、Studio 在家：用 Tailscale 组网，手机继续用 Web/PWA、笔记本 SSH 进 Studio。
-详见 **[远程使用指南](docs/remote.md)**。
+详见 **[远程使用指南](docs/remote.md)**。Agent（Claude Code / Codex）的领单与进度
+同步约定见 **[Agent 工作流](docs/agent-flow.md)**。
 
 ## 设计文档
 
@@ -130,25 +131,44 @@ tags: [model, benchmark]
 - **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
 - **ADR-0003** Vault 结构与文件格式 v0：Markdown + YAML frontmatter 统一信封，thought / task / note 三类型，T 编号、状态机、flock 锁协议，持久数据与运行时状态分离。
 
-## 当前可用的最小闭环（v0）
+## 当前可用的最小闭环（v0.2）
 
-CLI + 内嵌 Web（零前端构建，资源 `go:embed` 进同一二进制）：
+CLI + 内嵌 Web（零前端构建，资源 `go:embed` 进同一二进制），网页与 CLI 经
+**SSE 实时互刷新**（CLI/agent 一写，手机页面立刻变）。
 
 ```bash
 go build -o bin/port ./cmd/port
-./bin/port init                      # 初始化 ~/MindPort（可用 --vault / $PORT_VAULT 改位置）
-./bin/port add "洗澡时的闪念"          # → inbox
-./bin/port new "验证 int8 耗时"        # → T0001，ready
-./bin/port claim T0001               # 领取（--by 指定执行者，默认 <user>@<host>）
-./bin/port done T0001                # 归港
+./bin/port init                                   # 初始化 ~/MindPort（--vault / $PORT_VAULT）
+
+# 捕获
+./bin/port add "洗澡时的闪念"                       # → inbox
+./bin/port promote inbox/20261025-2200-xxx.md      # 闪念 → T 编号任务（--importance high）
+
+# 目标导向：不谈紧急，只标重要程度
+./bin/port new "验证 int8 耗时" --importance critical --goal "Vs3 上 NPU 方案定稿"
+#                 importance: critical(关键) high(重要) normal(普通) someday(也许)
+
+# agent（Claude Code / Codex）的 pull 工作流
+./bin/port next                    # 现在最重要的 ready 任务
+./bin/port show T0001 [--json]     # 读全文：描述/验收标准/历史日志
+./bin/port claim T0001             # 原子领取（PORT_ACTOR 或 --by 指定身份）
+./bin/port log T0001 "基准 27ms"   # 叙事式进展同步
+./bin/port check T0001 1           # 勾选第 1 条验收标准（进度=验收清单）
+./bin/port block T0001 "等真机"    # 受阻上浮 / unblock
+./bin/port done T0001              # 归港
 ./bin/port list [--status ready] [--json]
 
 ./bin/port serve --host 0.0.0.0 --port 8787
-# 手机与 Studio 连同一 WiFi，浏览器开 http://<Studio 局域网 IP>:8787
-# 页面可录入闪念、建任务、领取/归港；GET /api/tasks 提供 JSON
+# 手机浏览器（同 WiFi 或 Tailscale）：看板三列（待领取/进行中/已归港）、
+# 闪念转任务、任务详情、勾选验收、追加日志、编辑、身份切换；SSE 实时更新
 ```
 
-代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机，含表驱动测试）、`internal/server`（net/http + go:embed 静态资源/PWA）、`cmd/port`（cobra 子命令）。
+详见 [Agent 工作流](docs/agent-flow.md)、[远程使用指南](docs/remote.md)
+与[运维手册](docs/ops.md)（生产 launchd 托管、测试/生产 vault 分离、升级流程）。
+
+代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机、
+重要程度排序，含表驱动测试）、`internal/server`（net/http + go:embed +
+fsnotify/SSE + goldmark 渲染）、`cmd/port`（cobra 子命令）。
 
 ## 状态
 

@@ -31,6 +31,33 @@ func statusZH(s string) string {
 	}
 }
 
+// impZH 是重要程度的中文展示（目标导向，不谈紧急）。
+func impZH(s string) string {
+	switch s {
+	case store.ImpCritical:
+		return "关键"
+	case store.ImpHigh:
+		return "重要"
+	case store.ImpSomeday:
+		return "也许"
+	default:
+		return "普通"
+	}
+}
+
+func impMark(s string) string {
+	switch s {
+	case store.ImpCritical:
+		return "◆"
+	case store.ImpHigh:
+		return "●"
+	case store.ImpSomeday:
+		return "~"
+	default:
+		return "○"
+	}
+}
+
 func assignee(m store.Meta) string {
 	if m.Assignee == nil || strings.TrimSpace(*m.Assignee) == "" {
 		return "-"

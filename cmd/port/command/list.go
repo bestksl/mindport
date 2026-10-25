@@ -14,7 +14,7 @@ var (
 
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "列出任务（可按状态过滤，--json 供 agent 解析）",
+	Short: "列任务（按重要程度排序；可过滤状态，--json 供 agent）",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()
@@ -40,8 +40,9 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 		for _, t := range tasks {
-			fmt.Fprintf(w, "%s  %s  %-18s  %s\n",
-				t.Meta.ID, statusZH(t.Meta.Status), assignee(t.Meta), t.Meta.Title)
+			fmt.Fprintf(w, "%s  %s[%-2s]  %s  %-18s  %s\n",
+				t.Meta.ID, impMark(t.Meta.Importance), impZH(t.Meta.Importance),
+				statusZH(t.Meta.Status), assignee(t.Meta), t.Meta.Title)
 		}
 		return nil
 	},
