@@ -117,9 +117,13 @@ tags: [model, benchmark]
 
 ---
 
+## 设计文档
+
+- [ADR-0001：本地优先 · 单机拓扑与连接方式](docs/adr/0001-local-first-single-machine.md) — Mac Studio 单机为中心，CLI 直接读写文件，手机走 Tailscale + Web/PWA，笔记本走系统 SSH，git 负责备份与未来扩展。
+
 ## 状态
 
-🚧 **Pre-alpha · 孵化阶段**。仓库目前只有这份宣言，设计讨论与任务拆解将在 Issues 中进行——欢迎把你闪过的念头也丢进来。
+🚧 **Pre-alpha · 孵化阶段**。仓库目前只有这份宣言与架构决策，设计讨论与任务拆解将在 Issues 中进行——欢迎把你闪过的念头也丢进来。
 
 ---
 
