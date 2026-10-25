@@ -123,7 +123,7 @@ tags: [model, benchmark]
 
 - **ADR-0001** 本地优先 · 单机拓扑：CLI 直接读写文件，Android 手机走 Tailscale + Chrome PWA，笔记本走系统 SSH，git 负责备份；
 - **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
-- **ADR-0003** Vault 结构与任务文件格式 v0：Markdown + frontmatter、T 编号、状态机、flock 锁协议。
+- **ADR-0003** Vault 结构与文件格式 v0：Markdown + YAML frontmatter 统一信封，thought / task / note 三类型，T 编号、状态机、flock 锁协议，持久数据与运行时状态分离。
 
 ## 状态
 
