@@ -1,0 +1,18 @@
+{
+  "name": "思港 MindPort",
+  "short_name": "思港",
+  "description": "给每一个闪过的念头，一个可以停靠的港口",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f2233",
+  "theme_color": "#0f2233",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

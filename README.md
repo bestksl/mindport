@@ -125,9 +125,29 @@ tags: [model, benchmark]
 - **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
 - **ADR-0003** Vault 结构与文件格式 v0：Markdown + YAML frontmatter 统一信封，thought / task / note 三类型，T 编号、状态机、flock 锁协议，持久数据与运行时状态分离。
 
+## 当前可用的最小闭环（v0）
+
+CLI + 内嵌 Web（零前端构建，资源 `go:embed` 进同一二进制）：
+
+```bash
+go build -o bin/port ./cmd/port
+./bin/port init                      # 初始化 ~/MindPort（可用 --vault / $PORT_VAULT 改位置）
+./bin/port add "洗澡时的闪念"          # → inbox
+./bin/port new "验证 int8 耗时"        # → T0001，ready
+./bin/port claim T0001               # 领取（--by 指定执行者，默认 <user>@<host>）
+./bin/port done T0001                # 归港
+./bin/port list [--status ready] [--json]
+
+./bin/port serve --host 0.0.0.0 --port 8787
+# 手机与 Studio 连同一 WiFi，浏览器开 http://<Studio 局域网 IP>:8787
+# 页面可录入闪念、建任务、领取/归港；GET /api/tasks 提供 JSON
+```
+
+代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机，含表驱动测试）、`internal/server`（net/http + go:embed 静态资源/PWA）、`cmd/port`（cobra 子命令）。
+
 ## 状态
 
-🚧 **Pre-alpha · 孵化阶段**。仓库目前只有这份宣言与架构决策，设计讨论与任务拆解将在 Issues 中进行——欢迎把你闪过的念头也丢进来。
+🚧 **Pre-alpha · 孵化阶段**。v0 最小闭环已通（CLI ↔ 文件 ↔ 局域网 Web/PWA），设计讨论与任务拆解在 Issues 与 ADR 中进行。
 
 ---
 
