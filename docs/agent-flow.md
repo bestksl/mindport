@@ -50,9 +50,16 @@ CLI 同义命令：
 port new "..."                       # 默认进锚地
 port new "..." --draft               # 先存草稿打磨
 port publish T0001                   # 草稿放行 → 锚地
-port publish T0001 --to claude@studio  # 草稿直接派船
+port publish T0001 --to claude@studio  # 草稿直接派船（任意会话可接）
 port dispatch T0001 --to codex@studio  # 锚地派船 / 改派 / 受阻换船
+# 指定船位：只在该项目目录开会话的船能接令（防止别的项目会话接错票）
+port dispatch T0001 --to claude@studio --berth /Users/jmzx/studio/jiepai-app
 ```
+
+**船位（berth）**：同一艘船可能在多个项目目录里同时开着会话。网页派船时可在下拉里
+选「claude · 📍jiepai-app · 在线」这样的具体会话；任务记下 `assign_cwd` 后，
+`port next`/`port claim` 只在对应项目目录生效，别处看到的提示是「这票货派给了别的船位」。
+不指定船位（「任意会话」）则该船在哪个目录都能接。
 
 ## 一次完整协作（船 / agent 侧）
 
@@ -61,9 +68,10 @@ port dispatch T0001 --to codex@studio  # 锚地派船 / 改派 / 受阻换船
 export PORT_ACTOR=claude@studio      # codex@studio / 你的船名
 
 # 1. 听令：只列出「派给我、待我接令」的货（锚地货与别人的货都看不到）
-port next                            # 按重要程度（关键 > 重要 > 普通 > 也许）
+port next                            # 默认按当前工作目录过滤船位
 port next --json                     # 给程序用
 port next --by claude@studio         # 也可显式指定船名
+port next --cwd /path/to/project     # 显式指定船位（默认取当前目录）
 
 # 2. 读令：接令前先看完整上下文
 port show T0002                      # 描述 + 验收标准 + 历史日志
@@ -98,10 +106,12 @@ port done T0002 --force --reason "验收项已失效，客户口头确认"  # �
 
 `port present [T编号] [--note "..."]` 报到，心跳 2 分钟内有效，相同内容 20 秒
 防抖；`port away` 下线。但一轮 agent 工作常远超 2 分钟，因此 v0.4 提供
-**保活守护循环** `port heartbeat`：会话开始时由钩子调用，立即报到并 fork 一个
-脱离会话的后台循环，每 45 秒探测一次 CLI 主进程（默认 `pgrep -x claude`）——
-在就续期（保留任务号/状态行），CLI 退出后 45 秒内自动下线并清理 pidfile，
-**不需要 launchd / cron**。项目 `.claude/settings.json` 已把
+**保活守护循环** `port heartbeat`：会话开始时由钩子调用（钩子 stdin 的 JSON 带
+`session_id`/`cwd`），按「船 + 项目会话」报到（心跳文件
+`.port/state/agents/<actor>/<session>.json`，顶栏显示 📍项目名），并 fork 一个
+脱离会话的后台循环，每 45 秒精确探测**本会话** CLI 进程 pid——
+在就只续 seen，会话退出后 45 秒内该船位自动下线并清理 pidfile，别的项目会话
+不受影响，**不需要 launchd / cron**。项目 `.claude/settings.json` 已把
 SessionStart / UserPromptSubmit 接到 `port heartbeat`（仅新会话生效）；
 claim/done 自动维护任务号。Codex 等没有钩子的 agent，可在项目提示里要求
 开工先 `port present`、收工 `port away`，或同样调 `port heartbeat --process codex`。
@@ -113,6 +123,8 @@ claim/done 自动维护任务号。Codex 等没有钩子的 agent，可在项目
 
 1. **命令式派船，不是公共任务池**：调度长点名叫船，`next` 只听自己的令；
    非承担船的 claim 直接被 store 拒绝（`ErrNotAssignee`），网页根本没有这个按钮。
+   派船还能点名到**船位**（具体项目目录的会话）：街拍项目的会话接不到闲鱼的票，
+   错目录 claim 会得到 `ErrWrongBerth`。
 2. **目标导向，不是进度导向**：没有截止日期、没有紧急度、没有完成百分比。
    任务只有重要程度（`critical/high/normal/someday`）与所服务的目标（`goal`）。
    派船只问「什么对目标最重要、哪艘船合适」，不问「什么快逾期了」。
@@ -130,11 +142,11 @@ claim/done 自动维护任务号。Codex 等没有钩子的 agent，可在项目
 
 | 方法与路径 | 作用 |
 |---|---|
-| `GET /api/next?actor=claude@studio` | 派给该船、待接令的最重要任务 |
+| `GET /api/next?actor=claude@studio&cwd=/repo/x` | 派给该船、且船位匹配（cwd 为空或等于 assign_cwd）的最重要任务 |
 | `GET /api/tasks?status=anchored` | 任务列表（`draft/anchored/ready/in_progress/blocked/done`） |
-| `GET /api/agents` | 船队心跳列表（在线标志、任务号、状态行） |
-| `POST /tasks/{id}/publish` | 放行草稿（表单 `assignee` 空=进锚地，非空=直接派船） |
-| `POST /tasks/{id}/assign` | 派船/改派/受阻换船（表单 `assignee` 必填） |
+| `GET /api/agents` | 各船位心跳列表（每条含在线标志、session_id、dir、任务号、状态行） |
+| `POST /tasks/{id}/publish` | 放行草稿（表单 `assignee` 空=进锚地；`actor`=直接派船任意会话；`actor|/项目目录`=指定船位） |
+| `POST /tasks/{id}/assign` | 派船/改派/受阻换船（表单 `assignee` 取值同上，船位可具体到在线会话） |
 | `POST /tasks/{id}/check` `/log` | 验货勾选、调度批注 |
 
 注意：HTTP 端**没有** claim/done/block/unblock 路由——这些动作只在船的 CLI。
@@ -145,8 +157,9 @@ CLI 与网页走的是同一个 store：**无论哪边写入，另一边 SSE 实
 
 ```
 本项目任务通过思港 MindPort 调度（CLI: port，vault: ~/MindPort）。
-你是船，只接调度长官派给你的货：开工前 `port next` 听令（只显示派给你的货），
-`port show T###` 读上下文，`port claim T###` 接令后再动手。
+你是船，只接调度长官派给你的货：开工前 `port next` 听令（只显示派给你、
+且船位匹配当前项目目录的货），`port show T###` 读上下文，
+`port claim T###` 接令后再动手。
 每完成一个有意义的步骤 `port log`；满足一条验收标准就 `port check T### n`。
 归港是硬门禁：验收项全勾，或 `port done --result "交付说明"`；
 特殊情况 `port done --force --reason "..."`，理由永久留痕。

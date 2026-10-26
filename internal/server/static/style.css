@@ -105,6 +105,16 @@ a { color: inherit; }
 .chip b { font-weight: 700; font-size: 12.5px; }
 .chip em { font-style: normal; color: var(--muted); font-size: 11px; }
 .chip em::before { content: "·"; margin-right: 5px; color: var(--line); }
+.chip .seen { font-style: normal; opacity: .65; font-size: 10px; margin-left: 2px; }
+/* 船位（项目会话）小标签 */
+.chip .proj, .detail-agent .proj {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--amber);
+  background: rgba(224, 177, 95, .12);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
 .chip .dot, .agent-line .dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--someday);

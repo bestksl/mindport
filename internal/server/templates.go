@@ -26,15 +26,24 @@ const head = `<!doctype html>
 {{define "chips"}}
 {{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
 {{range .}}
-<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Seen.IsZero}}从未报到{{else}}上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
-  <i class="dot"></i><b>{{actorName .Actor}}</b>
-  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else}}在线待派{{end}}{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
+<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Dir}}[{{.Dir}}] {{end}}{{if .Seen.IsZero}}从未报到{{else}}上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
+  <i class="dot"></i><b>{{actorName .Actor}}</b>{{if .Dir}}<i class="proj" title="项目目录：{{.Dir}}">📍{{baseName .Dir}}</i>{{end}}
+  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else}}在线待派{{end}}<i class="seen">· {{ago .Seen}}</i>{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
 </span>
 {{end}}
 {{end}}
 
 {{define "shipoptions"}}
-{{range .}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>
+{{range $ship := .}}
+<option value="{{$ship.Name}}">{{$ship.Short}}{{if $ship.Online}} · 在线{{else}} · 未报到{{end}} · 任意会话</option>
+{{range $s := $ship.Sessions}}{{if and $s.Online (ne $s.Dir "")}}<option value="{{$s.Actor}}|{{$s.Dir}}">{{$ship.Short}} · 📍{{baseName $s.Dir}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else}} · 在线{{end}}</option>{{end}}{{end}}
+{{end}}{{end}}
+
+{{/* 改派下拉：排除当前船的「任意会话」与当前船位的同目录会话，同船其他项目会话仍可改派 */}}
+{{define "reassignoptions"}}
+{{range $ship := .Ships}}
+{{if ne $ship.Name $.R.Meta.AssigneeValue}}<option value="{{$ship.Name}}">{{$ship.Short}}{{if $ship.Online}} · 在线{{else}} · 未报到{{end}} · 任意会话</option>{{end}}
+{{range $s := $ship.Sessions}}{{if and $s.Online (ne $s.Dir "") (or (ne $ship.Name $.R.Meta.AssigneeValue) (ne $s.Dir $.R.Meta.AssignCwd))}}<option value="{{$s.Actor}}|{{$s.Dir}}">{{$ship.Short}} · 📍{{baseName $s.Dir}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else}} · 在线{{end}}</option>{{end}}{{end}}
 {{end}}{{end}}`
 
 const sseBoot = `
@@ -63,6 +72,7 @@ document.addEventListener('click', function (e) {
 // 船队在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
+  function baseName(p) { return p ? p.replace(/\/+$/, '').split('/').pop() : ''; }
   function ago(t) {
     var d = (Date.now() - new Date(t).getTime()) / 1000;
     if (d < 60) return '刚刚';
@@ -76,7 +86,8 @@ document.addEventListener('click', function (e) {
       var state, title;
       var seenZero = !p.seen || new Date(p.seen).getFullYear() < 2000;
       if (p.online) {
-        state = p.task ? ('在忙 ' + p.task) : (p.note || '在线待派');
+        state = (p.task ? ('在忙 ' + p.task) : (p.note || '在线待派')) +
+                '<i class="seen">· ' + ago(p.seen) + '</i>';
         title = '上次报到：' + new Date(p.seen).toLocaleString();
       } else if (seenZero) {
         state = '从未报到';
@@ -85,9 +96,10 @@ document.addEventListener('click', function (e) {
         state = '上次报到 ' + ago(p.seen);
         title = '上次报到：' + new Date(p.seen).toLocaleString();
       }
+      var proj = p.dir ? '<i class="proj" title="项目目录：' + p.dir + '">📍' + baseName(p.dir) + '</i>' : '';
       return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor +
-        '" title="' + title + '">' +
-        '<i class="dot"></i><b>' + actorName(p.actor) + '</b><em>' + state + '</em></span>';
+        '" title="' + (p.dir ? '[' + p.dir + '] ' : '') + title + '">' +
+        '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + '<em>' + state + '</em></span>';
     }).join('');
   }
   function tick() {
@@ -159,7 +171,7 @@ const boardHTML = head + `
         <span class="id">{{.Meta.ID}}</span>
         <span class="imp">● {{impZH .Meta.Importance}}</span>
         {{if eq .Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
-        {{if .Meta.Assignee}}<span class="assignee">🚢 {{actorName .Meta.AssigneeValue}}</span>{{end}}
+        {{if .Meta.Assignee}}<span class="assignee">🚢 {{actorName .Meta.AssigneeValue}}{{if .Meta.AssignCwd}} · 📍{{baseName .Meta.AssignCwd}}{{end}}</span>{{end}}
       </div>
       <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
@@ -212,14 +224,14 @@ const taskHTML = head + `
     <div class="meta-line">
       <span class="status status-{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
       <span class="imp">● {{impZH .R.Meta.Importance}}</span>
-      {{if .R.Meta.Assignee}}<span class="assignee">🚢 {{.R.Meta.AssigneeValue}}</span>{{end}}
+      {{if .R.Meta.Assignee}}<span class="assignee">🚢 {{.R.Meta.AssigneeValue}}{{if .R.Meta.AssignCwd}} · 📍{{baseName .R.Meta.AssignCwd}}{{end}}</span>{{end}}
     </div>
     {{if .Agent}}
     <div class="agent-line detail-agent {{if .Agent.Online}}online{{else}}offline{{end}}">
-      <i class="dot"></i>{{actorName .Agent.Actor}}
+      <i class="dot"></i>{{actorName .Agent.Actor}}{{if .Agent.Dir}} <i class="proj">📍{{baseName .Agent.Dir}}</i>{{end}}
       {{if .Agent.Online}}
         {{if eq .Agent.Task .R.Meta.ID}}正在做本票货{{if .Agent.Note}}：{{.Agent.Note}}{{end}}
-        {{else if .Agent.Task}}已在做别的票货（{{.Agent.Task}}）{{else}}在线待派{{end}}
+        {{else if .Agent.Task}}已在做别的票货（{{.Agent.Task}}）{{else}}在线待派{{end}}<i class="seen">· {{ago .Agent.Seen}}</i>
       {{else}}上次报到 {{ago .Agent.Seen}}{{end}}
     </div>
     {{end}}
@@ -256,25 +268,23 @@ const taskHTML = head + `
 
     {{else if eq .R.Meta.Status "ready"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
-      <select name="assignee" aria-label="改派给哪艘船">
-        {{$cur := .R.Meta.AssigneeValue}}
-        {{range .Ships}}{{if ne .Name $cur}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>{{end}}{{end}}
+      <select name="assignee" aria-label="改派给哪个船位">
+        {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="改派 {{.R.Meta.ID}}？原船将不能再接令">改派</button>
+      <button data-confirm="改派 {{.R.Meta.ID}}？原船位将不能再接令">改派</button>
     </form>
-    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b> 在自己的终端 <code>port claim {{.R.Meta.ID}}</code> 接令。调度台不能代领。</p>
+    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 接令。派船时可点名具体项目会话，防止别的项目里的会话接错票。调度台不能代领。</p>
 
     {{else if eq .R.Meta.Status "in_progress"}}
     <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已接令出港。接令/归港/受阻只在船自己的 CLI 完成；调度台在这里看进展、验货、批注。</p>
 
     {{else if eq .R.Meta.Status "blocked"}}
-    <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b> 上报受阻（见日志）。可批注指示，或把货改派给别的船：</p>
+    <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}}（📍{{baseName .R.Meta.AssignCwd}}）{{end}}上报受阻（见日志）。可批注指示，或把货改派给别的船/船位：</p>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
-      <select name="assignee" aria-label="改派给哪艘船">
-        {{$cur := .R.Meta.AssigneeValue}}
-        {{range .Ships}}{{if ne .Name $cur}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>{{end}}{{end}}
+      <select name="assignee" aria-label="改派给哪个船位">
+        {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船改派给所选船？">受阻改派</button>
+      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船位改派给所选船位？">受阻改派</button>
     </form>
 
     {{else if eq .R.Meta.Status "done"}}
@@ -283,8 +293,8 @@ const taskHTML = head + `
   </div>
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
-  <details class="edit" id="edit">
-    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>派船后封舱</small></summary>
+  <details class="edit" id="edit" open>
+    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>派船后封舱（点此折叠）</small></summary>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
       <label>标题</label>
       <input name="title" value="{{.R.Meta.Title}}" required>
@@ -305,7 +315,7 @@ const taskHTML = head + `
   </details>
   {{end}}
 
-  {{if .Accept}}
+  {{if and .Accept (ne .R.Meta.Status "draft") (ne .R.Meta.Status "anchored")}}
   <section>
     <h2>验收标准 · 验货 <small>{{.AcceptDone}}/{{len .Accept}}</small></h2>
     <ul class="accept">

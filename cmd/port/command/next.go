@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -13,6 +14,7 @@ import (
 var (
 	nextJSON bool
 	nextBy   string
+	nextCwd  string
 )
 
 var nextCmd = &cobra.Command{
@@ -28,10 +30,14 @@ var nextCmd = &cobra.Command{
 		if by == "" {
 			by = defaultActor()
 		}
-		r, err := v.Next(by)
+		cwd := nextCwd
+		if cwd == "" {
+			cwd, _ = os.Getwd()
+		}
+		r, err := v.Next(by, cwd)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "没有派给 %s 的待接令任务\n", by)
+				fmt.Fprintln(cmd.ErrOrStderr(), "没有派给本船位（当前项目目录）的待接令任务")
 				return nil
 			}
 			return err
@@ -51,5 +57,6 @@ var nextCmd = &cobra.Command{
 func init() {
 	nextCmd.Flags().BoolVar(&nextJSON, "json", false, "输出 JSON")
 	nextCmd.Flags().StringVar(&nextBy, "by", "", "船名（默认 $PORT_ACTOR 或 <user>@<host>）")
+	nextCmd.Flags().StringVar(&nextCwd, "cwd", "", "船位/项目目录（默认当前目录；只看派给本船位的货）")
 	rootCmd.AddCommand(nextCmd)
 }

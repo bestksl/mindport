@@ -41,7 +41,7 @@ func TestThoughtPromoteAndTaskLifecycle(t *testing.T) {
 	}
 
 	// 直接派船给 claude@studio
-	pub, err := v.Publish("T0001", "jmzx@studio", "claude@studio")
+	pub, err := v.Publish("T0001", "jmzx@studio", "claude@studio", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +50,10 @@ func TestThoughtPromoteAndTaskLifecycle(t *testing.T) {
 	}
 
 	// 别的船不能接令
-	if _, err := v.Claim("T0001", "codex@studio"); !errors.Is(err, ErrNotAssignee) {
+	if _, err := v.Claim("T0001", "codex@studio", ""); !errors.Is(err, ErrNotAssignee) {
 		t.Fatalf("非承担船接令应 ErrNotAssignee，得到 %v", err)
 	}
-	if _, err := v.Claim("T0001", "claude@studio"); err != nil {
+	if _, err := v.Claim("T0001", "claude@studio", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := v.Log("T0001", "基准 27.4ms", "claude@studio"); err != nil {
@@ -99,42 +99,42 @@ func TestAnchorageDispatchReassign(t *testing.T) {
 		t.Fatalf("非草稿建任务应进锚地，得到 %s", rec.Meta.Status)
 	}
 	// 锚地货对所有船不可见
-	if _, err := v.Next("claude@studio"); !errors.Is(err, ErrNotFound) {
+	if _, err := v.Next("claude@studio", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("锚地货不应进 next，得到 %v", err)
 	}
-	if _, err := v.Claim(id, "claude@studio"); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := v.Claim(id, "claude@studio", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("锚地货不能直接接令，得到 %v", err)
 	}
 	// 派船必须点名
-	if _, err := v.Assign(id, "jmzx@studio", "  "); err == nil {
+	if _, err := v.Assign(id, "jmzx@studio", "  ", ""); err == nil {
 		t.Fatal("空船名派船应报错")
 	}
-	if _, err := v.Assign(id, "jmzx@studio", "claude@studio"); err != nil {
+	if _, err := v.Assign(id, "jmzx@studio", "claude@studio", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.Next("codex@studio"); !errors.Is(err, ErrNotFound) {
+	if _, err := v.Next("codex@studio", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("货没派给 codex，next 应空，得到 %v", err)
 	}
-	next, err := v.Next("claude@studio")
+	next, err := v.Next("claude@studio", "")
 	if err != nil || next.Meta.ID != id {
 		t.Fatalf("claude next 应得到 %s，得到 %v err=%v", id, next, err)
 	}
 	// 待接令阶段改派
-	r2, err := v.Assign(id, "jmzx@studio", "codex@studio")
+	r2, err := v.Assign(id, "jmzx@studio", "codex@studio", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r2.Meta.AssigneeValue() != "codex@studio" || !strings.Contains(r2.Body, "reassigned") {
 		t.Fatalf("改派字段/日志错误: assignee=%q", r2.Meta.AssigneeValue())
 	}
-	if _, err := v.Claim(id, "claude@studio"); !errors.Is(err, ErrNotAssignee) {
+	if _, err := v.Claim(id, "claude@studio", ""); !errors.Is(err, ErrNotAssignee) {
 		t.Fatalf("改派后原船不能接令，得到 %v", err)
 	}
-	if _, err := v.Claim(id, "codex@studio"); err != nil {
+	if _, err := v.Claim(id, "codex@studio", ""); err != nil {
 		t.Fatal(err)
 	}
 	// 出港中封令：不能改派、不能再编辑
-	if _, err := v.Assign(id, "jmzx@studio", "claude@studio"); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := v.Assign(id, "jmzx@studio", "claude@studio", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("出港中不应允许改派，得到 %v", err)
 	}
 	if _, err := v.UpdateTask(id, "锚地货", r2.Body, "", ""); !errors.Is(err, ErrInvalidTransition) {
@@ -145,8 +145,8 @@ func TestAnchorageDispatchReassign(t *testing.T) {
 func TestBlockUnblockAndBlockedReassign(t *testing.T) {
 	v, _ := Open(t.TempDir())
 	_, _ = v.NewTask("x", "", "", true)
-	_, _ = v.Publish("T0001", "jmzx@studio", "a@studio")
-	_, _ = v.Claim("T0001", "a@studio")
+	_, _ = v.Publish("T0001", "jmzx@studio", "a@studio", "")
+	_, _ = v.Claim("T0001", "a@studio", "")
 
 	// 只有承担船能上报受阻
 	if _, err := v.Block("T0001", "等 Vs3 实测", "b@studio"); !errors.Is(err, ErrNotAssignee) {
@@ -172,10 +172,10 @@ func TestBlockUnblockAndBlockedReassign(t *testing.T) {
 
 	// 受阻改派：货回码头，新船重新待接令
 	_, _ = v.NewTask("y", "", "", true)
-	_, _ = v.Publish("T0002", "jmzx@studio", "a@studio")
-	_, _ = v.Claim("T0002", "a@studio")
+	_, _ = v.Publish("T0002", "jmzx@studio", "a@studio", "")
+	_, _ = v.Claim("T0002", "a@studio", "")
 	rb, _ := v.Block("T0002", "缺数据", "a@studio")
-	rr, err := v.Assign("T0002", "jmzx@studio", "b@studio")
+	rr, err := v.Assign("T0002", "jmzx@studio", "b@studio", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,10 +185,10 @@ func TestBlockUnblockAndBlockedReassign(t *testing.T) {
 	if !strings.Contains(rr.Body, "原船受阻") {
 		t.Fatalf("受阻改派日志缺失: %s", rr.Body)
 	}
-	if _, err := v.Claim("T0002", "a@studio"); !errors.Is(err, ErrNotAssignee) {
+	if _, err := v.Claim("T0002", "a@studio", ""); !errors.Is(err, ErrNotAssignee) {
 		t.Fatalf("改派后原船不能接令，得到 %v", err)
 	}
-	if _, err := v.Claim("T0002", "b@studio"); err != nil {
+	if _, err := v.Claim("T0002", "b@studio", ""); err != nil {
 		t.Fatal(err)
 	}
 	_ = rb
@@ -201,18 +201,18 @@ func TestImportanceOrderingAndNext(t *testing.T) {
 	_, _ = v.NewTask("也许", ImpSomeday, "", true)  // T0003
 	_, _ = v.NewTask("重要", ImpHigh, "", true)     // T0004
 	// 只把 T0002 派给 a
-	if _, err := v.Publish("T0002", "jmzx@studio", "a@studio"); err != nil {
+	if _, err := v.Publish("T0002", "jmzx@studio", "a@studio", ""); err != nil {
 		t.Fatal(err)
 	}
 
-	next, err := v.Next("a@studio")
+	next, err := v.Next("a@studio", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if next.Meta.ID != "T0002" {
 		t.Fatalf("next 应为派给 a 的 T0002，得到 %s", next.Meta.ID)
 	}
-	if _, err := v.Next(""); err == nil {
+	if _, err := v.Next("", ""); err == nil {
 		t.Fatal("空船名 next 应报错")
 	}
 
@@ -276,8 +276,8 @@ func TestForceDoneEscapeHatch(t *testing.T) {
 	if _, err := v.UpdateTask(rec.Meta.ID, cur.Meta.Title, body, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = v.Publish(rec.Meta.ID, "jmzx@studio", "a@studio")
-	_, _ = v.Claim(rec.Meta.ID, "a@studio")
+	_, _ = v.Publish(rec.Meta.ID, "jmzx@studio", "a@studio", "")
+	_, _ = v.Claim(rec.Meta.ID, "a@studio", "")
 	id := rec.Meta.ID
 	// 无结果归港被硬门禁拦
 	if _, err := v.Done(id, "a@studio", "", false, ""); !errors.Is(err, ErrResultRequired) {
@@ -303,12 +303,12 @@ func TestForceDoneEscapeHatch(t *testing.T) {
 func TestInvalidActionsAndMissing(t *testing.T) {
 	v, _ := Open(t.TempDir())
 	_, _ = v.NewTask("x", "", "", true)
-	_, _ = v.Publish("T0001", "jmzx@studio", "a@studio")
-	if _, err := v.Claim("T0001", "a@studio"); err != nil {
+	_, _ = v.Publish("T0001", "jmzx@studio", "a@studio", "")
+	if _, err := v.Claim("T0001", "a@studio", ""); err != nil {
 		t.Fatal(err)
 	}
 	// 重复接令：状态已不匹配
-	if _, err := v.Claim("T0001", "b@studio"); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := v.Claim("T0001", "b@studio", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("出港后再接令应拒绝，得到 %v", err)
 	}
 	// 未派船的草稿不能归港
@@ -318,7 +318,7 @@ func TestInvalidActionsAndMissing(t *testing.T) {
 	if _, err := v.Done("T0002", "a@studio", "", false, ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("草稿归港应拒绝，得到 %v", err)
 	}
-	if _, err := v.Claim("T9999", "a@studio"); !errors.Is(err, ErrNotFound) {
+	if _, err := v.Claim("T9999", "a@studio", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("不存在任务应 ErrNotFound，得到 %v", err)
 	}
 }
@@ -327,49 +327,103 @@ func TestDraftPublishNoAssignee(t *testing.T) {
 	v, _ := Open(t.TempDir())
 	rec, _ := v.NewTask("打磨中", ImpHigh, "G", true)
 	id := rec.Meta.ID
-	pub, err := v.Publish(id, "jmzx@studio", "")
+	pub, err := v.Publish(id, "jmzx@studio", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pub.Meta.Status != StatusAnchored || pub.Meta.AssigneeValue() != "" {
 		t.Fatalf("无指派放行应进锚地，得到 %s/%q", pub.Meta.Status, pub.Meta.AssigneeValue())
 	}
-	if _, err := v.Publish(id, "jmzx@studio", ""); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := v.Publish(id, "jmzx@studio", "", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("非草稿再次放行应拒绝，得到 %v", err)
 	}
 }
 
-func TestPresenceKeepalive(t *testing.T) {
+func TestSessionPresence(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	// 带任务号报到
-	if _, err := v.Present("claude@studio", "T0007", "跑测试"); err != nil {
+	// 同一艘船在两个项目目录各开一个会话
+	if _, err := v.PresentSession(Presence{
+		Actor: "claude@studio", SessionID: "s1", Dir: "/repo/jiepai",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	old, _ := os.ReadFile(v.Root + "/.port/state/agents/claude_studio.json")
-	// 保活：任务号/状态行原样保留，只刷时间（文件会被重写）
-	if _, err := v.PresentKeepalive("claude@studio"); err != nil {
+	if _, err := v.PresentSession(Presence{
+		Actor: "claude@studio", SessionID: "s2", Dir: "/repo/mindport",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	ps, _ := v.ListPresence()
-	if len(ps) != 1 || ps[0].Task != "T0007" || ps[0].Note != "跑测试" || !ps[0].Online {
-		t.Fatalf("保活后状态错误: %+v", ps)
+	if len(ps) != 2 {
+		t.Fatalf("同船两会话应有两条心跳，得到 %d", len(ps))
 	}
-	if string(old) == "" {
-		t.Fatal("基线文件为空")
-	}
-	// 全新 actor 的保活按空状态报到
-	if _, err := v.PresentKeepalive("codex@studio"); err != nil {
+	// claim 把任务号写到最近活动的会话
+	if err := v.SetActorSessionTask("claude@studio", "T0009"); err != nil {
 		t.Fatal(err)
 	}
-	ps2, _ := v.ListPresence()
-	found := false
-	for _, p := range ps2 {
-		if p.Actor == "codex@studio" && p.Online && p.Task == "" {
-			found = true
+	ps, _ = v.ListPresence()
+	var tasked int
+	for _, p := range ps {
+		if p.Task == "T0009" {
+			tasked++
 		}
 	}
-	if !found {
-		t.Fatalf("codex 保活报到失败: %+v", ps2)
+	if tasked != 1 {
+		t.Fatalf("应只更新最近一个会话的任务号，得到 %+v", ps)
+	}
+	// 保活只刷自己会话的 seen，不动另一个
+	if err := v.KeepaliveSession("claude@studio", "s2"); err != nil {
+		t.Fatal(err)
+	}
+	// 一个会话下线不影响另一个
+	if err := v.AwaySession("claude@studio", "s1"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ = v.ListPresence()
+	if len(ps) != 1 || ps[0].SessionID != "s2" {
+		t.Fatalf("s1 下线后应只剩 s2，得到 %+v", ps)
+	}
+	// 归港清任务号
+	if err := v.ClearActorTask("claude@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ = v.ListPresence()
+	if ps[0].Task != "" {
+		t.Fatalf("归港后任务号应清空，得到 %+v", ps[0])
+	}
+}
+
+func TestBerthDispatchAndClaim(t *testing.T) {
+	v, _ := Open(t.TempDir())
+	rec := mustNewTask(t, v, "街拍 app 的活", "high")
+	if _, err := v.Publish(rec.Meta.ID, "jmzx@studio", "claude@studio", "/repo/jiepai"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := v.GetTask(rec.Meta.ID)
+	if err != nil || got.Meta.AssignCwd != "/repo/jiepai" {
+		t.Fatalf("船位未写入: %+v err=%v", got.Meta, err)
+	}
+	// 别的项目目录的会话看不到这票货
+	if _, err := v.Next("claude@studio", "/repo/mindport"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("非指定船位 next 应找不到，得到 %v", err)
+	}
+	if _, err := v.Next("claude@studio", "/repo/jiepai"); err != nil {
+		t.Fatalf("指定船位 next 应命中: %v", err)
+	}
+	// 在错误船位 claim 被拒
+	if _, err := v.Claim(rec.Meta.ID, "claude@studio", "/repo/mindport"); !errors.Is(err, ErrWrongBerth) {
+		t.Fatalf("错误船位接令应 ErrWrongBerth，得到 %v", err)
+	}
+	// 正确船位接令成功
+	if _, err := v.Claim(rec.Meta.ID, "claude@studio", "/repo/jiepai"); err != nil {
+		t.Fatalf("正确船位应能接令: %v", err)
+	}
+	// 不指定船位的货任意目录可接（兼容旧行为/远程船）
+	rec2 := mustNewTask(t, v, "通用的活", "normal")
+	if _, err := v.Publish(rec2.Meta.ID, "jmzx@studio", "codex@studio", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.Claim(rec2.Meta.ID, "codex@studio", "/any/where"); err != nil {
+		t.Fatalf("无船位任务应任意目录可接: %v", err)
 	}
 }
 
@@ -400,6 +454,15 @@ func TestPresenceAwayTTLAndDebounce(t *testing.T) {
 	if err := v.Away("claude@studio"); err != nil {
 		t.Fatal("重复 away 应当幂等无错")
 	}
+}
+
+func mustNewTask(t *testing.T, v *Vault, title, imp string) *Record {
+	t.Helper()
+	r, err := v.NewTask(title, imp, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 func ids(rs []Record) []string {

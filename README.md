@@ -36,7 +36,7 @@
 - 📝 **Markdown 即数据库**：任务是带 frontmatter 的纯文本文件，Obsidian 或任意编辑器可直接打开，数据永远属于你；
 - 🤖 **为 agent 而设计**：`port next` 只听派给自己的令，`port claim` / `port done` / `port log` 对人类和 AI 同样友好，内置 `--json`；
 - 🖥️ **CLI 优先，SSH 原生**：一台机器、一个密钥，远程 agent 即可接令干活，无需额外部署；
-- 🚢 **命令式派船**：指派是强制的，只有被点名的船能接令；锚地货对船不可见，不能抢单；
+- 🚢 **命令式派船**：指派是强制的，只有被点名的船能接令；锚地货对船不可见，不能抢单；还能点名到具体**船位**（某个项目目录里的会话），街拍项目的会话接不到闲鱼的票；
 - 🏁 **归港硬门禁**：验收项必须全勾（或附交付结果），特殊情况强制归港必须写理由、永久留痕；
 - 🔀 **本地优先，Git 同步**：断网可用，多机、多人、多 agent 靠 git 协作；
 - 🧠 **Inbox → 任务**：先无摩擦捕获，再从容整理、打磨验收、派船；
@@ -152,6 +152,8 @@ go build -o bin/port ./cmd/port
 ./bin/port new "验证 int8 耗时" --draft --importance critical --goal "Vs3 上 NPU 方案定稿"
 ./bin/port publish T0001                          # 放行到锚地（船看不到）
 ./bin/port dispatch T0001 --to claude@studio      # 派船命令：只有 claude 能接令
+./bin/port dispatch T0001 --to claude@studio --berth ~/studio/jiepai-app
+#                 ↑ 点名船位：只在该项目目录的会话能接，防止别的项目接错票
 #                 importance: critical(关键) high(重要) normal(普通) someday(也许)
 
 # agent（Claude Code / Codex）的听令工作流
@@ -229,16 +231,22 @@ draft ──publish──▶ anchored ──assign(点名)──▶ ready ──
 目标：调度台顶栏能看到「Claude / Codex 此刻在不在线、正在干哪票货」，
 但**心跳是运行时状态，不是任务数据**，崩溃要能自愈，不能有写放大。
 
-- **存储**：`.port/state/agents/<actor>.json`（actor / task / note / seen 时间戳），
-  与任务文件分离，未来 git 同步时排除该目录；
+- **存储**：`.port/state/agents/<actor>/<session>.json`（actor / session_id / 项目目录 dir /
+  pid / task / note / seen 时间戳），同一艘船在多个项目里的会话各一条；旧版扁平文件
+  `agents/<actor>.json` 仍兼容读取。与任务文件分离，未来 git 同步时排除该目录；
 - **TTL 2 分钟**：`seen` 在窗口内即在线，超时自动灰显「x 分钟前在」，
   不需要显式下线，agent 崩溃也自愈；
 - **20 秒防抖**：相同 task/note 的重复心跳不重写文件，钩子可以高频触发；
 - **保活守护循环**（`port heartbeat`，v0.4）：会话开始时由 Claude Code 钩子
-  拉起一个脱离会话的后台循环，**每 45 秒**探测一次 CLI 主进程（`pgrep -x claude`）：
-  在就续期（保留任务号/状态行，绕过 2 分钟 TTL），CLI 退出后 45 秒内自动 `away`
-  并清理 pidfile。**不需要 launchd / cron——随会话自生自灭**（用户明确不装系统级托管）；
-- **自动维护**：`claim` 自动带任务号、`done` 自动清任务号；
+  拉起一个脱离会话的后台循环，**每 45 秒**精确探测**本会话**的 CLI 进程 pid
+  （钩子 stdin 的 JSON 提供 session_id/cwd，沿父进程链找 claude pid）：
+  在就只续 seen，会话退出后 45 秒内该船位自动下线并清理 pidfile，同船别的项目会话
+  不受影响；resume 换进程后新守护自动接管。**不需要 launchd / cron——随会话自生自灭**
+  （用户明确不装系统级托管）；
+- **顶栏按会话显示**：同一艘 claude 在街拍、思港两个项目各开一个会话时，顶栏是
+  两枚芯片「claude 📍jiepai-app 在线待派 · 刚刚」「claude 📍mindport 在忙 T00xx」，
+  离线灰显「上次报到 x 分钟前」；
+- **自动维护**：`claim` 自动带任务号（写到该船最近活动的会话心跳上）、`done` 自动清任务号；
 - **Claude Code 钩子**（仓库 `.claude/settings.json`，仅新会话生效）：
 
 ```json

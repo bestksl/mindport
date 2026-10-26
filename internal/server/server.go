@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -159,14 +160,12 @@ type boardData struct {
 	Error    string
 }
 
-// ShipView 是调度台眼里的一艘船：花名册名字 + 实时心跳。
+// ShipView 是调度台眼里的一艘船：花名册名字 + 它在各项目目录里的会话心跳。
 type ShipView struct {
-	Name   string    `json:"actor"`
-	Short  string    `json:"short"`
-	Online bool      `json:"online"`
-	Task   string    `json:"task"`
-	Note   string    `json:"note"`
-	Seen   time.Time `json:"seen"`
+	Name     string
+	Short    string
+	Online   bool // 任一会话在线
+	Sessions []store.Presence
 }
 
 type column struct {
@@ -233,11 +232,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	render(w, http.StatusOK, boardTmpl, d)
 }
 
-// fleet 合并花名册与心跳：在册的船都列出（哪怕没报到），心跳里的外船补在末尾。
+// fleet 合并花名册与心跳：在册的船都列出（哪怕没报到），心跳里的外船补在末尾；
+// 每艘船挂着它在各项目目录里的会话（在线在前、最近在前）。
 func fleet(agents []store.Presence) []ShipView {
-	seen := map[string]store.Presence{}
+	byActor := map[string][]store.Presence{}
 	for _, p := range agents {
-		seen[p.Actor] = p
+		byActor[p.Actor] = append(byActor[p.Actor], p)
 	}
 	names := append([]string{}, roster...)
 	for _, p := range agents {
@@ -254,13 +254,50 @@ func fleet(agents []store.Presence) []ShipView {
 	}
 	out := make([]ShipView, 0, len(names))
 	for _, n := range names {
-		sv := ShipView{Name: n, Short: shortActor(n)}
-		if p, ok := seen[n]; ok {
-			sv.Online, sv.Task, sv.Note, sv.Seen = p.Online, p.Task, p.Note, p.Seen
+		sv := ShipView{Name: n, Short: shortActor(n), Sessions: byActor[n]}
+		sort.SliceStable(sv.Sessions, func(i, j int) bool {
+			if sv.Sessions[i].Online != sv.Sessions[j].Online {
+				return sv.Sessions[i].Online
+			}
+			return sv.Sessions[i].Seen.After(sv.Sessions[j].Seen)
+		})
+		for _, p := range sv.Sessions {
+			if p.Online {
+				sv.Online = true
+				break
+			}
 		}
 		out = append(out, sv)
 	}
 	return out
+}
+
+// splitTarget 解析派船表单值："actor"=任意会话；"actor|/项目目录"=指定船位。
+func splitTarget(v string) (actor, berth string) {
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, "|"); i >= 0 {
+		return strings.TrimSpace(v[:i]), strings.TrimSpace(v[i+1:])
+	}
+	return v, ""
+}
+
+// pickAgent 为承担船挑一条详情页要展示的心跳：优先正在做本票货的会话，
+// 否则最近活动的那条（可能在线做别的票，也可能已离线）。
+func pickAgent(agents []store.Presence, actor, task string) *store.Presence {
+	var fallback *store.Presence
+	for i := range agents {
+		p := &agents[i]
+		if p.Actor != actor {
+			continue
+		}
+		if p.Task == task {
+			return p
+		}
+		if fallback == nil || p.Seen.After(fallback.Seen) {
+			fallback = p
+		}
+	}
+	return fallback
 }
 
 func shortActor(s string) string {
@@ -281,12 +318,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	v.Agents = agents
 	v.Ships = fleet(agents)
 	if a := rec.Meta.AssigneeValue(); a != "" {
-		for i := range agents {
-			if agents[i].Actor == a {
-				v.Agent = &agents[i]
-				break
-			}
-		}
+		v.Agent = pickAgent(agents, a, rec.Meta.ID)
 	}
 	render(w, http.StatusOK, taskTmpl, v)
 }
@@ -329,7 +361,8 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	if _, err := s.V.Publish(id, dispatcher, r.PostFormValue("assignee")); err != nil {
+	actor, berth := splitTarget(r.PostFormValue("assignee"))
+	if _, err := s.V.Publish(id, dispatcher, actor, berth); err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
@@ -344,7 +377,8 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	if _, err := s.V.Assign(id, dispatcher, r.PostFormValue("assignee")); err != nil {
+	actor, berth := splitTarget(r.PostFormValue("assignee"))
+	if _, err := s.V.Assign(id, dispatcher, actor, berth); err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
@@ -447,7 +481,8 @@ func (s *Server) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPINext(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.V.Next(r.URL.Query().Get("actor"))
+	q := r.URL.Query()
+	rec, err := s.V.Next(q.Get("actor"), q.Get("cwd"))
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -462,8 +497,11 @@ func (s *Server) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// 与首屏一致：花名册在册船始终列出（含从未报到者）
-	writeJSON(w, fleet(agents))
+	// 直接返回各船位心跳（含 session_id/dir 等字段），前端按会话渲染芯片
+	if agents == nil {
+		agents = []store.Presence{}
+	}
+	writeJSON(w, agents)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

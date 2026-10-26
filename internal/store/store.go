@@ -31,6 +31,7 @@ type Meta struct {
 	Importance  string     `yaml:"importance,omitempty" json:"importance,omitempty"` // critical|high|normal|someday
 	Goal        string     `yaml:"goal,omitempty" json:"goal,omitempty"`
 	Assignee    *string    `yaml:"assignee,omitempty" json:"assignee,omitempty"`
+	AssignCwd   string     `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定船位：只有该项目目录的会话能接令；空=任意会话
 	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Created     time.Time  `yaml:"created" json:"created"`
 	Updated     *time.Time `yaml:"updated,omitempty" json:"updated,omitempty"`
@@ -88,6 +89,8 @@ var (
 	ErrInvalidImportance = errors.New("invalid importance")
 	// ErrNotAssignee 表示任务未指派给该执行者，无权接令/推进。
 	ErrNotAssignee = errors.New("任务未指派给你")
+	// ErrWrongBerth 表示任务指定了船位（项目会话目录），当前目录的会话无权接令。
+	ErrWrongBerth = errors.New("这票货派给了别的船位")
 	// ErrResultRequired 表示归港缺少交付结果（除非带理由强制归港）。
 	ErrResultRequired = errors.New("归港必须交付结果")
 )
@@ -283,13 +286,19 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 	return rec, err
 }
 
-// Claim 接令：ready → in_progress。只有被指派的船能接令；接令即心跳。
-func (v *Vault) Claim(id, by string) (*Record, error) {
+// Claim 接令：ready → in_progress。只有被指派的船、且在指定船位
+// （项目目录会话）里才能接令；接令即把任务号写到该会话心跳上。
+func (v *Vault) Claim(id, by, cwd string) (*Record, error) {
+	if r, err := v.GetTask(id); err == nil {
+		if err := requireBerth(r, cwd); err != nil {
+			return r, err
+		}
+	}
 	rec, err := v.transition(id, "claim", "", by)
 	if err != nil {
 		return rec, err
 	}
-	_, _ = v.Present(by, id, "") // 心跳失败不影响接令本身
+	_ = v.SetActorSessionTask(by, id) // 心跳失败不影响接令本身
 	return rec, nil
 }
 
@@ -353,14 +362,16 @@ func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record,
 	if err != nil {
 		return rec, err
 	}
-	_, _ = v.Present(by, "", "")
+	_ = v.ClearActorTask(by)
 	return rec, nil
 }
 
 // Publish 发布草稿：assignee 为空 → anchored（锚地待派，船看不到）；
 // assignee 非空 → ready（直接派船，只有被指派者能接令）。
-func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
+// berth 非空时同时指定船位（项目目录），只有该目录的会话能接令。
+func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
+	berth = strings.TrimSpace(berth)
 	var rec *Record
 	err := v.withLock(func() error {
 		path, err := v.findTaskPath(id)
@@ -378,12 +389,14 @@ func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
 		note := ""
 		if assignee == "" {
 			r.Meta.Status = StatusAnchored
+			r.Meta.AssignCwd = ""
 			note = "published to anchorage by " + by + "（锚地待派）"
 		} else {
 			a := assignee
 			r.Meta.Assignee = &a
 			r.Meta.Status = StatusReady
-			note = "dispatched by " + by + "，派船 → " + assignee
+			r.Meta.AssignCwd = berth
+			note = "dispatched by " + by + "，派船 → " + assignee + berthNote(berth)
 		}
 		touch(&r.Meta)
 		r.Body = appendLog(r.Body, now, note)
@@ -399,8 +412,10 @@ func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
 // Assign 派船/改派：anchored → ready；ready 换船（重新待接令）；
 // blocked 可改派给别的船（原船受阻，货回码头待新船接令）。
 // in_progress 的货在海上，不能改派（先等它归港）。
-func (v *Vault) Assign(id, by, assignee string) (*Record, error) {
+// berth 非空表示点名某个项目目录的会话（船位）；为空表示该船任意会话可接。
+func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
+	berth = strings.TrimSpace(berth)
 	if assignee == "" {
 		return nil, errors.New("派船必须指定执行者（或先发布到锚地）")
 	}
@@ -427,17 +442,19 @@ func (v *Vault) Assign(id, by, assignee string) (*Record, error) {
 		old := r.Meta.AssigneeValue()
 		a := assignee
 		r.Meta.Assignee = &a
+		r.Meta.AssignCwd = berth
 		r.Meta.Status = StatusReady
 		r.Meta.BlockedAt = nil
 		now := time.Now()
 		touch(&r.Meta)
+		bn := berthNote(berth)
 		switch {
 		case old == "":
-			r.Body = appendLog(r.Body, now, "dispatched by "+by+"，派船 → "+assignee)
+			r.Body = appendLog(r.Body, now, "dispatched by "+by+"，派船 → "+assignee+bn)
 		case wasBlocked:
-			r.Body = appendLog(r.Body, now, "reassigned by "+by+"（原船受阻）："+old+" → "+assignee)
+			r.Body = appendLog(r.Body, now, "reassigned by "+by+"（原船受阻）："+old+" → "+assignee+bn)
 		default:
-			r.Body = appendLog(r.Body, now, "reassigned by "+by+"："+old+" → "+assignee)
+			r.Body = appendLog(r.Body, now, "reassigned by "+by+"："+old+" → "+assignee+bn)
 		}
 		if err := v.rewrite(path, r); err != nil {
 			return err
@@ -471,6 +488,28 @@ func requireAssignee(r *Record, by string) error {
 		return fmt.Errorf("%w: %s 派给了 %s，不是 %s", ErrNotAssignee, r.Meta.ID, a, by)
 	}
 	return nil
+}
+
+// requireBerth 校验当前会话目录就是调度长官指定的船位。
+// 任务没指定船位（AssignCwd 为空）时任意会话可接；远程船 ssh 进对的目录即可。
+func requireBerth(r *Record, cwd string) error {
+	if r.Meta.AssignCwd == "" || r.Meta.AssignCwd == cwd {
+		return nil
+	}
+	cur := strings.TrimSpace(cwd)
+	if cur == "" {
+		cur = "未知目录"
+	}
+	return fmt.Errorf("%w: %s 指定由「%s」项目里的会话接令，当前会话在「%s」",
+		ErrWrongBerth, r.Meta.ID, filepath.Base(r.Meta.AssignCwd), filepath.Base(cur))
+}
+
+// berthNote 是派船日志里的船位后缀。
+func berthNote(berth string) string {
+	if berth == "" {
+		return ""
+	}
+	return "（船位：" + filepath.Base(berth) + "）"
 }
 
 // acceptanceCount 数「验收标准」区内非空复选框的完成数/总数。
@@ -664,8 +703,8 @@ func actorSuffix(by string) string {
 }
 
 // Next 返回派给某艘船、待它接令的最重要一个任务（重要程度升序，同级按编号）。
-// 锚地里未派船的货对船不可见。
-func (v *Vault) Next(actor string) (*Record, error) {
+// 锚地里未派船的货对船不可见；指定了船位（assign_cwd）的货只在对应项目目录出现。
+func (v *Vault) Next(actor, cwd string) (*Record, error) {
 	actor = strings.TrimSpace(actor)
 	if actor == "" {
 		return nil, errors.New("需要 --by 指定船名（谁在接令？）")
@@ -675,7 +714,8 @@ func (v *Vault) Next(actor string) (*Record, error) {
 		return nil, err
 	}
 	for i := range tasks {
-		if tasks[i].Meta.AssigneeValue() == actor {
+		m := tasks[i].Meta
+		if m.AssigneeValue() == actor && (m.AssignCwd == "" || m.AssignCwd == cwd) {
 			return &tasks[i], nil
 		}
 	}
