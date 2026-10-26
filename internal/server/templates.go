@@ -6,7 +6,7 @@ const head = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#221b14">
-<script>(function(){try{var t=localStorage.getItem('mindport-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.dataset.theme='light';}catch(e){}})();</script>
+<script>(function(){try{var t=localStorage.getItem('mindport-theme');var legacy={dark:'night',light:'day'};if(legacy[t])t=legacy[t];if(['night','day','abyss','porcelain'].indexOf(t)<0)t=window.matchMedia('(prefers-color-scheme: light)').matches?'day':'night';document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -22,22 +22,36 @@ const head = `<!doctype html>
     <span class="brand-text">思港 <i>MindPort</i><em>调度长官台</em></span>
   </a>
   <div class="top-right">
-    <button id="theme-toggle" class="icon-btn" type="button"
-            aria-label="切换到日间配色（日港）" title="切换日港 / 夜港配色">
-      <svg class="icon-sun" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">
-        <rect x="4" y="4" width="4" height="4"/>
-        <rect x="5" y="1" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/>
-        <rect x="1" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/>
-        <rect x="2" y="2" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/>
-        <rect x="2" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/>
-      </svg>
-      <svg class="icon-moon" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">
-        <rect x="4" y="2" width="4" height="1"/><rect x="3" y="3" width="6" height="6"/>
-        <rect x="4" y="9" width="4" height="1"/>
-        <rect x="5" y="4" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/>
-      </svg>
-    </button>
-    <details class="fleet" id="fleet">
+    <details class="themes pop" id="themes">
+      <summary class="themes-btn" role="button" aria-label="选择港口配色" title="选择港口配色">
+        <svg viewBox="0 0 8" height="17" width="17" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="0" y="0" width="3" height="3" fill="#c06a45"/>
+          <rect x="4" y="0" width="3" height="3" fill="#f0b23f"/>
+          <rect x="0" y="4" width="3" height="3" fill="#6fb3d9"/>
+          <rect x="4" y="4" width="3" height="3" fill="#7bc96f"/>
+        </svg>
+        <i class="caret"></i>
+      </summary>
+      <div class="themes-pop">
+        <button type="button" class="theme-opt" data-theme="night">
+          <span class="sw"><i style="background:#221b14"></i><i style="background:#f0b23f"></i><i style="background:#c06a45"></i></span>
+          <span class="t-name">夜港<small>木舱暖夜</small></span>
+        </button>
+        <button type="button" class="theme-opt" data-theme="day">
+          <span class="sw"><i style="background:#f1e6cf"></i><i style="background:#a86f1c"></i><i style="background:#b35a38"></i></span>
+          <span class="t-name">日港<small>羊皮海图</small></span>
+        </button>
+        <button type="button" class="theme-opt" data-theme="abyss">
+          <span class="sw"><i style="background:#0b1c2c"></i><i style="background:#f2b544"></i><i style="background:#5aa9e6"></i></span>
+          <span class="t-name">深海<small>墨蓝冷夜</small></span>
+        </button>
+        <button type="button" class="theme-opt" data-theme="porcelain">
+          <span class="sw"><i style="background:#eef3f4"></i><i style="background:#2f5d8c"></i><i style="background:#356d9e"></i></span>
+          <span class="t-name">青瓷<small>青花白瓷</small></span>
+        </button>
+      </div>
+    </details>
+    <details class="fleet pop" id="fleet">
       <summary class="fleet-btn">
         <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label">船队</span><b id="fleet-count">…</b><i class="caret"></i>
       </summary>
@@ -141,25 +155,49 @@ const head = `<!doctype html>
   <path class="wave wave-far" d="M-16 68h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8v2h-384z"/>
   <path class="wave wave-near" d="M-12 74h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6v3h-372z"/>
 
-  <!-- 两艘帆船对开（远小近大），各自轻轻摇晃。
+  <!-- 两艘 Q 版集装箱货轮对开（远小近大），各自轻轻摇晃；船上堆彩色货箱、烟囱冒烟。
        船体直接内联两份：<use> 影子树吃不到外部 class 选择器，会渲染成黑剪影。 -->
-  <g transform="translate(0,46)"><g class="ship-a"><g class="bob-a"><g transform="scale(1.25)">
-    <rect x="7" y="1" width="1" height="11" class="px-rope"/>
-    <rect x="8" y="1" width="2" height="1" class="px-flag"/>
-    <path class="px-sail" d="M7 2h1v1H7zM6 3h2v1H6zM5 4h3v1H5zM4 5h4v1H4zM3 6h5v2H3zM2 8h6v2H2zM1 10h7v1H1z"/>
-    <rect x="2" y="11" width="12" height="1" class="px-wood"/>
-    <rect x="1" y="12" width="14" height="1" class="px-wood"/>
-    <rect x="2" y="13" width="12" height="1" class="px-wood-dark"/>
-    <rect x="4" y="14" width="8" height="1" class="px-wood-dark"/>
+  <!-- 远船：16 宽，驾驶室 + 两只集装箱 -->
+  <g transform="translate(0,46)"><g class="ship-a"><g class="bob-a"><g transform="scale(1.8)">
+    <rect class="px-smoke s1" x="1" y="4" width="2" height="2"/>
+    <rect class="px-smoke s2" x="3" y="2" width="2" height="2"/>
+    <rect x="2" y="6" width="2" height="2" class="px-stack"/>
+    <rect x="1" y="8" width="4" height="3" class="px-cabin"/>
+    <rect x="2" y="9" width="2" height="1" class="px-frame"/>
+    <rect x="6" y="8" width="4" height="3" class="px-box-a"/>
+    <rect x="6" y="8" width="4" height="1" class="px-box-band"/>
+    <rect x="7" y="8" width="1" height="3" class="px-box-band"/>
+    <rect x="11" y="8" width="4" height="3" class="px-box-c"/>
+    <rect x="11" y="8" width="4" height="1" class="px-box-band"/>
+    <rect x="12" y="8" width="1" height="3" class="px-box-band"/>
+    <rect x="0" y="11" width="16" height="1" class="px-hull"/>
+    <rect x="0" y="12" width="16" height="1" class="px-hull"/>
+    <rect x="1" y="13" width="14" height="1" class="px-hull"/>
+    <rect x="3" y="14" width="10" height="1" class="px-hull-dark"/>
   </g></g></g></g>
-  <g transform="translate(0,50) scale(-1,1)"><g class="ship-b"><g class="bob-b"><g transform="scale(1.55)">
-    <rect x="7" y="1" width="1" height="11" class="px-rope"/>
-    <rect x="8" y="1" width="2" height="1" class="px-flag"/>
-    <path class="px-sail" d="M7 2h1v1H7zM6 3h2v1H6zM5 4h3v1H5zM4 5h4v1H4zM3 6h5v2H3zM2 8h6v2H2zM1 10h7v1H1z"/>
-    <rect x="2" y="11" width="12" height="1" class="px-wood"/>
-    <rect x="1" y="12" width="14" height="1" class="px-wood"/>
-    <rect x="2" y="13" width="12" height="1" class="px-wood-dark"/>
-    <rect x="4" y="14" width="8" height="1" class="px-wood-dark"/>
+  <!-- 近船：22 宽，双排四只集装箱 + 驾驶室烟囱，朝左开 -->
+  <g transform="translate(0,48) scale(-1,1)"><g class="ship-b"><g class="bob-b"><g transform="scale(2.1)">
+    <rect class="px-smoke s1" x="1" y="4" width="2" height="2"/>
+    <rect class="px-smoke s2" x="3" y="2" width="2" height="2"/>
+    <rect x="2" y="6" width="2" height="2" class="px-stack"/>
+    <rect x="1" y="8" width="4" height="3" class="px-cabin"/>
+    <rect x="2" y="9" width="2" height="1" class="px-frame"/>
+    <rect x="6" y="8" width="4" height="3" class="px-box-a"/>
+    <rect x="6" y="8" width="4" height="1" class="px-box-band"/>
+    <rect x="7" y="8" width="1" height="3" class="px-box-band"/>
+    <rect x="11" y="8" width="4" height="3" class="px-box-b"/>
+    <rect x="11" y="8" width="4" height="1" class="px-box-band"/>
+    <rect x="12" y="8" width="1" height="3" class="px-box-band"/>
+    <rect x="16" y="8" width="4" height="3" class="px-box-d"/>
+    <rect x="16" y="8" width="4" height="1" class="px-box-band"/>
+    <rect x="17" y="8" width="1" height="3" class="px-box-band"/>
+    <rect x="11" y="5" width="4" height="3" class="px-box-c"/>
+    <rect x="11" y="5" width="4" height="1" class="px-box-band"/>
+    <rect x="12" y="5" width="1" height="3" class="px-box-band"/>
+    <rect x="0" y="11" width="22" height="1" class="px-hull"/>
+    <rect x="0" y="12" width="22" height="1" class="px-hull"/>
+    <rect x="1" y="13" width="20" height="1" class="px-hull"/>
+    <rect x="3" y="14" width="16" height="1" class="px-hull-dark"/>
   </g></g></g></g>
 </svg>
 </div>
@@ -198,32 +236,34 @@ const head = `<!doctype html>
 const sseBoot = `
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
-// 日港 / 夜港配色切换（选择持久化；head 内联脚本已提前设置 data-theme，无闪烁）
+// 港口配色选择（4 主题；选择持久化，head 内联脚本已提前设置 data-theme，无闪烁）
 (function () {
   var root = document.documentElement;
-  var btn = document.getElementById('theme-toggle');
   var meta = document.querySelector('meta[name="theme-color"]');
+  var colors = { night: '#221b14', day: '#f1e6cf', abyss: '#0b1c2c', porcelain: '#eef3f4' };
   function apply(t) {
+    if (!colors[t]) t = 'night';
     root.dataset.theme = t;
-    if (meta) meta.setAttribute('content', t === 'light' ? '#f1e6cf' : '#221b14');
-    if (btn) {
-      btn.setAttribute('aria-label', t === 'light' ? '切换到夜间配色（夜港）' : '切换到日间配色（日港）');
-      btn.title = t === 'light' ? '切回夜港配色' : '切到日港配色';
-    }
+    if (meta) meta.setAttribute('content', colors[t]);
+    document.querySelectorAll('.theme-opt').forEach(function (b) {
+      b.setAttribute('aria-checked', b.dataset.theme === t ? 'true' : 'false');
+    });
     try { localStorage.setItem('mindport-theme', t); } catch (e) {}
   }
-  if (btn) btn.addEventListener('click', function () {
-    apply(root.dataset.theme === 'light' ? 'dark' : 'light');
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.theme-opt');
+    if (b) apply(b.dataset.theme);
   });
+  apply(root.dataset.theme);
 })();
-// 船队浮层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换内部列表，不丢状态）
+// 船队/配色弹层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换船队内部列表，不丢状态）
 document.addEventListener('click', function (e) {
-  var f = document.getElementById('fleet');
-  if (f && f.open && !f.contains(e.target)) f.open = false;
+  document.querySelectorAll('details.pop').forEach(function (d) {
+    if (d.open && !d.contains(e.target)) d.open = false;
+  });
 });
 document.addEventListener('keydown', function (e) {
-  var f = document.getElementById('fleet');
-  if (e.key === 'Escape' && f) f.open = false;
+  if (e.key === 'Escape') document.querySelectorAll('details.pop').forEach(function (d) { d.open = false; });
 });
 (function () {
   var es = new EventSource('/events');
@@ -331,6 +371,7 @@ document.addEventListener('submit', function (e) {
 
 const boardHTML = head + `
 {{template "topbar" .}}
+{{template "harbor" .}}
 
 {{if .Error}}<div class="err">⚠️ {{.Error}}</div>{{end}}
 
@@ -396,13 +437,13 @@ const boardHTML = head + `
   {{end}}
 </section>
 
-{{template "harbor" .}}
 <footer>调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</footer>
 ` + sseBoot + `
 </body></html>`
 
 const taskHTML = head + `
 {{template "topbar" .}}
+{{template "harbor" .}}
 
 <article class="detail">
   <div class="detail-head {{impClass .R.Meta.Importance}}">
@@ -441,7 +482,6 @@ const taskHTML = head + `
       </form>
     </div>
     <p class="hint">备货中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
-    <a class="btn-edit" href="#edit">✏️ 打磨任务单（标题 / 验收 / 重要程度 / 目标）</a>
 
     {{else if eq .R.Meta.Status "anchored"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
@@ -480,7 +520,7 @@ const taskHTML = head + `
   </div>
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
-  <details class="edit" id="edit" open>
+  <details class="edit" id="edit" {{if eq .R.Meta.Status "draft"}}open{{end}}>
     <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>派船后封舱（点此折叠）</small></summary>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
       <label>标题</label>
@@ -540,6 +580,5 @@ const taskHTML = head + `
     </ul>
   </section>
 </article>
-{{template "harbor" .}}
 ` + sseBoot + `
 </body></html>`

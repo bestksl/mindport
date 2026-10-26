@@ -71,12 +71,24 @@
   --px-beam: rgba(255, 206, 110, .85);
   --star: rgba(240, 228, 205, .8);
 
+  /* Q 版集装箱货轮 */
+  --px-hull: #b5552f;
+  --px-hull-dark: #6e2f1c;
+  --px-cabin: #e8dcc2;
+  --px-stack: #8a6238;
+  --px-box-a: #4f93b5;
+  --px-box-b: #e08a3c;
+  --px-box-c: #6fae63;
+  --px-box-d: #cf6a52;
+  --px-box-band: rgba(40, 24, 10, .38);
+  --px-smoke: rgba(240, 228, 205, .32);
+
   --radius: 10px;
   --shadow: 4px 4px 0 var(--px-shadow);
 }
 
 /* —— 日港：羊皮纸海图 —— */
-[data-theme="light"] {
+[data-theme="day"] {
   --bg: #f1e6cf;
   --bg-glow: #fbf3de;
   --panel: #fbf4e3;
@@ -140,6 +152,173 @@
   --px-lamp: #d9901f;
   --px-beam: rgba(170, 115, 25, .3);
   --star: transparent;
+
+  --px-hull: #a84a2c;
+  --px-hull-dark: #6e2f1c;
+  --px-cabin: #fffdf4;
+  --px-stack: #7d5a33;
+  --px-box-a: #357196;
+  --px-box-b: #c0762e;
+  --px-box-c: #3f8f5c;
+  --px-box-d: #bc563c;
+  --px-box-band: rgba(40, 24, 10, .32);
+  --px-smoke: rgba(58, 42, 23, .2);
+}
+
+/* —— 深海：墨蓝冷夜（经典深蓝终端风） —— */
+[data-theme="abyss"] {
+  --bg: #0b1c2c;
+  --bg-glow: #16334d;
+  --panel: #112a40;
+  --panel-2: #0f273d;
+  --panel-3: #1d3d5a;
+  --line: #2c5170;
+  --ink: #e6eff6;
+  --muted: #88a3b8;
+
+  --amber: #f2b544;
+  --amber-line: #b07a1f;
+  --amber-soft: rgba(242, 181, 68, .15);
+  --amber-ink: #2a1c00;
+
+  --ok: #4fd08a;
+  --ok-soft: rgba(79, 208, 138, .14);
+  --ok-line: rgba(79, 208, 138, .45);
+  --ok-ink: #9fe0bd;
+  --pulse-1: rgba(79, 208, 138, .22);
+  --pulse-2: rgba(79, 208, 138, .05);
+
+  --busy: #5aa9e6;
+  --busy-soft: rgba(90, 169, 230, .14);
+  --block: #e07a5f;
+  --block-soft: rgba(224, 122, 95, .15);
+  --block-line: rgba(224, 122, 95, .5);
+
+  --critical: #ff6b6b;
+  --high: #f5b53f;
+  --normal: #6f93ad;
+  --someday: #6d7f8e;
+
+  --topbar: rgba(11, 28, 44, .88);
+  --px-shadow: #04101b;
+
+  --banner-sea-bg: rgba(90, 169, 230, .1);
+  --banner-sea-line: rgba(90, 169, 230, .4);
+  --banner-sea-ink: #b9d9f2;
+  --banner-done-bg: rgba(79, 208, 138, .1);
+  --banner-done-line: rgba(79, 208, 138, .4);
+  --banner-done-ink: #a9e6c6;
+  --banner-block-ink: #ffc9bb;
+  --log-ink: #c7d8e5;
+
+  --px-tower: #d95f4b;
+  --px-stripe: #f2f6fa;
+  --px-cap: #b23d2e;
+  --px-frame: #20394f;
+  --px-base: #4a647a;
+  --px-base-dark: #263a4c;
+  --px-wood: #5d7488;
+  --px-wood-dark: #3d5164;
+  --px-rope: #c8d6e2;
+  --px-cargo: #e0913f;
+  --px-crate-band: #5d3315;
+  --px-sail: #f2f6fa;
+  --px-flag: #f2b544;
+  --px-water-deep: #0a1a28;
+  --px-water-near: #123044;
+  --px-water-far: #1b4258;
+  --px-lamp: #ffd668;
+  --px-beam: rgba(255, 206, 110, .85);
+  --star: rgba(230, 239, 246, .8);
+
+  --px-hull: #b5552f;
+  --px-hull-dark: #6e2f1c;
+  --px-cabin: #dde8f0;
+  --px-stack: #6d8296;
+  --px-box-a: #5aa9e6;
+  --px-box-b: #e89b4a;
+  --px-box-c: #4fd08a;
+  --px-box-d: #e07a5f;
+  --px-box-band: rgba(8, 18, 30, .4);
+  --px-smoke: rgba(230, 239, 246, .3);
+}
+
+/* —— 青瓷：青花白瓷（冷色亮面） —— */
+[data-theme="porcelain"] {
+  --bg: #eef3f4;
+  --bg-glow: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #e3ebed;
+  --panel-3: #d7e1e4;
+  --line: #b7c6ca;
+  --ink: #1d3140;
+  --muted: #5f7a88;
+
+  --amber: #2f5d8c;
+  --amber-line: #244a72;
+  --amber-soft: rgba(47, 93, 140, .12);
+  --amber-ink: #ffffff;
+
+  --ok: #2f8057;
+  --ok-soft: rgba(47, 128, 87, .12);
+  --ok-line: rgba(47, 128, 87, .4);
+  --ok-ink: #26694a;
+  --pulse-1: rgba(47, 128, 87, .18);
+  --pulse-2: rgba(47, 128, 87, .04);
+
+  --busy: #356d9e;
+  --busy-soft: rgba(53, 109, 158, .12);
+  --block: #c0573f;
+  --block-soft: rgba(192, 87, 63, .13);
+  --block-line: rgba(192, 87, 63, .42);
+
+  --critical: #c2453a;
+  --high: #b5791a;
+  --normal: #6b818c;
+  --someday: #93a5ad;
+
+  --topbar: rgba(238, 243, 244, .9);
+  --px-shadow: #c3d2d6;
+
+  --banner-sea-bg: rgba(53, 109, 158, .1);
+  --banner-sea-line: rgba(53, 109, 158, .36);
+  --banner-sea-ink: #2f6180;
+  --banner-done-bg: rgba(47, 128, 87, .1);
+  --banner-done-line: rgba(47, 128, 87, .36);
+  --banner-done-ink: #296649;
+  --banner-block-ink: #94422c;
+  --log-ink: #41586b;
+
+  --px-tower: #c75a44;
+  --px-stripe: #fffdf6;
+  --px-cap: #9c3d2c;
+  --px-frame: #34505f;
+  --px-base: #8fa2a8;
+  --px-base-dark: #61747a;
+  --px-wood: #8fa2a8;
+  --px-wood-dark: #61747a;
+  --px-rope: #46606b;
+  --px-cargo: #d08a3c;
+  --px-crate-band: #5d3315;
+  --px-sail: #fffdf6;
+  --px-flag: #2f5d8c;
+  --px-water-deep: #a9c4cf;
+  --px-water-near: #c2d7de;
+  --px-water-far: #d7e7eb;
+  --px-lamp: #d9901f;
+  --px-beam: rgba(170, 115, 25, .28);
+  --star: transparent;
+
+  --px-hull: #b5552f;
+  --px-hull-dark: #7d3418;
+  --px-cabin: #f4f8f9;
+  --px-stack: #71878f;
+  --px-box-a: #356d9e;
+  --px-box-b: #cf7f2e;
+  --px-box-c: #4d9464;
+  --px-box-d: #c0573f;
+  --px-box-band: rgba(8, 24, 36, .34);
+  --px-smoke: rgba(29, 49, 64, .2);
 }
 
 * { box-sizing: border-box; }
@@ -217,26 +396,65 @@ a { color: inherit; }
 }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
 
-/* 主题切换按钮（像素方块键） */
-.icon-btn {
-  width: 38px;
-  height: 38px;
-  min-height: 38px;
-  padding: 0;
+/* 配色选择：像素拼色板键 + 弹层 */
+.themes { position: relative; }
+.themes-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
   background: var(--panel);
   border: 2px solid var(--line);
   border-radius: 6px;
   box-shadow: 2px 2px 0 var(--px-shadow);
+  padding: 8px 7px;
+  min-height: 38px;
 }
-.icon-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
-.icon-btn svg { width: 17px; height: 17px; }
-.icon-sun { fill: var(--amber); display: block; }
-.icon-moon { fill: var(--ink); display: none; }
-[data-theme="light"] .icon-sun { display: none; }
-[data-theme="light"] .icon-moon { display: block; }
+.themes-btn::-webkit-details-marker { display: none; }
+.themes-btn::marker { content: ""; }
+.themes-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
+.themes-btn svg { display: block; }
+.themes-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  display: grid;
+  gap: 4px;
+  min-width: 216px;
+  max-width: calc(100vw - 32px);
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 5px 5px 0 var(--px-shadow);
+  padding: 8px;
+  z-index: 60;
+}
+.theme-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 6px 8px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--ink);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+}
+.theme-opt:hover { filter: none; background: var(--panel-3); }
+.theme-opt:active { transform: none; box-shadow: none; }
+.theme-opt[aria-checked="true"] {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+.t-name { display: grid; line-height: 1.3; }
+.t-name small { color: var(--muted); font-weight: 400; font-size: 10.5px; }
+.sw { display: inline-flex; border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
+.sw i { display: block; width: 12px; height: 22px; }
 
 /* 船队：默认收起的浮层 */
 .fleet { position: relative; }
@@ -726,7 +944,7 @@ footer {
 
 .harbor {
   width: min(1180px, calc(100% - 32px));
-  margin: 8px auto 0;
+  margin: 4px auto 0;
   line-height: 0;
   pointer-events: none;
 }
@@ -734,7 +952,7 @@ footer {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 108px;
+  max-height: 92px;
 }
 .harbor .px-tower { fill: var(--px-tower); }
 .harbor .px-stripe { fill: var(--px-stripe); }
@@ -753,6 +971,28 @@ footer {
 .harbor .px-water-near { fill: var(--px-water-near); }
 .harbor .px-water-far { fill: var(--px-water-far); }
 .harbor .star { fill: var(--star); }
+
+/* Q 版集装箱货轮 */
+.harbor .px-hull { fill: var(--px-hull); }
+.harbor .px-hull-dark { fill: var(--px-hull-dark); }
+.harbor .px-cabin { fill: var(--px-cabin); }
+.harbor .px-stack { fill: var(--px-stack); }
+.harbor .px-box-a { fill: var(--px-box-a); }
+.harbor .px-box-b { fill: var(--px-box-b); }
+.harbor .px-box-c { fill: var(--px-box-c); }
+.harbor .px-box-d { fill: var(--px-box-d); }
+.harbor .px-box-band { fill: var(--px-box-band); }
+.px-smoke {
+  fill: var(--px-smoke);
+  transform-box: fill-box;
+  animation: smokePuff 2.6s ease-in-out infinite;
+}
+.px-smoke.s2 { animation-delay: -1.3s; }
+@keyframes smokePuff {
+  0% { opacity: .08; transform: translate(0, 1px) scale(.8); }
+  45% { opacity: .65; transform: translate(1px, -1px) scale(1); }
+  100% { opacity: .08; transform: translate(2px, -2px) scale(.8); }
+}
 
 /* 品牌灯塔像素色（与码头全景同款，类名直接挂在各 rect/path 上） */
 .px-tower { fill: var(--px-tower); }
@@ -814,23 +1054,23 @@ footer {
 @keyframes waveMove { to { transform: translateX(-16px); } }
 @keyframes waveMoveRev { to { transform: translateX(12px); } }
 
-/* 两艘帆船：一来一往，两端淡入淡出，船身轻晃 */
+/* 两艘货轮：一来一往，两端淡入淡出，船身轻晃（航线避开左岸码头与灯塔岛） */
 .ship-a { animation: sailA 26s linear infinite; }
 .ship-b { animation: sailB 34s linear infinite; animation-delay: -13s; }
 .bob-a, .bob-b { transform-box: fill-box; }
 .bob-a { transform-origin: 50% 90%; animation: bob 2.6s ease-in-out infinite alternate; }
 .bob-b { transform-origin: 50% 90%; animation: bob 3.1s ease-in-out infinite alternate; animation-delay: -1.2s; }
 @keyframes sailA {
-  0%   { transform: translateX(116px); opacity: 0; }
+  0%   { transform: translateX(124px); opacity: 0; }
   8%   { opacity: 1; }
   92%  { opacity: 1; }
-  100% { transform: translateX(300px); opacity: 0; }
+  100% { transform: translateX(284px); opacity: 0; }
 }
 @keyframes sailB {
-  0%   { transform: translateX(-300px); opacity: 0; }
+  0%   { transform: translateX(-294px); opacity: 0; }
   8%   { opacity: 1; }
   92%  { opacity: 1; }
-  100% { transform: translateX(-145px); opacity: 0; }
+  100% { transform: translateX(-170px); opacity: 0; }
 }
 @keyframes bob {
   from { transform: translateY(0) rotate(-1.2deg); }
@@ -859,7 +1099,8 @@ footer {
     max-width: calc(100vw - 32px);
   }
 
-  .harbor svg { max-height: 74px; }
+  .harbor { margin-top: 2px; }
+  .harbor svg { max-height: 64px; }
 
   .capture { padding: 10px; }
   .capture-row { flex-wrap: wrap; }
@@ -888,9 +1129,10 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   *, .lamp-blink, .beam-blink, .lamp-soft, .star,
   .crane-anim, .crate, .wave-far, .wave-near,
-  .ship-a, .ship-b, .bob-a, .bob-b {
+  .ship-a, .ship-b, .bob-a, .bob-b, .px-smoke {
     animation: none !important;
   }
+  .px-smoke { opacity: .35; }
   .lamp-blink, .beam-blink, .lamp-soft { opacity: 1; }
   .ship-a { transform: translateX(180px); opacity: 1; }
   .ship-b { transform: translateX(-220px); opacity: 1; }
