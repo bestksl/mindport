@@ -65,6 +65,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
         <div id="agents" class="agents">{{template "chips" .Agents}}</div>
       </div>
     </details>
+    <a class="logout-btn" href="/logout" title="收港登出" data-debug="x" aria-label="登出">⇥</a>
   </div>
 </header>
 {{end}}
@@ -152,10 +153,10 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 {{define "chips"}}
 {{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
 {{range .}}
-<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
+{{if .SessionID}}<a class="chip {{if .Online}}online{{else}}offline{{end}} chip-link" data-actor="{{.Actor}}" href="/sessions/{{.SessionID}}" title="点开看会话实时航迹与回话&#10;{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">{{else}}<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">{{end}}
   <i class="dot"></i><b>{{actorName .Actor}}</b>{{if .Dir}}<i class="proj" title="项目目录：{{.Dir}}">📍{{baseName .Dir}}</i>{{end}}{{if .Name}}<i class="sname">「{{.Name}}」</i>{{end}}
   <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else if eq .RunState "blocked"}}受阻{{else if eq .RunState "working"}}工作中{{else}}在线待派{{end}}<i class="seen">· {{ago .Seen}}</i>{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
-</span>
+{{if .SessionID}}</a>{{else}}</span>{{end}}
 {{end}}
 {{end}}
 
@@ -306,9 +307,13 @@ document.addEventListener('submit', function (e) {
       var proj = p.dir ? '<i class="proj" title="项目目录：' + p.dir + '">📍' + baseName(p.dir) + '</i>' : '';
       var sname = p.name ? '<i class="sname">「' + p.name + '」</i>' : '';
       var tip = (p.name ? '会话：' + p.name + '\n' : '') + (p.dir ? '目录：' + p.dir + '\n' : '') + title;
-      return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor +
-        '" title="' + tip.replace(/"/g, '&quot;') + '">' +
-        '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + sname + '<em>' + state + '</em></span>';
+      var cls = 'chip ' + (p.online ? 'online' : 'offline');
+      var head = p.session_id
+        ? '<a class="' + cls + ' chip-link" data-actor="' + p.actor + '" href="/sessions/' + p.session_id +
+          '" title="点开看会话实时航迹与回话&#10;' + tip.replace(/"/g, '&quot;') + '">'
+        : '<span class="' + cls + '" data-actor="' + p.actor + '" title="' + tip.replace(/"/g, '&quot;') + '">';
+      var tail = p.session_id ? '</a>' : '</span>';
+      return head + '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + sname + '<em>' + state + '</em>' + tail;
     }).join('');
   }
   function tick() {

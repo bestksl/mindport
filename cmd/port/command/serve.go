@@ -36,10 +36,17 @@ var serveCmd = &cobra.Command{
 		port := envOr("PORT_PORT", fmt.Sprint(servePort))
 		addr := net.JoinHostPort(host, port)
 
+		// ADR-0008：网页能看会话 transcript（含命令/代码/思考），serve 一律先开鉴权；
+		// 测试里直接构造 server.Server 不受影响。
+		srvHandler := server.New(v)
+		if err := srvHandler.EnableAuth(); err != nil {
+			return err
+		}
+
 		// 生产加固：限制读慢/空闲连接；WriteTimeout 必须为 0（SSE 是长连接流式响应）。
 		srv := &http.Server{
 			Addr:              addr,
-			Handler:           server.New(v).Routes(),
+			Handler:           srvHandler.Routes(),
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       120 * time.Second,
 		}
@@ -54,6 +61,7 @@ var serveCmd = &cobra.Command{
 		for _, ip := range lanIPs() {
 			fmt.Fprintf(w, "   局域网: http://%s:%s\n", ip, port)
 		}
+		fmt.Fprintln(w, "   入港证: port web-token（浏览器首次打开需粘贴登录）")
 		if host == "127.0.0.1" {
 			fmt.Fprintln(w, "   （仅本机能访问；手机同 WiFi 访问请加 --host 0.0.0.0）")
 		}

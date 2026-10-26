@@ -30,9 +30,19 @@ nohup env PORT_VAULT=$HOME/MindPort $HOME/.local/bin/port serve \
 - 监听 `0.0.0.0:8787`（局域网 + Tailscale）；
 - 日志：`~/MindPort/.port/serve.log`；
 - 已知缺口：开机/登录不会自启，进程崩溃不会自动拉起；
-  机器重启后需手动执行上面一行（后续上 Docker 解决）；
-- 局域网同 WiFi 设备当前零鉴权可达，Tailscale 网段之外不可达
-  （Tailscale 100.64/10 地址公网不可路由，未开 Funnel）。
+  机器重启后需手动执行上面一行（后续上 Docker 解决）。
+
+### 入港证（Web 鉴权，ADR-0008）
+
+会话船台会展示 transcript（含命令/代码/思考），v0.6 起 serve **一律强制鉴权**：
+
+- 密钥：`~/MindPort/.port/state/web.token`，32B 随机 hex，0600；
+  `port web-token` 查看/首建，密钥只在本机文件里，不要外传；
+- 浏览器首次打开任意页 302 到 `/login`，粘贴密钥后写 HttpOnly cookie
+  （SameSite=Lax，30 天）；`/api/*` 未登录直接 401；
+- 手机换机/丢 cookie：在本机再跑一次 `port web-token` 取同一把密钥；
+- Tailscale 网段之外本就不可达（100.64/10 非公网路由，未开 Funnel），
+  入港证是单用户内网模型的第二道防线，不做用户体系。
 
 `deploy/com.bestksl.mindport.plist` 是**存档备用**的 launchd 方案
 （自启 + 崩溃拉起），等需要时再按文件头注释安装；当前不要启用。
@@ -60,6 +70,17 @@ v0.5 起**不再有探活守护循环与 pidfile**：会话生死由 serve 每 3
 A 档），发现口缺席时退回 2 分钟 TTL。升级到 v0.5 后若残留 v0.4 的旧守护，
 `pkill -f 'heartbeat.*--loop'` 并清掉 `agents/*.hb.pid` 即可。详见
 [ADR-0004](adr/0004-presence-and-publish.md)、ADR-0007 与 agent-flow.md「在线心跳」。
+
+## 会话船台与信箱（ADR-0008）
+
+- 时间线是对 `~/.claude/projects/<编码cwd>/<sid>.jsonl` 的**只读**桥接：
+  按字节偏移增量拉取（1.5s 轮询，页面隐藏暂停），首屏读最后 128KB，
+  上翻 128KB/块，半行不解析、游标回退行首，uuid 去重——不丢不重、可全量滚动；
+  思考与工具原文默认折叠。思港不 attach、不模拟键盘、不改写 transcript。
+- 回话：空闲/离线会话走 `claude -p <msg> --resume <sid> --bg` 后台续跑；
+  会话正忙（官方拒绝并发 resume）时留言落 `~/MindPort/.port/state/mail/<sid>.jsonl`，
+  UserPromptSubmit 钩子 `port mail-pull` 在下一轮以 `additionalContext` 幂等注入。
+- 仅 Claude Code 会话成立（Codex 无 transcript）。
 
 ## 远程访问
 

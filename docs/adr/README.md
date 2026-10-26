@@ -9,3 +9,4 @@
 | [0005](0005-harbor-dispatch.md) | 调度港模型：锚地、命令式派船、归港硬门禁 | Accepted | 2026-10-26 |
 | [0006](0006-capture-as-draft.md) | 入港即立箱：取消独立闪念/inbox | Accepted | 2026-10-26 |
 | [0007](0007-agent-integration.md) | Claude Code 远程/编程化能力的接入边界（架构评估） | Proposed | 2026-10-26 |
+| [0008](0008-session-transcript-bridge.md) | 会话船台：transcript 全量桥接与双向回话 | Accepted | 2026-10-26 |

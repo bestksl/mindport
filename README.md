@@ -43,6 +43,8 @@
 - 🎨 **复古像素海港**：4 套命名配色（夜港·木舱暖夜 / 日港·羊皮海图 / 深海·墨蓝冷夜 / 青瓷·青花白瓷）顶栏拼色板切换并记住偏好；船队列表收成浮层；顶栏一行内有像素灯塔与微型海景（集装箱货轮在港内往返掉头、吊机轻吊货箱）；
 - 🗑️ **草稿可删**：仅草稿（未放行）能删除，放行后的货有流转历史不可抹除；
 - 🥸 **防老板皮相**：顶栏 `</>` 一键切到黑白等宽「debug 台」外观（招牌/标题/按钮换英文伪装名），状态只存 sessionStorage——刷新不露馅，关掉标签即恢复；
+- ⛵ **会话船台（ADR-0008）**：船队里点任意会话即进它的实时船台——按字节偏移幂等增量读取 `~/.claude/projects` 下的 transcript jsonl，真人/船/工具/思考分角色成时间线，可一直向上翻到会话开端（1.5s 轮询、页面隐藏暂停、uuid 去重不丢不重）；思考与工具原文默认折叠；底部可直接给船**继续派话**：空闲会话经 `claude -p --resume <sid> --bg` 后台续跑，船正忙时留言进信箱，由 UserPromptSubmit 钩子在下一轮自动注入（幂等不重放）；
+- 🔑 **内港入港证**：serve 开启即强制鉴权（网页含会话 transcript，含命令/代码/思考），共享密钥存 `.port/state/web.token`（0600），`port web-token` 查看，登录写 HttpOnly cookie 30 天；
 - 🔌 **HTTP / SSH 接口**：调度台 Web 看板已可用，更多集成在规划中。
 
 ---
@@ -171,8 +173,11 @@ go build -o bin/port ./cmd/port
 ./bin/port list [--status anchored] [--json]
 
 ./bin/port serve --host 0.0.0.0 --port 8787
+# 首次开服后取入港证，浏览器打开后在 /login 粘贴（cookie 30 天）：
+./bin/port web-token
 # 手机浏览器（同 WiFi 或 Tailscale）：草稿区、锚地/待接令/出港中/已归港四列、
 # 派船/改派下拉、船队在线灯与「正在做」状态行、验货勾选、批注；
+# 点船队里任一会话进「会话船台」：实时 transcript 时间线 + 上翻全量 + 直接给船回话；
 # 没有任何代船操作按钮；SSE 实时更新，在线状态 20s 轮询；手机单列大触控区，
 # 派船/改派需二次确认
 ```
@@ -183,8 +188,10 @@ Claude Code 在本仓开会话时，`.claude/settings.json` 钩子自动 present
 [远程使用指南](docs/remote.md)与[运维手册](docs/ops.md)（测试/生产 vault 分离、升级流程）。
 
 代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机、
-锚地/派船/归港门禁、在线心跳，含表驱动测试）、`internal/server`（net/http + go:embed +
-fsnotify/SSE + goldmark 渲染，纯调度台）、`cmd/port`（cobra 子命令）。
+锚地/派船/归港门禁、在线心跳、调度长信箱，含表驱动测试）、`internal/transcript`
+（Claude transcript jsonl 的字节偏移增量/上翻读取与容错解析）、`internal/server`
+（net/http + go:embed + fsnotify/SSE + goldmark 渲染 + 入港证鉴权，纯调度台）、
+`cmd/port`（cobra 子命令）。
 
 ## 技术架构与技术栈
 
@@ -215,6 +222,8 @@ Claude Code / Codex ── port CLI（cobra）──┐                    │
 serve 进程（同一二进制内嵌 net/http）──────┘      (flock + 原子写)    tasks/*.md
    fsnotify 监听 tasks/ → 去抖 250ms → SSE 广播                     .port/state/agents/*.json（点卯）
    每 30s 跑 claude agents --json 定会话生死/简介 ───────────────►  claude CLI（官方发现口）
+   会话船台：按字节偏移幂等读 ~/.claude/projects/<cwd>/<sid>.jsonl ┄┄► transcript（只读）
+   空闲回话：claude -p --resume <sid> --bg；忙碌留言 → .port/state/mail/ → mail-pull 钩子注入
 ```
 
 状态机（v0.4）：
@@ -249,16 +258,29 @@ draft ──publish──▶ anchored ──assign(点名)──▶ ready ──
   📍目录、「会话简介」与运行态（工作中/在线待派/在忙 T00xx），
   离线灰显「上次报到 x 分钟前」；派船下拉也是会话粒度，凭简介+目录勾选上下文；
 - **自动维护**：`claim` 自动带任务号（写到该船最近活动的会话心跳上）、`done` 自动清任务号；
-- **Claude Code 钩子**（仓库 `.claude/settings.json`，仅新会话生效）：
+- **Claude Code 钩子**（仓库 `.claude/settings.json`，仅新会话生效；仓库默认只装点卯）：
 
 ```json
 {
   "hooks": {
-    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }
+    ]
   }
 }
 ```
+
+  **可选加装 `mail-pull`**（会话船台的双向回话才需要）：在 `UserPromptSubmit`
+  数组里再加一条——
+
+```json
+{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port mail-pull" }] }
+```
+
+  船正忙时调度长在网页上的留言先进信箱（`.port/state/mail/<sid>.jsonl`），
+  下一轮提交时该钩子幂等拉走并以 `additionalContext` 注入；重放/并发不会重复
+  注入（拉取即回标 delivered）。只看时间线、不装这个钩子也完全可用。
 
   Codex 或其他 agent 没有钩子时，在项目提示里要求开工 `port present`、
   收工 `port away` 即可（见 [Agent 工作流](docs/agent-flow.md)）。

@@ -23,6 +23,7 @@ import (
 	"github.com/yuin/goldmark"
 
 	"github.com/bestksl/mindport/internal/store"
+	"github.com/bestksl/mindport/internal/transcript"
 )
 
 //go:embed static/*
@@ -37,9 +38,10 @@ var roster = []string{"claude@studio", "codex@studio"}
 
 // Server 持有 vault 与事件广播器。
 type Server struct {
-	V      *store.Vault
-	broker *broker
-	poller *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
+	V         *store.Vault
+	broker    *broker
+	poller    *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
+	authToken string       // 非空即强制鉴权（ADR-0008）；serve 命令经 EnableAuth 设置
 }
 
 // New 构造 Server 并启动 vault 文件监听（监听失败不影响主流程）。
@@ -136,6 +138,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 
+	// 会话船台（ADR-0008）：实时 transcript 时间线 + 双向回话
+	mux.HandleFunc("GET /login", s.handleLogin)
+	mux.HandleFunc("POST /login", s.handleLogin)
+	mux.HandleFunc("GET /logout", s.handleLogout)
+	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("GET /sessions/{sid}", s.handleSession)
+	mux.HandleFunc("GET /api/sessions/{sid}/stream", s.handleSessionStream)
+	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleSessionHistory)
+	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
+
 	// 静态资产不许启发式缓存（go:embed 文件 mtime 为零，没有可靠校验符）：
 	// 每次条件校验，配合 sw.js 的 stale-while-revalidate，升级后刷新即生效。
 	noCache := func(h http.Handler) http.Handler {
@@ -150,7 +162,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /sw.js", serveStatic("static/sw.js", "application/javascript"))
 	mux.HandleFunc("GET /icon.svg", serveStatic("static/icon.svg", "image/svg+xml"))
 
-	return mux
+	return s.withAuth(mux)
 }
 
 // ---------- 视图模型 ----------
@@ -634,16 +646,57 @@ func mdToHTML(src string) template.HTML {
 // ---------- 模板与小工具 ----------
 
 var funcMap = template.FuncMap{
-	"statusZH":  statusZH,
-	"impZH":     impZH,
-	"impClass":  impClass,
-	"baseName":  filepath.Base,
-	"ago":       agoText,
-	"actorName": shortActor,
+	"statusZH":    statusZH,
+	"impZH":       impZH,
+	"impClass":    impClass,
+	"baseName":    filepath.Base,
+	"ago":         agoText,
+	"actorName":   shortActor,
+	"onlyResults": onlyResults,
+	"toolEmoji":   toolEmoji,
+}
+
+// toolEmoji 给常见工具一个像素港风小图标；未知工具用扳手。
+// 摘要本身保持纯文本（见 transcript.summarize），图标只在模板层叠加。
+func toolEmoji(name string) string {
+	switch name {
+	case "Bash", "BashOutput":
+		return "⌘"
+	case "Edit", "MultiEdit":
+		return "✏️"
+	case "Write", "NotebookEdit":
+		return "📝"
+	case "Read":
+		return "👀"
+	case "TodoWrite", "TaskUpdate":
+		return "✓"
+	case "Agent", "Task":
+		return "🤖"
+	case "WebFetch", "WebSearch":
+		return "🌐"
+	default:
+		return "🔧"
+	}
 }
 
 var boardTmpl = template.Must(template.New("board").Funcs(funcMap).Parse(boardHTML))
 var taskTmpl = template.Must(template.New("task").Funcs(funcMap).Parse(taskHTML))
+var loginTmpl = template.Must(template.New("login").Funcs(funcMap).Parse(loginHTML))
+var sessionTmpl = template.Must(template.New("session").Funcs(funcMap).Parse(sessionHTML))
+
+// onlyResults 判定一条 user 事件是否只是工具回报（没有真人发言），
+// 时间线上把它弱化成紧凑的「🧰 工具回报」行。
+func onlyResults(ev transcript.Event) bool {
+	if len(ev.Blocks) == 0 {
+		return false
+	}
+	for _, b := range ev.Blocks {
+		if b.Kind != "result" {
+			return false
+		}
+	}
+	return true
+}
 
 func render(w http.ResponseWriter, code int, tmpl *template.Template, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
