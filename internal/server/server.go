@@ -129,8 +129,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 
+	// 静态资产不许启发式缓存（go:embed 文件 mtime 为零，没有可靠校验符）：
+	// 每次条件校验，配合 sw.js 的 stale-while-revalidate，升级后刷新即生效。
+	noCache := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache")
+			h.ServeHTTP(w, r)
+		})
+	}
 	sub, _ := fs.Sub(staticFS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
+	mux.Handle("GET /static/", noCache(http.StripPrefix("/static/", http.FileServer(http.FS(sub)))))
 	mux.HandleFunc("GET /manifest.webmanifest", serveStatic("static/manifest.webmanifest", "application/manifest+json"))
 	mux.HandleFunc("GET /sw.js", serveStatic("static/sw.js", "application/javascript"))
 	mux.HandleFunc("GET /icon.svg", serveStatic("static/icon.svg", "image/svg+xml"))
@@ -153,12 +161,12 @@ type boardData struct {
 
 // ShipView 是调度台眼里的一艘船：花名册名字 + 实时心跳。
 type ShipView struct {
-	Name   string
-	Short  string
-	Online bool
-	Task   string
-	Note   string
-	Seen   time.Time
+	Name   string    `json:"actor"`
+	Short  string    `json:"short"`
+	Online bool      `json:"online"`
+	Task   string    `json:"task"`
+	Note   string    `json:"note"`
+	Seen   time.Time `json:"seen"`
 }
 
 type column struct {
@@ -454,10 +462,8 @@ func (s *Server) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if agents == nil {
-		agents = []store.Presence{}
-	}
-	writeJSON(w, agents)
+	// 与首屏一致：花名册在册船始终列出（含从未报到者）
+	writeJSON(w, fleet(agents))
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -623,6 +629,7 @@ func serveStatic(name, ctype string) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(b)
 	}
 }

@@ -96,22 +96,55 @@ a { color: inherit; }
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  padding: 3px 10px;
+  padding: 4px 11px;
   border-radius: 999px;
   background: var(--sea-2);
   border: 1px solid var(--line);
   white-space: nowrap;
 }
+.chip b { font-weight: 700; font-size: 12.5px; }
 .chip em { font-style: normal; color: var(--muted); font-size: 11px; }
+.chip em::before { content: "·"; margin-right: 5px; color: var(--line); }
 .chip .dot, .agent-line .dot {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 8px; height: 8px; border-radius: 50%;
   background: var(--someday);
   flex: none;
 }
-.chip.online .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 208, 138, .18); }
+/* 在线船：绿底胶囊 + 呼吸灯，顶栏一眼可辨 */
+.chip.online {
+  background: rgba(79, 208, 138, .13);
+  border-color: rgba(79, 208, 138, .45);
+}
+.chip.online b { color: #b8f0d0; }
+.chip.online .dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(79, 208, 138, .18);
+  animation: pulse 2s ease-in-out infinite;
+}
 .chip.online em { color: #9fe0bd; }
+.chip.offline { opacity: .72; }
 .chip.offline .dot { background: var(--someday); }
+.chip.offline em { color: var(--muted); }
 .chip.muted { color: var(--muted); border-style: dashed; background: transparent; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(79, 208, 138, .18); }
+  50% { box-shadow: 0 0 0 5px rgba(79, 208, 138, .07); }
+}
+
+/* 草稿/锚地详情的显眼打磨入口 */
+.btn-edit {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px dashed var(--amber);
+  color: var(--amber);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  background: rgba(224, 177, 95, .07);
+}
+.btn-edit:active { background: rgba(224, 177, 95, .18); }
 
 /* ---------- 表单基础 ---------- */
 
@@ -389,12 +422,22 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .md pre { background: var(--sea); padding: 12px; border-radius: 10px; overflow-x: auto; }
 .md ul, .md ol { padding-left: 22px; }
 
+.edit {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sea-2);
+  scroll-margin-top: 76px;
+}
 .edit summary {
   cursor: pointer;
-  color: var(--muted);
-  font-size: 13.5px;
-  margin-bottom: 12px;
+  color: var(--amber);
+  font-weight: 600;
+  font-size: 14px;
 }
+.edit summary small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.edit[open] summary { margin-bottom: 12px; }
 .edit form { display: grid; gap: 8px; }
 .edit label { font-size: 13px; color: var(--muted); }
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -437,17 +480,21 @@ footer {
 
 @media (max-width: 720px) {
   body { font-size: 15px; }
-  .topbar > * { padding: 8px 0; gap: 8px; }
+  .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+  .top-right { flex: 1 1 100%; width: 100%; }
   .brand { font-size: 17px; }
   .brand span { display: none; }
   .brand em { display: none; }
-  .agents { max-width: 46vw; }
-  .chip { padding: 3px 8px; }
-  .chip em { display: none; }
+  /* 船队状态独占第二行，在忙/上次报到始终可见 */
+  .agents { max-width: none; justify-content: flex-start; gap: 5px; }
+  .chip { padding: 4px 10px; font-size: 11.5px; }
+  .chip b { font-size: 12px; }
+  .chip em { font-size: 10.5px; }
 
   .capture { padding: 10px; }
-  .taskform { flex-wrap: wrap; }
-  .taskform input { flex-basis: 100%; }
+  .capture-row { flex-wrap: wrap; }
+  .capture-row input { flex-basis: 100%; }
+  .capture-row button { flex: 1 1 100%; }
 
   .board { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .col h2 { position: static; margin-top: 20px; }
@@ -459,7 +506,10 @@ footer {
 
   .detail-head h1 { font-size: 18px; }
   .actions.big form { width: 100%; }
-  .actions.big button { flex: 1; }
-  .publish-box { flex-wrap: wrap; }
-  .publish-box select { flex: 1 1 100%; }
+  .actions.big .publish-row { flex-wrap: wrap; }
+  .actions.big .publish-row select { flex: 1 1 100%; }
+  .actions.big .publish-row button { flex: 1 1 100%; }
+  .logform { flex-wrap: wrap; }
+  .logform input { flex-basis: 100%; }
+  .logform button { flex: 1 1 100%; }
 }

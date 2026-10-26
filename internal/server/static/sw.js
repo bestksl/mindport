@@ -1,6 +1,6 @@
 // 思港 Service Worker：MVP 阶段仅缓存应用外壳，页面永远走网络
 // （任务状态必须实时；实时推送走 /events 的 SSE，不经 SW）。
-const CACHE = "mindport-v03";
+const CACHE = "mindport-v04";
 const SHELL = ["/", "/static/style.css", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -29,6 +29,20 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  // 静态资源缓存优先
-  e.respondWith(caches.match(req).then((r) => r || fetch(req)));
+  // 静态资源 stale-while-revalidate：先用缓存瞬开，后台拉新版本落缓存，
+  // 这样升级二进制后下一次刷新就能看到新 CSS（旧策略是缓存优先且永不刷新）
+  e.respondWith(
+    caches.match(req).then((cached) => {
+      const network = fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => cached);
+      return cached || network;
+    })
+  );
 });

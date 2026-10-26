@@ -26,9 +26,9 @@ const head = `<!doctype html>
 {{define "chips"}}
 {{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
 {{range .}}
-<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}">
-  <i class="dot"></i>{{actorName .Actor}}
-  <em>{{if .Online}}{{if .Note}}{{.Note}}{{else}}在线{{end}}{{else}}{{ago .Seen}}在{{end}}</em>
+<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Seen.IsZero}}从未报到{{else}}上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
+  <i class="dot"></i><b>{{actorName .Actor}}</b>
+  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else}}在线待派{{end}}{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
 </span>
 {{end}}
 {{end}}
@@ -53,6 +53,13 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-confirm]');
   if (el && !window.confirm(el.getAttribute('data-confirm'))) e.preventDefault();
 });
+// 「打磨任务单」锚点：滚到编辑区并展开 details
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('a.btn-edit[href^="#"]');
+  if (!a) return;
+  var d = document.querySelector(a.getAttribute('href'));
+  if (d) d.open = true;
+});
 // 船队在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
@@ -66,9 +73,21 @@ document.addEventListener('click', function (e) {
   function chips(agents) {
     if (!agents.length) return '<span class="chip muted">港里暂无报到的船</span>';
     return agents.map(function (p) {
-      var state = p.online ? (p.note || '在线') : (ago(p.seen) + '在');
-      return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor + '">' +
-        '<i class="dot"></i>' + actorName(p.actor) + '<em>' + state + '</em></span>';
+      var state, title;
+      var seenZero = !p.seen || new Date(p.seen).getFullYear() < 2000;
+      if (p.online) {
+        state = p.task ? ('在忙 ' + p.task) : (p.note || '在线待派');
+        title = '上次报到：' + new Date(p.seen).toLocaleString();
+      } else if (seenZero) {
+        state = '从未报到';
+        title = '从未报到';
+      } else {
+        state = '上次报到 ' + ago(p.seen);
+        title = '上次报到：' + new Date(p.seen).toLocaleString();
+      }
+      return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor +
+        '" title="' + title + '">' +
+        '<i class="dot"></i><b>' + actorName(p.actor) + '</b><em>' + state + '</em></span>';
     }).join('');
   }
   function tick() {
@@ -99,18 +118,8 @@ const boardHTML = head + `
 
 <section class="capture">
   <form method="post" action="/thoughts" class="capture-row">
-    <input name="title" placeholder="念头闪现，先扔进港…" autocomplete="off" autofocus required>
+    <input name="title" placeholder="想到什么先扔下来，不用想清楚…（在下方闪念里可转成集装箱）" autocomplete="off" autofocus required>
     <button type="submit" class="primary">入港</button>
-  </form>
-  <form method="post" action="/tasks" class="capture-row taskform">
-    <input name="title" placeholder="立一个集装箱（先进草稿，打磨验收标准）…" autocomplete="off" required>
-    <select name="importance" aria-label="重要程度">
-      <option value="critical">关键</option>
-      <option value="high">重要</option>
-      <option value="normal" selected>普通</option>
-      <option value="someday">也许</option>
-    </select>
-    <button type="submit">立箱</button>
   </form>
 </section>
 
@@ -170,8 +179,8 @@ const boardHTML = head + `
 </section>
 
 <section class="inbox">
-  <h2>🌊 Inbox 闪念 <small>{{len .Thoughts}}</small></h2>
-  {{if not .Thoughts}}<p class="empty">还没有接住的闪念</p>{{end}}
+  <h2>🌊 闪念 · 待澄清 <small>{{len .Thoughts}}</small></h2>
+  {{if not .Thoughts}}<p class="empty">还没有接住的闪念——想到什么，在上面入港即可</p>{{end}}
   <div class="thought-list">
   {{range .Thoughts}}
   <article class="card thought">
@@ -211,7 +220,7 @@ const taskHTML = head + `
       {{if .Agent.Online}}
         {{if eq .Agent.Task .R.Meta.ID}}正在做本票货{{if .Agent.Note}}：{{.Agent.Note}}{{end}}
         {{else if .Agent.Task}}已在做别的票货（{{.Agent.Task}}）{{else}}在线待派{{end}}
-      {{else}}{{ago .Agent.Seen}}还在{{end}}
+      {{else}}上次报到 {{ago .Agent.Seen}}{{end}}
     </div>
     {{end}}
     {{if .R.Meta.Goal}}<div class="goal">🎯 {{.R.Meta.Goal}}</div>{{end}}
@@ -232,7 +241,8 @@ const taskHTML = head + `
         <button class="primary" data-confirm="直接派船：{{.R.Meta.ID}} 将命令给所选船，只有它能接令">🚢 打磨完，直接派船</button>
       </form>
     </div>
-    <p class="hint">备货中：在下方正文「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
+    <p class="hint">备货中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
+    <a class="btn-edit" href="#edit">✏️ 打磨任务单（标题 / 验收 / 重要程度 / 目标）</a>
 
     {{else if eq .R.Meta.Status "anchored"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
@@ -242,6 +252,7 @@ const taskHTML = head + `
       <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令">🚢 派船</button>
     </form>
     <p class="hint">锚地待派：船在自己的终端上看不到这票货。派船后进入「待接令」，船 port claim 接令出港。</p>
+    <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（派船前都能改）</a>
 
     {{else if eq .R.Meta.Status "ready"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
@@ -270,6 +281,29 @@ const taskHTML = head + `
     <p class="banner done">🏁 已归港。对照验收标准验货，有问题在此批注，船下一票货会看到。</p>
     {{end}}
   </div>
+
+  {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
+  <details class="edit" id="edit">
+    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>派船后封舱</small></summary>
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
+      <label>标题</label>
+      <input name="title" value="{{.R.Meta.Title}}" required>
+      <label>重要程度（只问重要，不谈紧急）</label>
+      <div class="seg">
+        {{$imp := .R.Meta.Importance}}
+        <label><input type="radio" name="importance" value="critical" {{if eq $imp "critical"}}checked{{end}}>关键</label>
+        <label><input type="radio" name="importance" value="high" {{if eq $imp "high"}}checked{{end}}>重要</label>
+        <label><input type="radio" name="importance" value="normal" {{if eq $imp "normal"}}checked{{end}}>普通</label>
+        <label><input type="radio" name="importance" value="someday" {{if eq $imp "someday"}}checked{{end}}>也许</label>
+      </div>
+      <label>服务的目标</label>
+      <input name="goal" value="{{.R.Meta.Goal}}" placeholder="这个任务为哪个目标服务？">
+      <label>正文（Markdown；在「## 验收标准」下加 - [ ] 即新增验收项）</label>
+      <textarea name="body" rows="16">{{.R.Body}}</textarea>
+      <button type="submit" class="primary">保存打磨结果</button>
+    </form>
+  </details>
+  {{end}}
 
   {{if .Accept}}
   <section>
@@ -308,29 +342,6 @@ const taskHTML = head + `
       {{range .Logs}}<li>{{.}}</li>{{end}}
     </ul>
   </section>
-
-  {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
-  <details class="edit">
-    <summary>✏️ 编辑标题 / 正文 / 验收 / 重要程度 / 目标（派船后封舱）</summary>
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
-      <label>标题</label>
-      <input name="title" value="{{.R.Meta.Title}}" required>
-      <label>重要程度（只问重要，不谈紧急）</label>
-      <div class="seg">
-        {{$imp := .R.Meta.Importance}}
-        <label><input type="radio" name="importance" value="critical" {{if eq $imp "critical"}}checked{{end}}>关键</label>
-        <label><input type="radio" name="importance" value="high" {{if eq $imp "high"}}checked{{end}}>重要</label>
-        <label><input type="radio" name="importance" value="normal" {{if eq $imp "normal"}}checked{{end}}>普通</label>
-        <label><input type="radio" name="importance" value="someday" {{if eq $imp "someday"}}checked{{end}}>也许</label>
-      </div>
-      <label>服务的目标</label>
-      <input name="goal" value="{{.R.Meta.Goal}}" placeholder="这个任务为哪个目标服务？">
-      <label>正文（Markdown；在「## 验收标准」下加 - [ ] 即新增验收项）</label>
-      <textarea name="body" rows="16">{{.R.Body}}</textarea>
-      <button type="submit" class="primary">保存</button>
-    </form>
-  </details>
-  {{end}}
 </article>
 ` + sseBoot + `
 </body></html>`
