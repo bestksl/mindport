@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -38,12 +39,17 @@ var roster = []string{"claude@studio", "codex@studio"}
 type Server struct {
 	V      *store.Vault
 	broker *broker
+	poller *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
 }
 
 // New 构造 Server 并启动 vault 文件监听（监听失败不影响主流程）。
 func New(v *store.Vault) *Server {
 	s := &Server{V: v, broker: newBroker()}
 	go s.watchVault()
+	if p := newAgentPoller("claude@studio", v); p != nil {
+		s.poller = p
+		go p.run(context.Background())
+	}
 	return s
 }
 
@@ -158,22 +164,12 @@ type boardData struct {
 	Error  string
 }
 
-// BerthView 是一个船位（项目目录）：可能有多个会话，聚合成一个派船目标。
-type BerthView struct {
-	Dir    string
-	Base   string
-	Online bool
-	Task   string
-	Seen   time.Time
-}
-
-// ShipView 是调度台眼里的一艘船：花名册名字 + 它在各项目目录里的船位。
+// ShipView 是调度台眼里的一艘船：花名册名字 + 它的各个项目会话（船位）。
 type ShipView struct {
 	Name     string
 	Short    string
-	Online   bool // 任一船位在线
+	Online   bool // 任一会话在线
 	Sessions []store.Presence
-	Berths   []BerthView // 按项目目录聚合（在线在前），含离线船位
 }
 
 type column struct {
@@ -267,39 +263,6 @@ func fleet(agents []store.Presence) []ShipView {
 				return sv.Sessions[i].Online
 			}
 			return sv.Sessions[i].Seen.After(sv.Sessions[j].Seen)
-		})
-		// 同目录多个会话聚合成一个船位；取最近活动会话的状态。
-		byDir := map[string]*BerthView{}
-		for _, p := range sv.Sessions {
-			if p.Dir == "" {
-				continue
-			}
-			b := byDir[p.Dir]
-			if b == nil {
-				b = &BerthView{Dir: p.Dir, Base: filepath.Base(p.Dir)}
-				byDir[p.Dir] = b
-			}
-			if p.Online {
-				b.Online = true
-				if b.Task == "" {
-					b.Task = p.Task
-				}
-			}
-			if p.Seen.After(b.Seen) {
-				b.Seen = p.Seen
-				if b.Task == "" {
-					b.Task = p.Task
-				}
-			}
-		}
-		for _, b := range byDir {
-			sv.Berths = append(sv.Berths, *b)
-		}
-		sort.SliceStable(sv.Berths, func(i, j int) bool {
-			if sv.Berths[i].Online != sv.Berths[j].Online {
-				return sv.Berths[i].Online
-			}
-			return sv.Berths[i].Seen.After(sv.Berths[j].Seen)
 		})
 		for _, p := range sv.Sessions {
 			if p.Online {
@@ -424,10 +387,33 @@ func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 }
 
-// listPresence 返回折叠后的全部船位心跳（见 mergePresence）。
+// listPresence 返回折叠、并用官方发现口校正过在线状态的全部船位心跳。
 func (s *Server) listPresence() []store.Presence {
 	agents, _ := s.V.ListPresence()
-	return mergePresence(agents)
+	var live map[string]cliSession
+	if s.poller != nil {
+		live = s.poller.snapshot()
+	}
+	out := make([]store.Presence, 0, len(agents))
+	for _, p := range agents {
+		if p.SessionID != "" && live != nil {
+			// 会话记录：官方发现口是生死权威（快照是全集，缺席即已退出）；
+			// 发现口不可用（live==nil）时保留 ListPresence 的 TTL 判定。
+			if ls, ok := live[p.SessionID]; ok {
+				p.Online = true
+				p.Kind = ls.Kind
+				p.RunState = ls.State
+				if p.Name == "" {
+					p.Name = ls.Name
+				}
+			} else {
+				p.Online = false
+				p.RunState = ""
+			}
+		}
+		out = append(out, p)
+	}
+	return mergePresence(out)
 }
 
 // mergePresence 折叠同一艘船的重复心跳：该船已有会话级记录（带 session_id）

@@ -19,10 +19,13 @@ type Presence struct {
 	SessionID string    `json:"session_id,omitempty"` // Claude Code 会话 id；空=不区分会话
 	PID       int       `json:"pid,omitempty"`        // 该会话的 CLI 主进程（守护循环精确探活用）
 	Dir       string    `json:"dir,omitempty"`        // 会话项目目录（船位）
+	Name      string    `json:"name,omitempty"`       // 会话简介（官方 agents --json 的 name / ai-title）
+	Kind      string    `json:"kind,omitempty"`       // interactive | background（官方发现口）
+	RunState  string    `json:"run_state,omitempty"`  // working|blocked|done|failed|stopped（官方 state，仅在线时有意义）
 	Task      string    `json:"task,omitempty"`       // 正在做的任务编号（claim 时自动带上）
 	Note      string    `json:"note,omitempty"`       // 自由状态行，如「正在跑 go test」
 	Seen      time.Time `json:"seen"`
-	Online    bool      `json:"online"` // ListPresence 按 TTL 算出，不持久化
+	Online    bool      `json:"online"` // 在线判定：会话记录以官方 agents 发现口为准，扁平记录按 TTL
 }
 
 // PresenceTTL：心跳在此时长内视为在线。超时不删文件，灰显「x 分钟前在」。
@@ -133,12 +136,18 @@ func (v *Vault) PresentSession(p Presence) (bool, error) {
 				now.Sub(old.Seen) < presenceDebounce {
 				return nil
 			}
-			// 续报：沿用任务号/状态行（调用方没带就不清）。
+			// 续报：沿用任务号/状态行/会话简介（调用方没带就不清）。
 			if p.Task == "" {
 				p.Task = old.Task
 			}
 			if p.Note == "" {
 				p.Note = old.Note
+			}
+			if p.Name == "" {
+				p.Name = old.Name
+			}
+			if p.Kind == "" {
+				p.Kind = old.Kind
 			}
 		}
 		p.Seen = now

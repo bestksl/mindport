@@ -1,7 +1,7 @@
 # ADR-0007：Claude Code 远程/编程化能力的接入边界（架构评估）
 
 日期：2026-10-26
-状态：Proposed（评估结论，分阶段实施需另行拍板）
+状态：A 档已接受并实施（v0.5）；B 档 Proposed（实施前需先补端点鉴权）；C 档拒绝
 调研基线：Claude Code v2.1.310（本机实测）+ code.claude.com 官方文档
 
 ## 背景
@@ -38,15 +38,21 @@
 
 用官方发现口替换自研心跳守护的大部分机械：
 
-- serve 每 30–45s 跑一次 `claude agents --json`（无 TTY，`--cwd` 可过滤），
-  直接得到全舰队会话与 busy/waiting 状态——**删掉每会话守护循环、pidfile、
-  findAncestorPID、SessionEnd 清理**（也修掉当前 hook 沿父进程链误认 daemon pid
-  导致探活对象不死的小瑕疵）。
-- 钩子保留但变轻：SessionStart 做即时点卯（免去轮询延迟），claim/done 的任务号
-  仍写心跳文件；可顺手把 command hook 换成 **HTTP hook 直推 127.0.0.1:8787**，
-  省掉每会话一次 shell fork。
-- 兜底：`agents --json` 不可用（旧版本/preview 变动）时退回现有钩子模型；
+- serve 每 30s 跑一次 `claude agents --json`（12s 超时，失败保留上一次快照），
+  直接得到全舰队活会话全集与 working/blocked/done 状态——**删掉每会话守护循环、
+  pidfile、findAncestorPID、SessionEnd 清理**（也修掉旧 hook 沿父进程链误认
+  daemon pid 导致探活对象不死的瑕疵）。在线判定：会话在全集里=在线，缺席=离线
+  （心跳文件保留，灰显为历史船位）。
+- 钩子保留但变轻：SessionStart/UserPromptSubmit 的 `port heartbeat` 只做点卯
+  （立即建档，免去最多 30s 的发现延迟），不再 fork loop；claim/done 的任务号
+  仍写心跳文件。命令式 HTTP hook 留待后续。
+- 兜底：找不到 claude 二进制或发现口调用失败时退回 2 分钟 TTL 判定；
   远程 ssh 船继续走扁平心跳。
+- **派船下拉改为会话粒度**：每个选项是一个具体会话，展示官方会话简介 `name`
+  （TUI 的 ai-title，如「三个联动项目」）、📍目录、运行态，离线会话也列出。
+  派船闸门仍按项目目录匹配（assign_cwd）而非 session id：同一上下文的多个
+  相关集装箱派到同一目录，该目录里的会话（无论哪个 session、是否重开）都能接令；
+  调度长官凭「简介 + 目录」勾选正确的上下文。顶栏芯片同样显示会话简介。
 
 ### B 档：自动开船——headless 执行派船任务（中风险，约 2–4 天）
 

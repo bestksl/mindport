@@ -210,7 +210,8 @@ Claude Code / Codex ── port CLI（cobra）──┐                    │
 人在终端 ──────────────── port CLI ────────┤                    ▼
                                           ├──► internal/store ──► ~/MindPort/
 serve 进程（同一二进制内嵌 net/http）──────┘      (flock + 原子写)    tasks/*.md
-   fsnotify 监听 tasks/ → 去抖 250ms → SSE 广播                     .port/state/agents/*.json（心跳，20s 轮询）
+   fsnotify 监听 tasks/ → 去抖 250ms → SSE 广播                     .port/state/agents/*.json（点卯）
+   每 30s 跑 claude agents --json 定会话生死/简介 ───────────────►  claude CLI（官方发现口）
 ```
 
 状态机（v0.4）：
@@ -230,20 +231,20 @@ draft ──publish──▶ anchored ──assign(点名)──▶ ready ──
 但**心跳是运行时状态，不是任务数据**，崩溃要能自愈，不能有写放大。
 
 - **存储**：`.port/state/agents/<actor>/<session>.json`（actor / session_id / 项目目录 dir /
-  pid / task / note / seen 时间戳），同一艘船在多个项目里的会话各一条；旧版扁平文件
-  `agents/<actor>.json` 仍兼容读取。与任务文件分离，未来 git 同步时排除该目录；
-- **TTL 2 分钟**：`seen` 在窗口内即在线，超时自动灰显「x 分钟前在」，
-  不需要显式下线，agent 崩溃也自愈；
-- **20 秒防抖**：相同 task/note 的重复心跳不重写文件，钩子可以高频触发；
-- **保活守护循环**（`port heartbeat`，v0.4）：会话开始时由 Claude Code 钩子
-  拉起一个脱离会话的后台循环，**每 45 秒**精确探测**本会话**的 CLI 进程 pid
-  （钩子 stdin 的 JSON 提供 session_id/cwd，沿父进程链找 claude pid）：
-  在就只续 seen，会话退出后 45 秒内该船位自动下线并清理 pidfile，同船别的项目会话
-  不受影响；resume 换进程后新守护自动接管。**不需要 launchd / cron——随会话自生自灭**
-  （用户明确不装系统级托管）；
-- **顶栏按会话显示**：同一艘 claude 在街拍、思港两个项目各开一个会话时，顶栏是
-  两枚芯片「claude 📍jiepai-app 在线待派 · 刚刚」「claude 📍mindport 在忙 T00xx」，
-  离线灰显「上次报到 x 分钟前」；
+  name 会话简介 / kind / task / note / seen 时间戳），同一艘船在多个项目里的会话各一条；
+  旧版扁平文件 `agents/<actor>.json` 仍兼容读取。与任务文件分离，未来 git 同步时排除该目录；
+- **在线判定走官方发现口**（v0.5，ADR-0007 A 档）：serve 每 30 秒跑
+  `claude agents --json`——官方为 scheduler 等外部程序提供的活会话全集接口，
+  含 `sessionId/cwd/name/kind/state`。在全集里=在线，缺席=离线（文件保留、灰显历史船位）；
+  找不到 claude 或调用失败时退回 TTL 模型；
+- **TTL 2 分钟（回退路径）**：发现口不可用时，`seen` 在窗口内即在线，超时灰显；
+- **20 秒防抖**：内容未变的重复点卯不重写文件，钩子可以高频触发；
+- **钩子只点卯**（v0.5 起不再 fork 探活守护、无 pidfile）：SessionStart/UserPromptSubmit
+  调 `port heartbeat`，从 stdin JSON 取 session_id/cwd 立即建档；生死交给官方发现口，
+  不需要 launchd / cron（用户明确不装系统级托管）；
+- **顶栏按会话显示**：同一艘 claude 在多个项目各开会话时，每枚芯片带
+  📍目录、「会话简介」与运行态（工作中/在线待派/在忙 T00xx），
+  离线灰显「上次报到 x 分钟前」；派船下拉也是会话粒度，凭简介+目录勾选上下文；
 - **自动维护**：`claim` 自动带任务号（写到该船最近活动的会话心跳上）、`done` 自动清任务号；
 - **Claude Code 钩子**（仓库 `.claude/settings.json`，仅新会话生效）：
 
@@ -259,8 +260,9 @@ draft ──publish──▶ anchored ──assign(点名)──▶ ready ──
   Codex 或其他 agent 没有钩子时，在项目提示里要求开工 `port present`、
   收工 `port away` 即可（见 [Agent 工作流](docs/agent-flow.md)）。
 
-> 注意：钩子是**项目级**的——在本仓库开会话才上报。想让任何目录的 Claude Code
-> 都报到，需要把同样的 hooks 放进用户级 `~/.claude/settings.json`（按需手动开启）。
+> 仓库自带的是**项目级**钩子（本仓库开会话才上报）；装进用户级
+> `~/.claude/settings.json` 后，任何目录的 Claude Code 会话都会自动点卯，
+> 派船下拉即可看到全舰队会话简介。
 
 ## 状态
 

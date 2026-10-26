@@ -26,30 +26,30 @@ const head = `<!doctype html>
 {{define "chips"}}
 {{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
 {{range .}}
-<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Dir}}[{{.Dir}}] {{end}}{{if .Seen.IsZero}}从未报到{{else}}上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
-  <i class="dot"></i><b>{{actorName .Actor}}</b>{{if .Dir}}<i class="proj" title="项目目录：{{.Dir}}">📍{{baseName .Dir}}</i>{{end}}
-  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else}}在线待派{{end}}<i class="seen">· {{ago .Seen}}</i>{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
+<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">
+  <i class="dot"></i><b>{{actorName .Actor}}</b>{{if .Dir}}<i class="proj" title="项目目录：{{.Dir}}">📍{{baseName .Dir}}</i>{{end}}{{if .Name}}<i class="sname">「{{.Name}}」</i>{{end}}
+  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else if eq .RunState "blocked"}}受阻{{else if eq .RunState "working"}}工作中{{else}}在线待派{{end}}<i class="seen">· {{ago .Seen}}</i>{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
 </span>
 {{end}}
 {{end}}
 
-{{/* 单艘船的派船目标：任意会话 / 各船位（在线与离线都列）/ 新项目新开 */}}
+{{/* 单艘船的派船目标：任意会话 / 每个具体会话（带简介，在线与离线都列）/ 新项目新开 */}}
 {{define "berthoptions"}}
-<option value="{{.Name}}">{{.Short}} · 任意会话{{if .Online}}（有在线船位）{{else}}（当前未报到）{{end}}</option>
-{{range .Berths}}<option value="{{$.Name}}|{{.Dir}}">{{$.Short}} · 📍{{.Base}}{{if .Online}}{{if .Task}} · 在忙 {{.Task}}{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago .Seen}}（新开即接）{{end}}</option>{{end}}
+<option value="{{.Name}}">{{.Short}} · 任意会话{{if .Online}}（有在线会话）{{else}}（当前未报到）{{end}}</option>
+{{range .Sessions}}{{if .Dir}}<option value="{{$.Name}}|{{.Dir}}">{{$.Short}} · {{if .Name}}「{{.Name}}」{{end}}📍{{baseName .Dir}}{{if .Online}}{{if .Task}} · 在忙 {{.Task}}{{else if eq .RunState "blocked"}} · 受阻{{else if eq .RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago .Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
 <option value="{{.Name}}|NEW" data-new="1">🆕 {{.Short}} · 在新项目里新开会话接令…</option>
 {{end}}
 
 {{define "shipoptions"}}
 {{range .}}{{template "berthoptions" .}}{{end}}{{end}}
 
-{{/* 改派下拉：排除当前船的「任意会话」与当前船位，同船其他船位（含离线/新开）仍可改派 */}}
+{{/* 改派下拉：排除当前船的「任意会话」与当前船位的会话，同船其他会话（含离线/新开）仍可改派 */}}
 {{define "reassignoptions"}}
 {{$cur := .R.Meta.AssigneeValue}}
 {{$cwd := .R.Meta.AssignCwd}}
 {{range $ship := .Ships}}
-{{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线船位）{{else}}（当前未报到）{{end}}</option>{{end}}
-{{range $b := $ship.Berths}}{{if or (ne $ship.Name $cur) (ne $b.Dir $cwd)}}<option value="{{$ship.Name}}|{{$b.Dir}}">{{$ship.Short}} · 📍{{$b.Base}}{{if $b.Online}}{{if $b.Task}} · 在忙 {{$b.Task}}{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago $b.Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
+{{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线会话）{{else}}（当前未报到）{{end}}</option>{{end}}
+{{range $s := $ship.Sessions}}{{if and $s.Dir (or (ne $ship.Name $cur) (ne $s.Dir $cwd))}}<option value="{{$ship.Name}}|{{$s.Dir}}">{{$ship.Short}} · {{if $s.Name}}「{{$s.Name}}」{{end}}📍{{baseName $s.Dir}}{{if $s.Online}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else if eq $s.RunState "blocked"}} · 受阻{{else if eq $s.RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago $s.Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
 <option value="{{$ship.Name}}|NEW" data-new="1">🆕 {{$ship.Short}} · 在新项目里新开会话接令…</option>
 {{end}}{{end}}`
 
@@ -110,8 +110,10 @@ document.addEventListener('submit', function (e) {
       var state, title;
       var seenZero = !p.seen || new Date(p.seen).getFullYear() < 2000;
       if (p.online) {
-        state = (p.task ? ('在忙 ' + p.task) : (p.note || '在线待派')) +
-                '<i class="seen">· ' + ago(p.seen) + '</i>';
+        var doing = p.task ? ('在忙 ' + p.task) :
+          (p.note || (p.run_state === 'blocked' ? '受阻' :
+            (p.run_state === 'working' ? '工作中' : '在线待派')));
+        state = doing + '<i class="seen">· ' + ago(p.seen) + '</i>';
         title = '上次报到：' + new Date(p.seen).toLocaleString();
       } else if (seenZero) {
         state = '从未报到';
@@ -121,9 +123,11 @@ document.addEventListener('submit', function (e) {
         title = '上次报到：' + new Date(p.seen).toLocaleString();
       }
       var proj = p.dir ? '<i class="proj" title="项目目录：' + p.dir + '">📍' + baseName(p.dir) + '</i>' : '';
+      var sname = p.name ? '<i class="sname">「' + p.name + '」</i>' : '';
+      var tip = (p.name ? '会话：' + p.name + '\n' : '') + (p.dir ? '目录：' + p.dir + '\n' : '') + title;
       return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor +
-        '" title="' + (p.dir ? '[' + p.dir + '] ' : '') + title + '">' +
-        '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + '<em>' + state + '</em></span>';
+        '" title="' + tip.replace(/"/g, '&quot;') + '">' +
+        '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + sname + '<em>' + state + '</em></span>';
     }).join('');
   }
   function tick() {

@@ -1,6 +1,6 @@
 // 思港 Service Worker：MVP 阶段仅缓存应用外壳，页面永远走网络
 // （任务状态必须实时；实时推送走 /events 的 SSE，不经 SW）。
-const CACHE = "mindport-v07";
+const CACHE = "mindport-v08";
 const SHELL = ["/", "/static/style.css", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

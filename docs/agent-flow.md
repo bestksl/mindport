@@ -61,10 +61,15 @@ port dispatch T0001 --to claude@studio --berth /Users/jmzx/studio/jiepai-app
 `port next`/`port claim` 只在对应项目目录生效，别处看到的提示是「这票货派给了别的船位」。
 不指定船位（「任意会话」）则该船在哪个目录都能接。
 
-下拉里能看到这艘船**所有历史船位**，包括已离线的（灰显「上次报到 x（新开即接）」）：
-派到离线船位的货会停在「待接令」，等该船下次在那个项目目录开会话时自然接到。
-还可以选「🆕 在新项目里新开会话接令」，填入新项目的完整目录路径——
+下拉里每个选项是一个**具体会话**，带官方会话简介（如「三个联动项目」）、
+📍目录与运行态（工作中/在线/上次报到 x），也包括已离线的历史会话
+（灰显「上次报到 x（新开即接）」）：派到离线会话所在目录的货停在「待接令」，
+等该船下次在那个项目目录开会话时自然接到。还可以选
+「🆕 在新项目里新开会话接令」，填入新项目的完整目录路径——
 货同样先停在待接令，人去那个目录开船即可。网页只负责下命令，不替人开船。
+
+注意派船闸门按**项目目录**匹配（同一会话简介下可能有多个相关任务/念头，
+它们在同一目录的会话里都能接），不是绑定某个 session id——会话关了重开不影响接令。
 
 ## 一次完整协作（船 / agent 侧）
 
@@ -109,24 +114,26 @@ port done T0002 --force --reason "验收项已失效，客户口头确认"  # �
 
 ## 在线心跳（网页顶栏可见）
 
-`port present [T编号] [--note "..."]` 报到，心跳 2 分钟内有效，相同内容 20 秒
-防抖；`port away` 下线。但一轮 agent 工作常远超 2 分钟，因此 v0.4 提供
-**保活守护循环** `port heartbeat`：会话开始时由钩子调用（钩子 stdin 的 JSON 带
-`session_id`/`cwd`），按「船 + 项目会话」报到（心跳文件
-`.port/state/agents/<actor>/<session>.json`，顶栏显示 📍项目名），并 fork 一个
-脱离会话的后台循环，每 45 秒精确探测**本会话** CLI 进程 pid——
-在就只续 seen，会话退出后 45 秒内该船位自动下线并清理 pidfile，别的项目会话
-不受影响，**不需要 launchd / cron**。项目 `.claude/settings.json` 已把
-SessionStart / UserPromptSubmit 接到 `port heartbeat`（仅新会话生效）；
-claim/done 自动维护任务号。Codex 等没有钩子的 agent，可在项目提示里要求
-开工先 `port present`、收工 `port away`，或同样调 `port heartbeat --process codex`。
+船位的「在/不在」分两层：
 
-注意钩子是**项目级**的：只在本仓库开会话上报；全仓库报到需把 hooks
-复制到用户级 `~/.claude/settings.json`。
+- **点卯（钩子）**：SessionStart / UserPromptSubmit 钩子调
+  `port heartbeat`（stdin JSON 带 `session_id`/`cwd`），按「船 + 项目会话」
+  写一条心跳文件 `.port/state/agents/<actor>/<session>.json`，
+  顶栏显示 📍项目名与会话简介；claim/done 自动维护任务号。
+  **v0.5 起 heartbeat 只点卯，不再 fork 后台探活守护**。
+- **生死判定（官方发现口）**：serve 每 30 秒跑一次
+  [`claude agents --json`](https://code.claude.com/docs/en/agent-view)——
+  这是官方文档明确提供给 scheduler 等外部程序的会话状态接口，输出是**活会话全集**，
+  含 `sessionId/cwd/name`（会话简介）/`kind`/`state`(working/blocked/...)。
+  在全集里=在线，缺席=已退出（心跳文件保留，灰显为离线船位）。
+  发现口不可用时自动退回 2 分钟 TTL 判定，远程 ssh 船继续走扁平心跳。
 
-同一艘船如果同时存在会话级心跳（`<actor>/<sid>.json`）与旧版扁平心跳
-（`<actor>.json`，来自老版本钩子或手动 `port present`），看板会**折叠扁平记录**，
-不再显示两枚同一艘船的芯片；纯扁平客户端（如远程 ssh 上的船，actor 名不同）不受影响。
+同船如果同时存在会话级心跳与旧版扁平心跳（`<actor>.json`，手动 `port present`），
+看板会**折叠扁平记录**；纯扁平客户端（远程船，actor 名不同）不受影响。
+
+Codex 等没有钩子的 agent，可在项目提示里要求开工先 `port present`、
+收工 `port away`。用户级 `~/.claude/settings.json` 装上同样的钩子后，
+**任何目录**的 Claude Code 会话都会自动点卯。
 
 ## 设计原则
 

@@ -115,6 +115,16 @@ a { color: inherit; }
   border-radius: 6px;
   padding: 1px 6px;
 }
+/* 会话简介（官方会话名） */
+.chip .sname {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--muted);
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chip .dot, .agent-line .dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--someday);

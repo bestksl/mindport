@@ -52,15 +52,14 @@ serve 支持 SIGTERM/SIGINT 优雅退出（最多等 10s 在途请求），并�
 ## 在线心跳（运行时状态）
 
 心跳文件在 `~/MindPort/.port/state/agents/`：v0.4 起按
-`<actor>/<session>.json` 每个项目会话一条（含 dir/pid/task/note/seen），
+`<actor>/<session>.json` 每个项目会话一条（含 dir/name/kind/task/note/seen），
 旧版扁平 `<actor>.json` 仍兼容读取（同船已有会话记录时看板自动折叠，
-避免旧钩子残留造成重复芯片）；守护循环 pidfile 为
-`<actor>.<sid>.hb.pid`（内容 `<loopPid> <clientPid>`）。属于运行时状态、
-不进 git 同步；TTL 2 分钟，20 秒防抖，另有 `port heartbeat` 每 45 秒保活的
-后台循环（精确探活本会话 CLI 进程，会话退出只删自己那一条、自动下线，
-同船别的会话不受影响，无需 launchd/cron）。升级到会话模型后若残留旧守护，
-可 `pkill -f 'heartbeat.*--loop'` 后在项目里重发一次消息让钩子重建。详见
-[ADR-0004](adr/0004-presence-and-publish.md) 与 README「在线心跳机制」。
+避免旧钩子残留造成重复芯片）。属于运行时状态、不进 git 同步；20 秒防抖。
+v0.5 起**不再有探活守护循环与 pidfile**：会话生死由 serve 每 30 秒执行
+`claude agents --json` 的活会话全集判定（见 [ADR-0007](adr/0007-agent-integration.md)
+A 档），发现口缺席时退回 2 分钟 TTL。升级到 v0.5 后若残留 v0.4 的旧守护，
+`pkill -f 'heartbeat.*--loop'` 并清掉 `agents/*.hb.pid` 即可。详见
+[ADR-0004](adr/0004-presence-and-publish.md)、ADR-0007 与 agent-flow.md「在线心跳」。
 
 ## 远程访问
 
