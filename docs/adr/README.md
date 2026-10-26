@@ -8,3 +8,4 @@
 | [0004](0004-presence-and-publish.md) | 草稿/发布模型、执行者在线心跳与会话钩子 | Accepted（派船模型部分被 0005 取代） | 2026-10-25 |
 | [0005](0005-harbor-dispatch.md) | 调度港模型：锚地、命令式派船、归港硬门禁 | Accepted | 2026-10-26 |
 | [0006](0006-capture-as-draft.md) | 入港即立箱：取消独立闪念/inbox | Accepted | 2026-10-26 |
+| [0007](0007-agent-integration.md) | Claude Code 远程/编程化能力的接入边界（架构评估） | Proposed | 2026-10-26 |
