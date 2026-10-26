@@ -182,6 +182,80 @@ Claude Code 在本仓开会话时，`.claude/settings.json` 钩子自动 present
 锚地/派船/归港门禁、在线心跳，含表驱动测试）、`internal/server`（net/http + go:embed +
 fsnotify/SSE + goldmark 渲染，纯调度台）、`cmd/port`（cobra 子命令）。
 
+## 技术架构与技术栈
+
+**一个 Go 二进制 = CLI + 内嵌 Web 服务器 + 前端静态资源**，没有数据库、
+没有 Node 构建、没有外部服务，`scp` 一个文件就能部署。
+
+| 层 | 选型 | 为什么 |
+|---|---|---|
+| 语言/运行时 | Go（单二进制，交叉编译零依赖） | CLI、daemon、Web 同一份代码同一进程 |
+| CLI | [cobra](https://github.com/spf13/cobra) | 子命令 + `--json`，人和 agent 共用同一入口 |
+| 存储 | Markdown + YAML frontmatter 文件 | 数据可读可 grep，Obsidian/编辑器直开；详见 [ADR-0003](docs/adr/0003-task-file-format.md) |
+| YAML | `gopkg.in/yaml.v3` | frontmatter 解析/回写 |
+| 并发锁 | `gofrs/flock`（文件锁） | 多个 agent / 网页并发写不会撞单 |
+| 持久化 | temp-file + rename 原子写 | 任何时刻文件要么旧的完整、要么新的完整 |
+| Web | 标准库 `net/http`（Go 1.22 方法路由 + `PathValue`） | 零 Web 框架 |
+| 前端 | 原生 HTML template + 一份手写 CSS，零 JS 框架 | `go:embed` 打进二进制；移动端优先响应式 |
+| Markdown 渲染 | goldmark | 任务描述在网页渲染，正文仍以 Markdown 存储 |
+| 实时性 | `fsnotify` 监听文件 + SSE 推送 + 250ms 去抖 | CLI/agent/网页任何一端写入，另一端自动刷新 |
+| 心跳传输 | 网页 20s 轮询 `GET /api/agents`（**不走 SSE**） | 在线灯高频小数据，与任务变更通道解耦 |
+| PWA | manifest + service worker | 手机可「添加到主屏幕」，像 app 一样打开 |
+
+```
+浏览器（手机 PWA / 桌面）  ←─ SSE 任务变更 / 20s 轮询船队心跳 ─┐
+                                                              │
+Claude Code / Codex ── port CLI（cobra）──┐                    │
+人在终端 ──────────────── port CLI ────────┤                    ▼
+                                          ├──► internal/store ──► ~/MindPort/
+serve 进程（同一二进制内嵌 net/http）──────┘      (flock + 原子写)    tasks/*.md
+   fsnotify 监听 tasks/ inbox/ ◄──────────────────────────────────── inbox/*.md
+   变化去抖 250ms → SSE 广播                                          .port/state/agents/*.json（心跳）
+```
+
+状态机（v0.4）：
+
+```
+draft ──publish──▶ anchored ──assign(点名)──▶ ready ──claim(仅承担船)──▶ in_progress
+  │                                                                      │
+  └────────publish(--to 船名) 直达 ready                    blocked ◀──block(仅承担船)
+                                                                  │  └──unblock/受阻改派
+                                                                  ▼
+                                                                 done（归港硬门禁）
+```
+
+## 在线心跳机制（agent presence）
+
+目标：调度台顶栏能看到「Claude / Codex 此刻在不在线、正在干哪票货」，
+但**心跳是运行时状态，不是任务数据**，崩溃要能自愈，不能有写放大。
+
+- **存储**：`.port/state/agents/<actor>.json`（actor / task / note / seen 时间戳），
+  与任务文件分离，未来 git 同步时排除该目录；
+- **TTL 2 分钟**：`seen` 在窗口内即在线，超时自动灰显「x 分钟前在」，
+  不需要显式下线，agent 崩溃也自愈；
+- **20 秒防抖**：相同 task/note 的重复心跳不重写文件，钩子可以高频触发；
+- **保活守护循环**（`port heartbeat`，v0.4）：会话开始时由 Claude Code 钩子
+  拉起一个脱离会话的后台循环，**每 45 秒**探测一次 CLI 主进程（`pgrep -x claude`）：
+  在就续期（保留任务号/状态行，绕过 2 分钟 TTL），CLI 退出后 45 秒内自动 `away`
+  并清理 pidfile。**不需要 launchd / cron——随会话自生自灭**（用户明确不装系统级托管）；
+- **自动维护**：`claim` 自动带任务号、`done` 自动清任务号；
+- **Claude Code 钩子**（仓库 `.claude/settings.json`，仅新会话生效）：
+
+```json
+{
+  "hooks": {
+    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }] }]
+  }
+}
+```
+
+  Codex 或其他 agent 没有钩子时，在项目提示里要求开工 `port present`、
+  收工 `port away` 即可（见 [Agent 工作流](docs/agent-flow.md)）。
+
+> 注意：钩子是**项目级**的——在本仓库开会话才上报。想让任何目录的 Claude Code
+> 都报到，需要把同样的 hooks 放进用户级 `~/.claude/settings.json`（按需手动开启）。
+
 ## 状态
 
 🚧 **Pre-alpha · 孵化阶段**。v0.4 闭环已通：锚地/命令式派船/归港硬门禁、

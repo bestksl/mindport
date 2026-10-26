@@ -51,9 +51,11 @@ serve 支持 SIGTERM/SIGINT 优雅退出（最多等 10s 在途请求），并�
 
 ## 在线心跳（运行时状态）
 
-心跳文件在 `~/MindPort/.port/state/agents/*.json`，属于运行时状态、
-不进 git 同步；TTL 2 分钟，20 秒防抖。详见
-[ADR-0004](adr/0004-presence-and-publish.md)。
+心跳文件在 `~/MindPort/.port/state/agents/*.json`（守护循环 pidfile 为
+`*.hb.pid`），属于运行时状态、不进 git 同步；TTL 2 分钟，20 秒防抖，
+另有 `port heartbeat` 每 45 秒保活的后台循环（pgrep 探活 CLI 主进程，
+退出自动 away，无需 launchd/cron）。详见
+[ADR-0004](adr/0004-presence-and-publish.md) 与 README「在线心跳机制」。
 
 ## 远程访问
 

@@ -339,6 +339,40 @@ func TestDraftPublishNoAssignee(t *testing.T) {
 	}
 }
 
+func TestPresenceKeepalive(t *testing.T) {
+	v, _ := Open(t.TempDir())
+	// 带任务号报到
+	if _, err := v.Present("claude@studio", "T0007", "跑测试"); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.ReadFile(v.Root + "/.port/state/agents/claude_studio.json")
+	// 保活：任务号/状态行原样保留，只刷时间（文件会被重写）
+	if _, err := v.PresentKeepalive("claude@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ := v.ListPresence()
+	if len(ps) != 1 || ps[0].Task != "T0007" || ps[0].Note != "跑测试" || !ps[0].Online {
+		t.Fatalf("保活后状态错误: %+v", ps)
+	}
+	if string(old) == "" {
+		t.Fatal("基线文件为空")
+	}
+	// 全新 actor 的保活按空状态报到
+	if _, err := v.PresentKeepalive("codex@studio"); err != nil {
+		t.Fatal(err)
+	}
+	ps2, _ := v.ListPresence()
+	found := false
+	for _, p := range ps2 {
+		if p.Actor == "codex@studio" && p.Online && p.Task == "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("codex 保活报到失败: %+v", ps2)
+	}
+}
+
 func TestPresenceAwayTTLAndDebounce(t *testing.T) {
 	v, _ := Open(t.TempDir())
 	if _, err := v.Present("", "T1", ""); err == nil {

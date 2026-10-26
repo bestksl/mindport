@@ -95,6 +95,51 @@ func (v *Vault) Present(actor, task, note string) (bool, error) {
 	return wrote, err
 }
 
+// PresentKeepalive 保活：保留上次心跳的 task/note，只刷新 seen（绕过防抖）。
+// 心跳守护循环用它续期；还没有心跳文件时按空状态报到。
+func (v *Vault) PresentKeepalive(actor string) (bool, error) {
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return false, errors.New("actor 不能为空")
+	}
+	wrote := false
+	err := v.withLock(func() error {
+		dir := v.agentsDir()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		path := filepath.Join(dir, agentFile(actor))
+		last := Presence{}
+		if old, err := readPresenceFile(path); err == nil {
+			last = old
+		}
+		p := Presence{Actor: actor, Task: last.Task, Note: last.Note, Seen: time.Now()}
+		b, err := json.MarshalIndent(p, "", "  ")
+		if err != nil {
+			return err
+		}
+		tmp, err := os.CreateTemp(dir, ".tmp-*")
+		if err != nil {
+			return err
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		if _, err := tmp.Write(b); err != nil {
+			tmp.Close()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		if err := os.Rename(tmpName, path); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
+	})
+	return wrote, err
+}
+
 // Away 显式下线（会话结束）；文件不存在不算错误。
 func (v *Vault) Away(actor string) error {
 	actor = strings.TrimSpace(actor)

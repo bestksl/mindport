@@ -72,6 +72,15 @@ draft ──publish(无 assignee)──▶ anchored ──assign(点名)──�
 - 逃生门：`--force --reason`，reason 必填，归港日志中永久记录
   「⚠️ 强制归港（船名），理由：…」，防止真死锁，也防止滥用无痕。
 
+### 5. 在线心跳改由守护循环保活（同期修正）
+
+ADR-0004 的钩子只在 SessionStart/UserPromptSubmit 瞬间写一次心跳（TTL 2 分钟），
+一轮 agent 工作常超过 2 分钟，Stop 又立即 away——实测看板上几乎看不到在线灯。
+v0.4 新增 `port heartbeat`：钩子调用后 fork 脱离会话的后台循环，每 45 秒
+`pgrep -x claude` 探活：在就用 `PresentKeepalive` 续期（保留 task/note），
+CLI 退出后自动 away 并清理 pidfile。**不引入 launchd/cron**（用户已否决系统托管）：
+守护随会话自生自灭，pidfile 防重复，新会话可接管旧守护。
+
 ## 后果
 
 - 看板从三列变四列：锚地待派 / 待接令 / 出港中 / 已归港；手机端保持单列纵排。

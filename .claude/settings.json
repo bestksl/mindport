@@ -3,21 +3,14 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "/Users/jmzx/.local/bin/port present --by claude@studio" }
+          { "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "/Users/jmzx/.local/bin/port present --by claude@studio" }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "/Users/jmzx/.local/bin/port away --by claude@studio" }
+          { "type": "command", "command": "/Users/jmzx/.local/bin/port heartbeat --by claude@studio" }
         ]
       }
     ]

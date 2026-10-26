@@ -97,10 +97,17 @@ port done T0002 --force --reason "验收项已失效，客户口头确认"  # �
 ## 在线心跳（网页顶栏可见）
 
 `port present [T编号] [--note "..."]` 报到，心跳 2 分钟内有效，相同内容 20 秒
-防抖；`port away` 下线。通常不用手动调——项目 `.claude/settings.json` 已配置
-Claude Code 钩子：会话开始与每次提问自动 present、会话结束自动 away；
-claim/done 自动维护任务号。Codex 或其他 agent 可在项目提示里要求
-开工先 `port present`、收工 `port away`。
+防抖；`port away` 下线。但一轮 agent 工作常远超 2 分钟，因此 v0.4 提供
+**保活守护循环** `port heartbeat`：会话开始时由钩子调用，立即报到并 fork 一个
+脱离会话的后台循环，每 45 秒探测一次 CLI 主进程（默认 `pgrep -x claude`）——
+在就续期（保留任务号/状态行），CLI 退出后 45 秒内自动下线并清理 pidfile，
+**不需要 launchd / cron**。项目 `.claude/settings.json` 已把
+SessionStart / UserPromptSubmit 接到 `port heartbeat`（仅新会话生效）；
+claim/done 自动维护任务号。Codex 等没有钩子的 agent，可在项目提示里要求
+开工先 `port present`、收工 `port away`，或同样调 `port heartbeat --process codex`。
+
+注意钩子是**项目级**的：只在本仓库开会话上报；全仓库报到需把 hooks
+复制到用户级 `~/.claude/settings.json`。
 
 ## 设计原则
 
