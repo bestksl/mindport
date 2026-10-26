@@ -81,14 +81,14 @@ func (b *broker) publish() {
 	}
 }
 
-// watchVault 监听 tasks/ 与 inbox/，把文件事件去抖后广播。
+// watchVault 监听 tasks/，把文件事件去抖后广播。
 func (s *Server) watchVault() {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return
 	}
 	defer w.Close()
-	for _, d := range []string{"tasks", "inbox"} {
+	for _, d := range []string{"tasks"} {
 		_ = w.Add(filepath.Join(s.V.Root, d))
 	}
 	var debounce *time.Timer
@@ -117,8 +117,6 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /", s.handleIndex)
-	mux.HandleFunc("POST /thoughts", s.handleCreateThought)
-	mux.HandleFunc("POST /thoughts/promote", s.handlePromoteThought)
 	mux.HandleFunc("POST /tasks", s.handleCreateTask)
 	mux.HandleFunc("GET /tasks/{id}", s.handleTaskDetail)
 	mux.HandleFunc("POST /tasks/{id}/publish", s.handlePublish)
@@ -151,14 +149,13 @@ func (s *Server) Routes() http.Handler {
 // ---------- 视图模型 ----------
 
 type boardData struct {
-	Thoughts []store.Record
-	Drafts   []store.Record
-	Cols     []column
-	Ships    []ShipView
-	Agents   []store.Presence
-	ByTask   map[string]store.Presence // 在线执行者 → 正在做的任务
-	Now      time.Time
-	Error    string
+	Drafts []store.Record
+	Cols   []column
+	Ships  []ShipView
+	Agents []store.Presence
+	ByTask map[string]store.Presence // 在线执行者 → 正在做的任务
+	Now    time.Time
+	Error  string
 }
 
 // BerthView 是一个船位（项目目录）：可能有多个会话，聚合成一个派船目标。
@@ -210,11 +207,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	thoughts, _ := s.V.ListThoughts()
 	all, _ := s.V.ListTasks("")
 	agents, byTask := s.presenceIndex()
 	d := boardData{
-		Thoughts: thoughts, Now: time.Now(),
+		Now:    time.Now(),
 		Agents: agents, ByTask: byTask, Ships: fleet(agents),
 		Error: r.URL.Query().Get("error"),
 		Cols: []column{
@@ -375,25 +371,6 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		v.Agent = pickAgent(agents, a, rec.Meta.ID)
 	}
 	render(w, http.StatusOK, taskTmpl, v)
-}
-
-func (s *Server) handleCreateThought(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	if _, err := s.V.AddThought(r.PostFormValue("title"), "", "mobile"); err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func (s *Server) handlePromoteThought(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	rec, err := s.V.PromoteThought(r.PostFormValue("name"), r.PostFormValue("importance"))
-	if err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {

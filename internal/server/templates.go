@@ -153,8 +153,8 @@ const boardHTML = head + `
 {{if .Error}}<div class="err">⚠️ {{.Error}}</div>{{end}}
 
 <section class="capture">
-  <form method="post" action="/thoughts" class="capture-row">
-    <input name="title" placeholder="想到什么先扔下来，不用想清楚…（在下方闪念里可转成集装箱）" autocomplete="off" autofocus required>
+  <form method="post" action="/tasks" class="capture-row">
+    <input name="title" placeholder="想到什么先扔下来…入港即立箱（草稿，随后补验收/派船）" autocomplete="off" autofocus required>
     <button type="submit" class="primary">入港</button>
   </form>
 </section>
@@ -212,26 +212,6 @@ const boardHTML = head + `
     {{end}}
   </div>
   {{end}}
-</section>
-
-<section class="inbox">
-  <h2>🌊 闪念 · 待澄清 <small>{{len .Thoughts}}</small></h2>
-  {{if not .Thoughts}}<p class="empty">还没有接住的闪念——想到什么，在上面入港即可</p>{{end}}
-  <div class="thought-list">
-  {{range .Thoughts}}
-  <article class="card thought">
-    <div class="title">{{.Meta.Title}}</div>
-    <div class="card-head">
-      <span>{{.Meta.Created.Format "01-02 15:04"}}{{if .Meta.Source}} · {{.Meta.Source}}{{end}}</span>
-      <span class="spacer"></span>
-      <form method="post" action="/thoughts/promote">
-        <input type="hidden" name="name" value="{{baseName .Path}}">
-        <button type="submit" class="mini">转集装箱 →</button>
-      </form>
-    </div>
-  </article>
-  {{end}}
-  </div>
 </section>
 
 <footer>调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</footer>

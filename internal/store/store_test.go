@@ -7,30 +7,22 @@ import (
 	"testing"
 )
 
-func TestThoughtPromoteAndTaskLifecycle(t *testing.T) {
+func TestTaskLifecycle(t *testing.T) {
 	v, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	th, err := v.AddThought("洗澡时的闪念", "int8 也许够用的完整描述", "cli")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// promote：闪念转草稿（v0.4 起先备货，不直接出港），原文进描述，inbox 文件消失
-	t1, err := v.PromoteThought(baseName(th.Path), ImpHigh)
+	// 入港即立箱：直接建草稿任务（v0.4 起不再有独立闪念/inbox）
+	t1, err := v.NewTask("洗澡时的闪念", ImpHigh, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if t1.Meta.ID != "T0001" || t1.Meta.Status != StatusDraft || t1.Meta.Importance != ImpHigh {
-		t.Fatalf("promote 字段错误: %+v", t1.Meta)
+		t.Fatalf("草稿字段错误: %+v", t1.Meta)
 	}
-	if !strings.Contains(t1.Body, "int8 也许够用的完整描述") {
-		t.Fatalf("闪念正文未进入描述:\n%s", t1.Body)
-	}
-	if thoughts, _ := v.ListThoughts(); len(thoughts) != 0 {
-		t.Fatalf("promote 后 inbox 应为空，剩 %d", len(thoughts))
+	if !strings.Contains(t1.Body, "洗澡时的闪念") {
+		t.Fatalf("标题未进入描述:\n%s", t1.Body)
 	}
 
 	// 草稿阶段可打磨验收标准

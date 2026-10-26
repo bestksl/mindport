@@ -39,7 +39,7 @@
 - 🚢 **命令式派船**：指派是强制的，只有被点名的船能接令；锚地货对船不可见，不能抢单；还能点名到具体**船位**（某个项目目录里的会话），街拍项目的会话接不到闲鱼的票；
 - 🏁 **归港硬门禁**：验收项必须全勾（或附交付结果），特殊情况强制归港必须写理由、永久留痕；
 - 🔀 **本地优先，Git 同步**：断网可用，多机、多人、多 agent 靠 git 协作；
-- 🧠 **Inbox → 任务**：先无摩擦捕获，再从容整理、打磨验收、派船；
+- 🧠 **入港即立箱**：念头三秒捕获，直接就是一条草稿任务（占 T 编号），随后从容打磨验收、派船，没有独立的闪念/inbox；
 - 🔌 **HTTP / SSH 接口**：调度台 Web 看板已可用，更多集成在规划中。
 
 ---
@@ -47,11 +47,10 @@
 ## 一分钟示例
 
 ```bash
-# 念头闪现，先扔进港（三秒钟，别打断当下）
+# 念头闪现，入港即立箱（三秒钟，别打断当下；直接得到草稿任务 T001）
 port add "评估量化模型在 Vs3 上的耗时"
 
 # 看看港里有什么
-port inbox
 port list                       # 草稿 / 锚地 / 待接令 / 出港中 / 已归港
 
 # 调度长官：放行到锚地，然后点名叫船
@@ -96,8 +95,8 @@ tags: [model, benchmark]
 
 ## 工作流：人 → 思港 → AI
 
-1. **捕获**：终端、编辑器、手机，任何入口把念头丢进 inbox；
-2. **备货**：思港把念头存为本地 Markdown，澄清为任务、打磨验收标准（草稿）；
+1. **捕获**：终端、编辑器、手机，任何入口把念头扔进港，立即立箱为草稿任务；
+2. **备货**：在任务单里澄清描述、打磨验收标准（仍是草稿，船看不到）；
 3. **派船**：人作为调度长官放行到锚地，随后点名叫 Claude Code / Codex（命令，不可任领）；
 4. **接令**：只有被指派的船能 `claim`，状态实时回写，别的船抢不走；
 5. **归港验货**：验收全勾或附交付结果才能归港，人在调度台对照验收、批注回溯。
@@ -107,7 +106,7 @@ tags: [model, benchmark]
 ## 路线图
 
 - [x] 任务文件格式规范（frontmatter schema、状态机、flock 锁协议）
-- [x] `port` CLI：`add` / `inbox` / `list` / `next` / `claim` / `done` / `log` / `dispatch`
+- [x] `port` CLI：`add`（入港即草稿） / `list` / `next` / `claim` / `done` / `log` / `dispatch`
 - [x] HTTP API（REST / JSON）与移动优先 Web 调度台（SSE 实时刷新、PWA）
 - [x] SSH 远程使用模式（Tailscale 组网，见 [远程使用指南](docs/remote.md)）
 - [ ] Git 同步：`port sync` 与多执行者撞单防护
@@ -130,7 +129,8 @@ tags: [model, benchmark]
 - **ADR-0002** 实现语言：Go（单二进制，CLI / daemon / 内嵌 Web 一体）；
 - **ADR-0003** Vault 结构与文件格式 v0：Markdown + YAML frontmatter 统一信封，thought / task / note 三类型，T 编号、状态机、flock 锁协议，持久数据与运行时状态分离；
 - **ADR-0004** 草稿/发布模型与执行者在线心跳；
-- **ADR-0005** 调度港模型：锚地、命令式派船、归港硬门禁。
+- **ADR-0005** 调度港模型：锚地、命令式派船、归港硬门禁；
+- **ADR-0006** 入港即立箱：取消独立闪念/inbox，捕获直接生成草稿任务。
 
 ## 当前可用的最小闭环（v0.4）
 
@@ -144,9 +144,8 @@ agent 是船**——网页是纯调度台（放行/派船/改派/验货/批注�
 go build -o bin/port ./cmd/port
 ./bin/port init                                   # 初始化 ~/MindPort（--vault / $PORT_VAULT）
 
-# 捕获
-./bin/port add "洗澡时的闪念"                       # → inbox
-./bin/port promote inbox/20261025-2200-xxx.md      # 闪念 → 草稿任务（--importance high）
+# 捕获（入港即立箱，直接是草稿任务）
+./bin/port add "洗澡时的闪念"                       # → T0001 草稿（可加 --importance high）
 
 # 调度长官：备货 → 放行 → 派船（目标导向：不谈紧急，只标重要程度）
 ./bin/port new "验证 int8 耗时" --draft --importance critical --goal "Vs3 上 NPU 方案定稿"
@@ -211,8 +210,7 @@ Claude Code / Codex ── port CLI（cobra）──┐                    │
 人在终端 ──────────────── port CLI ────────┤                    ▼
                                           ├──► internal/store ──► ~/MindPort/
 serve 进程（同一二进制内嵌 net/http）──────┘      (flock + 原子写)    tasks/*.md
-   fsnotify 监听 tasks/ inbox/ ◄──────────────────────────────────── inbox/*.md
-   变化去抖 250ms → SSE 广播                                          .port/state/agents/*.json（心跳）
+   fsnotify 监听 tasks/ → 去抖 250ms → SSE 广播                     .port/state/agents/*.json（心跳，20s 轮询）
 ```
 
 状态机（v0.4）：

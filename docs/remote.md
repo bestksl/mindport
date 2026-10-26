@@ -83,7 +83,7 @@ CLI 路径（不依赖菜单栏 App）：
 ## 四、验收清单
 
 - [ ] 公司网络下，手机 Tailscale 显示 connected，浏览器打开思港页面 200
-- [ ] 手机录一条闪念，Studio 上 `port inbox` 立即出现
+- [ ] 手机入港一条念头，Studio 上 `port list` 的草稿区立即出现新 T 编号
 - [ ] 笔记本 `ssh studio` 登录成功，`port list` 正常
 - [ ] Studio 重启后：先启动 Tailscale（设为开机自启），再启动 `port serve`
 

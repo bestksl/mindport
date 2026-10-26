@@ -118,12 +118,10 @@ type Vault struct {
 	lock *flock.Flock
 }
 
-const fileTimeLayout = "20060102-1504"
-
 // Open 打开（必要时初始化）vault 的标准目录结构。
 func Open(root string) (*Vault, error) {
 	for _, d := range []string{
-		"inbox", "tasks", "notes", "archive", "attachments",
+		"tasks", "notes", "archive", "attachments",
 		".port/locks", ".port/state",
 	} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
@@ -147,94 +145,6 @@ func (v *Vault) withLock(fn func() error) error {
 func touch(m *Meta) {
 	now := time.Now()
 	m.Updated = &now
-}
-
-// ---------- 闪念 ----------
-
-// AddThought 往 inbox/ 丢一条闪念，三秒捕获，不分配编号。
-func (v *Vault) AddThought(title, body, source string) (*Record, error) {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return nil, errors.New("闪念内容不能为空")
-	}
-	var rec *Record
-	err := v.withLock(func() error {
-		now := time.Now()
-		m := Meta{Type: "thought", Title: title, Created: now, Source: source}
-		base := now.Format(fileTimeLayout) + "-" + slug(title)
-		path, err := v.uniquePath(filepath.Join(v.Root, "inbox", base+".md"))
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(body) == "" {
-			body = title
-		}
-		if err := v.write(path, m, body); err != nil {
-			return err
-		}
-		rec = &Record{Meta: m, Body: body, Path: path}
-		return nil
-	})
-	return rec, err
-}
-
-// ListThoughts 列出 inbox，新的在前。
-func (v *Vault) ListThoughts() ([]Record, error) {
-	out, err := listDir(filepath.Join(v.Root, "inbox"))
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[j].Meta.Created.Before(out[i].Meta.Created)
-	})
-	return out, nil
-}
-
-// PromoteThought 把 inbox 里的闪念转成正式任务：分配 T 编号、写入模板、
-// 原正文移入「描述」，闪念文件删除。
-func (v *Vault) PromoteThought(filename, importance string) (*Record, error) {
-	if !ValidImportance(importance) {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidImportance, importance)
-	}
-	var rec *Record
-	err := v.withLock(func() error {
-		src := filepath.Join(v.Root, "inbox", filepath.Base(filename))
-		thought, err := parseFile(src)
-		if err != nil {
-			return fmt.Errorf("闪念不存在或无法解析: %w", err)
-		}
-		now := time.Now()
-		id, err := v.nextID()
-		if err != nil {
-			return err
-		}
-		imp := importance
-		if imp == "" {
-			imp = ImpNormal
-		}
-		m := Meta{
-			Type: "task", ID: id, Title: thought.Meta.Title,
-			Status: StatusDraft, Importance: imp,
-			Created: now,
-		}
-		desc := strings.TrimSpace(thought.Body)
-		body := "## 描述\n\n" + desc + "\n\n## 验收标准\n\n## 日志\n" +
-			"- " + now.Format("2006-01-02 15:04 -0700") +
-			" — promoted from inbox/" + filepath.Base(src) + "\n"
-		path, err := v.uniquePath(filepath.Join(v.Root, "tasks", id+"-"+slug(thought.Meta.Title)+".md"))
-		if err != nil {
-			return err
-		}
-		if err := v.write(path, m, body); err != nil {
-			return err
-		}
-		if err := os.Remove(src); err != nil {
-			return err
-		}
-		rec = &Record{Meta: m, Body: body, Path: path}
-		return nil
-	})
-	return rec, err
 }
 
 // ---------- 任务 ----------
