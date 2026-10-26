@@ -33,17 +33,24 @@ const head = `<!doctype html>
 {{end}}
 {{end}}
 
-{{define "shipoptions"}}
-{{range $ship := .}}
-<option value="{{$ship.Name}}">{{$ship.Short}}{{if $ship.Online}} · 在线{{else}} · 未报到{{end}} · 任意会话</option>
-{{range $s := $ship.Sessions}}{{if and $s.Online (ne $s.Dir "")}}<option value="{{$s.Actor}}|{{$s.Dir}}">{{$ship.Short}} · 📍{{baseName $s.Dir}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else}} · 在线{{end}}</option>{{end}}{{end}}
-{{end}}{{end}}
+{{/* 单艘船的派船目标：任意会话 / 各船位（在线与离线都列）/ 新项目新开 */}}
+{{define "berthoptions"}}
+<option value="{{.Name}}">{{.Short}} · 任意会话{{if .Online}}（有在线船位）{{else}}（当前未报到）{{end}}</option>
+{{range .Berths}}<option value="{{$.Name}}|{{.Dir}}">{{$.Short}} · 📍{{.Base}}{{if .Online}}{{if .Task}} · 在忙 {{.Task}}{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago .Seen}}（新开即接）{{end}}</option>{{end}}
+<option value="{{.Name}}|NEW" data-new="1">🆕 {{.Short}} · 在新项目里新开会话接令…</option>
+{{end}}
 
-{{/* 改派下拉：排除当前船的「任意会话」与当前船位的同目录会话，同船其他项目会话仍可改派 */}}
+{{define "shipoptions"}}
+{{range .}}{{template "berthoptions" .}}{{end}}{{end}}
+
+{{/* 改派下拉：排除当前船的「任意会话」与当前船位，同船其他船位（含离线/新开）仍可改派 */}}
 {{define "reassignoptions"}}
+{{$cur := .R.Meta.AssigneeValue}}
+{{$cwd := .R.Meta.AssignCwd}}
 {{range $ship := .Ships}}
-{{if ne $ship.Name $.R.Meta.AssigneeValue}}<option value="{{$ship.Name}}">{{$ship.Short}}{{if $ship.Online}} · 在线{{else}} · 未报到{{end}} · 任意会话</option>{{end}}
-{{range $s := $ship.Sessions}}{{if and $s.Online (ne $s.Dir "") (or (ne $ship.Name $.R.Meta.AssigneeValue) (ne $s.Dir $.R.Meta.AssignCwd))}}<option value="{{$s.Actor}}|{{$s.Dir}}">{{$ship.Short}} · 📍{{baseName $s.Dir}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else}} · 在线{{end}}</option>{{end}}{{end}}
+{{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线船位）{{else}}（当前未报到）{{end}}</option>{{end}}
+{{range $b := $ship.Berths}}{{if or (ne $ship.Name $cur) (ne $b.Dir $cwd)}}<option value="{{$ship.Name}}|{{$b.Dir}}">{{$ship.Short}} · 📍{{$b.Base}}{{if $b.Online}}{{if $b.Task}} · 在忙 {{$b.Task}}{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago $b.Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
+<option value="{{$ship.Name}}|NEW" data-new="1">🆕 {{$ship.Short}} · 在新项目里新开会话接令…</option>
 {{end}}{{end}}`
 
 const sseBoot = `
@@ -69,6 +76,23 @@ document.addEventListener('click', function (e) {
   var d = document.querySelector(a.getAttribute('href'));
   if (d) d.open = true;
 });
+// 派船选「🆕 新项目新开」：先问完整目录路径，再把占位值 actor|NEW 换成 actor|路径
+document.addEventListener('submit', function (e) {
+  var f = e.target;
+  if (!f || !f.querySelector) return;
+  var sel = f.querySelector('select[name="assignee"]');
+  var opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  if (!opt || !opt.hasAttribute('data-new')) return;
+  var dir = window.prompt('新船位的完整项目目录路径，例如：\n/Users/jmzx/studio/xianyu\n\n派船后在该目录开一艘船（Claude Code 会话）即可接令');
+  if (dir === null) { e.preventDefault(); return; }
+  dir = dir.trim();
+  if (!/^\//.test(dir) && !/^[A-Za-z]:[\\/]/.test(dir)) {
+    window.alert('要填完整路径（从 / 或盘符开始），不能只写目录名');
+    e.preventDefault();
+    return;
+  }
+  sel.value = sel.value.replace(/\|NEW$/, '|' + dir);
+}, true);
 // 船队在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }

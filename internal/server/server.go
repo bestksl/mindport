@@ -6,6 +6,7 @@ package server
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -160,12 +161,22 @@ type boardData struct {
 	Error    string
 }
 
-// ShipView 是调度台眼里的一艘船：花名册名字 + 它在各项目目录里的会话心跳。
+// BerthView 是一个船位（项目目录）：可能有多个会话，聚合成一个派船目标。
+type BerthView struct {
+	Dir    string
+	Base   string
+	Online bool
+	Task   string
+	Seen   time.Time
+}
+
+// ShipView 是调度台眼里的一艘船：花名册名字 + 它在各项目目录里的船位。
 type ShipView struct {
 	Name     string
 	Short    string
-	Online   bool // 任一会话在线
+	Online   bool // 任一船位在线
 	Sessions []store.Presence
+	Berths   []BerthView // 按项目目录聚合（在线在前），含离线船位
 }
 
 type column struct {
@@ -261,6 +272,39 @@ func fleet(agents []store.Presence) []ShipView {
 			}
 			return sv.Sessions[i].Seen.After(sv.Sessions[j].Seen)
 		})
+		// 同目录多个会话聚合成一个船位；取最近活动会话的状态。
+		byDir := map[string]*BerthView{}
+		for _, p := range sv.Sessions {
+			if p.Dir == "" {
+				continue
+			}
+			b := byDir[p.Dir]
+			if b == nil {
+				b = &BerthView{Dir: p.Dir, Base: filepath.Base(p.Dir)}
+				byDir[p.Dir] = b
+			}
+			if p.Online {
+				b.Online = true
+				if b.Task == "" {
+					b.Task = p.Task
+				}
+			}
+			if p.Seen.After(b.Seen) {
+				b.Seen = p.Seen
+				if b.Task == "" {
+					b.Task = p.Task
+				}
+			}
+		}
+		for _, b := range byDir {
+			sv.Berths = append(sv.Berths, *b)
+		}
+		sort.SliceStable(sv.Berths, func(i, j int) bool {
+			if sv.Berths[i].Online != sv.Berths[j].Online {
+				return sv.Berths[i].Online
+			}
+			return sv.Berths[i].Seen.After(sv.Berths[j].Seen)
+		})
 		for _, p := range sv.Sessions {
 			if p.Online {
 				sv.Online = true
@@ -279,6 +323,16 @@ func splitTarget(v string) (actor, berth string) {
 		return strings.TrimSpace(v[:i]), strings.TrimSpace(v[i+1:])
 	}
 	return v, ""
+}
+
+// targetFromForm 在 splitTarget 基础上拦截「新项目新开」占位值：合法路径应由
+// 前端 prompt 补全；拿到裸 NEW 说明 JS 没跑或有人直接打 API。
+func targetFromForm(v string) (actor, berth string, err error) {
+	actor, berth = splitTarget(v)
+	if berth == "NEW" {
+		return "", "", errors.New("请填写新项目的完整目录路径后再派船")
+	}
+	return actor, berth, nil
 }
 
 // pickAgent 为承担船挑一条详情页要展示的心跳：优先正在做本票货的会话，
@@ -361,7 +415,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	actor, berth := splitTarget(r.PostFormValue("assignee"))
+	actor, berth, err := targetFromForm(r.PostFormValue("assignee"))
+	if err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
 	if _, err := s.V.Publish(id, dispatcher, actor, berth); err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -377,7 +435,11 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	actor, berth := splitTarget(r.PostFormValue("assignee"))
+	actor, berth, err := targetFromForm(r.PostFormValue("assignee"))
+	if err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
 	if _, err := s.V.Assign(id, dispatcher, actor, berth); err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -385,9 +447,36 @@ func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 }
 
+// listPresence 返回折叠后的全部船位心跳（见 mergePresence）。
+func (s *Server) listPresence() []store.Presence {
+	agents, _ := s.V.ListPresence()
+	return mergePresence(agents)
+}
+
+// mergePresence 折叠同一艘船的重复心跳：该船已有会话级记录（带 session_id）
+// 时，扁平记录（旧版 port present / 嵌套目录里的旧钩子残留）不再单列，
+// 否则顶栏会出现两枚同一艘船的芯片。真正的会话无关客户端（远程 ssh 船）
+// 通常使用不同 actor 名，不受影响。
+func mergePresence(in []store.Presence) []store.Presence {
+	haveSession := map[string]bool{}
+	for _, p := range in {
+		if p.SessionID != "" {
+			haveSession[p.Actor] = true
+		}
+	}
+	out := make([]store.Presence, 0, len(in))
+	for _, p := range in {
+		if p.SessionID == "" && haveSession[p.Actor] {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 // presenceIndex 返回全部心跳，以及「在线且正在做某任务」的 task→Presence 索引。
 func (s *Server) presenceIndex() ([]store.Presence, map[string]store.Presence) {
-	agents, _ := s.V.ListPresence()
+	agents := s.listPresence()
 	byTask := map[string]store.Presence{}
 	for _, p := range agents {
 		if p.Online && p.Task != "" {
@@ -492,11 +581,7 @@ func (s *Server) handleAPINext(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
-	agents, err := s.V.ListPresence()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	agents := s.listPresence()
 	// 直接返回各船位心跳（含 session_id/dir 等字段），前端按会话渲染芯片
 	if agents == nil {
 		agents = []store.Presence{}
