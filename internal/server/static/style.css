@@ -1,25 +1,145 @@
-/* 思港 MindPort — 海港夜色主题。
+/* 思港 MindPort — 复古像素海港主题。
+   夜港（默认）：深棕木舱 + 灯塔暖光；日港：羊皮纸海图。
    v0.4 调度台：桌面四列（锚地/待接令/出港中/已归港）；
-   ≤1000px 两列；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。 */
+   ≤1000px 两列；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。
+   UI 走 Q 版像素极客风：硬边投影、方块状态灯、像素码头全景（帆船对开/吊机搬箱/灯塔摩尔斯闪）。 */
 
 :root {
-  --sea: #0b1c2c;
-  --sea-2: #112a40;
-  --sea-3: #1d3d5a;
-  --line: #24476340;
-  --amber: #f2b544;
-  --amber-soft: #f2b54422;
-  --foam: #e6eff6;
-  --muted: #88a3b8;
-  --ok: #4fd08a;
-  --busy: #5aa9e6;
+  /* —— 夜港：陈年木舱 —— */
+  --bg: #221b14;
+  --bg-glow: #43301d;
+  --panel: #2f2519;
+  --panel-2: #231a11;
+  --panel-3: #4a3926;
+  --line: #5b4730;
+  --ink: #f0e4cd;
+  --muted: #b09a7c;
+
+  --amber: #f0b23f;
+  --amber-line: #b07a1f;
+  --amber-soft: rgba(240, 178, 63, .15);
+  --amber-ink: #2a1c05;
+
+  --ok: #7bc96f;
+  --ok-soft: rgba(123, 201, 111, .15);
+  --ok-line: rgba(123, 201, 111, .45);
+  --ok-ink: #cdeec4;
+  --pulse-1: rgba(123, 201, 111, .22);
+  --pulse-2: rgba(123, 201, 111, .05);
+
+  --busy: #6fb3d9;
+  --busy-soft: rgba(111, 179, 217, .14);
   --block: #e07a5f;
-  --critical: #ff6b6b;
-  --high: #f5b53f;
-  --normal: #6f93ad;
-  --someday: #6d7f8e;
-  --radius: 14px;
-  --shadow: 0 6px 20px rgba(0, 0, 0, .25);
+  --block-soft: rgba(224, 122, 95, .15);
+  --block-line: rgba(224, 122, 95, .5);
+
+  --critical: #e86a5c;
+  --high: #f0b23f;
+  --normal: #b09a7c;
+  --someday: #8a7a63;
+
+  --topbar: rgba(34, 27, 20, .88);
+  --px-shadow: #100b06;
+
+  --banner-sea-bg: rgba(111, 179, 217, .12);
+  --banner-sea-line: rgba(111, 179, 217, .4);
+  --banner-sea-ink: #bcd9ee;
+  --banner-done-bg: rgba(123, 201, 111, .12);
+  --banner-done-line: rgba(123, 201, 111, .4);
+  --banner-done-ink: #bfe8c8;
+  --banner-block-ink: #f2b8a6;
+  --log-ink: #d8cbb2;
+
+  /* —— 像素插图配色（夜港） —— */
+  --px-tower: #c06a45;
+  --px-stripe: #f0e4cd;
+  --px-cap: #9c4632;
+  --px-frame: #4a3520;
+  --px-base: #6b4f30;
+  --px-base-dark: #3d2c18;
+  --px-wood: #8a6238;
+  --px-wood-dark: #5e4226;
+  --px-rope: #d8c39a;
+  --px-cargo: #d8893f;
+  --px-crate-band: #7a4a1e;
+  --px-sail: #f4ecd8;
+  --px-flag: #f0b23f;
+  --px-water-deep: #243944;
+  --px-water-near: #2f4a54;
+  --px-water-far: #3a5a63;
+  --px-lamp: #ffd668;
+  --px-beam: rgba(255, 206, 110, .85);
+  --star: rgba(240, 228, 205, .8);
+
+  --radius: 10px;
+  --shadow: 4px 4px 0 var(--px-shadow);
+}
+
+/* —— 日港：羊皮纸海图 —— */
+[data-theme="light"] {
+  --bg: #f1e6cf;
+  --bg-glow: #fbf3de;
+  --panel: #fbf4e3;
+  --panel-2: #f0e2c6;
+  --panel-3: #e3d2ae;
+  --line: #c3ac83;
+  --ink: #3a2a17;
+  --muted: #8a704f;
+
+  --amber: #a86f1c;
+  --amber-line: #8a5a14;
+  --amber-soft: rgba(168, 111, 28, .13);
+  --amber-ink: #fdf6e6;
+
+  --ok: #3f8f5c;
+  --ok-soft: rgba(63, 143, 92, .13);
+  --ok-line: rgba(63, 143, 92, .42);
+  --ok-ink: #2e6b46;
+  --pulse-1: rgba(63, 143, 92, .2);
+  --pulse-2: rgba(63, 143, 92, .04);
+
+  --busy: #357196;
+  --busy-soft: rgba(53, 113, 150, .12);
+  --block: #bc563c;
+  --block-soft: rgba(188, 86, 60, .13);
+  --block-line: rgba(188, 86, 60, .45);
+
+  --critical: #c24a3a;
+  --high: #a86f1c;
+  --normal: #8a704f;
+  --someday: #a5916f;
+
+  --topbar: rgba(241, 230, 207, .9);
+  --px-shadow: #cdb98f;
+
+  --banner-sea-bg: rgba(53, 113, 150, .1);
+  --banner-sea-line: rgba(53, 113, 150, .38);
+  --banner-sea-ink: #2f6180;
+  --banner-done-bg: rgba(63, 143, 92, .1);
+  --banner-done-line: rgba(63, 143, 92, .38);
+  --banner-done-ink: #2f6f49;
+  --banner-block-ink: #94422c;
+  --log-ink: #5c4730;
+
+  --px-tower: #b35a38;
+  --px-stripe: #fff8e9;
+  --px-cap: #8e3d2c;
+  --px-frame: #6b4a2b;
+  --px-base: #a07a49;
+  --px-base-dark: #7a5a34;
+  --px-wood: #a87c48;
+  --px-wood-dark: #7d5a33;
+  --px-rope: #6e512a;
+  --px-cargo: #c0762e;
+  --px-crate-band: #6f421a;
+  --px-sail: #fffdf4;
+  --px-flag: #a86f1c;
+  --px-water-deep: #8fb0b2;
+  --px-water-near: #a9c6c4;
+  --px-water-far: #c2d6d2;
+  --px-lamp: #d9901f;
+  --px-beam: rgba(170, 115, 25, .3);
+  --star: transparent;
 }
 
 * { box-sizing: border-box; }
@@ -27,17 +147,18 @@
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 500px at 80% -10%, #16334d 0%, transparent 60%),
-    var(--sea);
-  color: var(--foam);
+    radial-gradient(900px 420px at 85% -10%, var(--bg-glow) 0%, transparent 60%),
+    var(--bg);
+  color: var(--ink);
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   -webkit-font-smoothing: antialiased;
   padding-bottom: env(safe-area-inset-bottom);
+  transition: background-color .25s ease, color .25s ease;
 }
 
 h1, h2 { margin: 0; }
-h2 { font-size: 14px; margin: 22px 0 10px; color: var(--amber); letter-spacing: .5px; }
+h2 { font-size: 14px; margin: 22px 0 10px; color: var(--amber); letter-spacing: 1px; }
 h2 small { color: var(--muted); font-weight: 400; margin-left: 4px; }
 a { color: inherit; }
 
@@ -52,10 +173,10 @@ a { color: inherit; }
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(11, 28, 44, .82);
+  background: var(--topbar);
   backdrop-filter: saturate(160%) blur(12px);
   -webkit-backdrop-filter: saturate(160%) blur(12px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 .topbar {
   display: flex;
@@ -66,89 +187,198 @@ a { color: inherit; }
   padding: 10px 0;
 }
 .brand {
-  font-size: 19px;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   text-decoration: none;
   white-space: nowrap;
+  min-width: 0;
 }
-.brand span {
+.brand-mark { display: inline-flex; flex: none; }
+.brand-mark .px-lighthouse { width: 28px; height: 28px; }
+.brand-text { font-size: 19px; font-weight: 700; }
+.brand-text i {
+  font-style: normal;
   color: var(--amber);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 1.5px;
   margin-left: 6px;
 }
-.brand em {
+.brand-text em {
   font-style: normal;
   font-size: 11px;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 1px 9px;
   margin-left: 10px;
   white-space: nowrap;
 }
-.top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
 
+/* 主题切换按钮（像素方块键） */
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--px-shadow);
+}
+.icon-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
+.icon-btn svg { width: 17px; height: 17px; }
+.icon-sun { fill: var(--amber); display: block; }
+.icon-moon { fill: var(--ink); display: none; }
+[data-theme="light"] .icon-sun { display: none; }
+[data-theme="light"] .icon-moon { display: block; }
+
+/* 船队：默认收起的浮层 */
+.fleet { position: relative; }
+.fleet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  list-style: none;
+  cursor: pointer;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--px-shadow);
+  padding: 6px 11px;
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.fleet-btn::-webkit-details-marker { display: none; }
+.fleet-btn::marker { content: ""; }
+.fleet-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
+.fleet-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--someday);
+  flex: none;
+}
+.fleet.has-live .fleet-dot {
+  background: var(--ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+#fleet-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 1ch;
+  font-variant-numeric: tabular-nums;
+}
+.fleet.has-live #fleet-count { color: var(--ok-ink); }
+.caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+  margin-left: 1px;
+  transition: transform .15s ease;
+}
+.fleet[open] .caret { transform: rotate(180deg); }
+.fleet-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: max-content;
+  min-width: 252px;
+  max-width: min(86vw, 380px);
+  max-height: min(66vh, 440px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 5px 5px 0 var(--px-shadow);
+  padding: 9px;
+  z-index: 60;
+}
+.fleet-pop-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  letter-spacing: .5px;
+  color: var(--muted);
+  margin: 1px 2px 8px;
+}
+
+/* 船队芯片：浮层内纵向排成船位清单 */
 .agents { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.fleet-pop .agents { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; }
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: var(--sea-2);
-  border: 1px solid var(--line);
+  padding: 5px 10px;
+  border-radius: 5px;
+  background: var(--panel-3);
+  border: 1.5px solid var(--line);
   white-space: nowrap;
+  max-width: 100%;
 }
-.chip b { font-weight: 700; font-size: 12.5px; }
-.chip em { font-style: normal; color: var(--muted); font-size: 11px; }
-.chip em::before { content: "·"; margin-right: 5px; color: var(--line); }
+.fleet-pop .chip { width: 100%; }
+.chip b { font-weight: 700; font-size: 12.5px; flex: none; }
+.chip em { font-style: normal; color: var(--muted); font-size: 11px; margin-left: auto; flex: none; }
 .chip .seen { font-style: normal; opacity: .65; font-size: 10px; margin-left: 2px; }
 /* 船位（项目会话）小标签 */
 .chip .proj, .detail-agent .proj {
   font-style: normal;
   font-size: 10.5px;
   color: var(--amber);
-  background: rgba(224, 177, 95, .12);
-  border-radius: 6px;
+  background: var(--amber-soft);
+  border-radius: 3px;
   padding: 1px 6px;
+  flex: none;
 }
-/* 会话简介（官方会话名） */
+/* 会话简介（官方会话名）：浮层里优先让位省略 */
 .chip .sname {
   font-style: normal;
   font-size: 10.5px;
   color: var(--muted);
-  max-width: 10em;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .chip .dot, .agent-line .dot {
-  width: 8px; height: 8px; border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
   background: var(--someday);
   flex: none;
 }
-/* 在线船：绿底胶囊 + 呼吸灯，顶栏一眼可辨 */
+/* 在线船：绿灯芯片 + 呼吸方块灯 */
 .chip.online {
-  background: rgba(79, 208, 138, .13);
-  border-color: rgba(79, 208, 138, .45);
+  background: var(--ok-soft);
+  border-color: var(--ok-line);
 }
-.chip.online b { color: #b8f0d0; }
+.chip.online b { color: var(--ok-ink); }
 .chip.online .dot {
   background: var(--ok);
-  box-shadow: 0 0 0 3px rgba(79, 208, 138, .18);
   animation: pulse 2s ease-in-out infinite;
 }
-.chip.online em { color: #9fe0bd; }
+.chip.online em { color: var(--ok-ink); }
 .chip.offline { opacity: .72; }
 .chip.offline .dot { background: var(--someday); }
 .chip.offline em { color: var(--muted); }
 .chip.muted { color: var(--muted); border-style: dashed; background: transparent; }
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(79, 208, 138, .18); }
-  50% { box-shadow: 0 0 0 5px rgba(79, 208, 138, .07); }
+  0%, 100% { box-shadow: 0 0 0 3px var(--pulse-1); }
+  50% { box-shadow: 0 0 0 5px var(--pulse-2); }
 }
 
 /* 草稿/锚地详情的显眼打磨入口 */
@@ -156,24 +386,24 @@ a { color: inherit; }
   display: inline-block;
   margin-top: 10px;
   padding: 9px 16px;
-  border-radius: 10px;
-  border: 1px dashed var(--amber);
+  border-radius: 6px;
+  border: 2px dashed var(--amber-line);
   color: var(--amber);
   font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  background: rgba(224, 177, 95, .07);
+  background: var(--amber-soft);
 }
-.btn-edit:active { background: rgba(224, 177, 95, .18); }
+.btn-edit:active { filter: brightness(1.1); }
 
-/* ---------- 表单基础 ---------- */
+/* ---------- 表单基础（像素硬键风） ---------- */
 
 input, select, textarea, button {
   font: inherit;
-  color: var(--foam);
-  border-radius: 10px;
-  border: 1px solid var(--sea-3);
-  background: var(--sea-2);
+  color: var(--ink);
+  border-radius: 6px;
+  border: 2px solid var(--line);
+  background: var(--panel);
   padding: 9px 12px;
 }
 input, textarea { width: 100%; }
@@ -184,20 +414,24 @@ input:focus, select:focus, textarea:focus {
 }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 select { padding: 8px 10px; cursor: pointer; }
-option { background: var(--sea-2); }
+option { background: var(--panel); color: var(--ink); }
 
 button {
   cursor: pointer;
-  background: var(--sea-3);
-  border-color: transparent;
+  background: var(--panel-3);
+  box-shadow: 2px 2px 0 var(--px-shadow);
   font-weight: 600;
-  transition: transform .06s ease, filter .15s ease;
+  transition: transform .06s ease, box-shadow .06s ease, filter .15s ease;
   min-height: 38px;
 }
-button:hover { filter: brightness(1.12); }
-button:active { transform: scale(.97); }
-button.primary { background: var(--amber); color: #2a1c00; }
-button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radius: 999px; }
+button:hover { filter: brightness(1.1); }
+button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--px-shadow); }
+button.primary {
+  background: var(--amber);
+  border-color: var(--amber-line);
+  color: var(--amber-ink);
+}
+button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radius: 5px; }
 
 /* ---------- 捕获区 ---------- */
 
@@ -205,8 +439,8 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   margin-top: 18px;
   display: grid;
   gap: 8px;
-  background: var(--sea-2);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line);
   border-radius: var(--radius);
   padding: 12px;
   box-shadow: var(--shadow);
@@ -254,13 +488,13 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 /* ---------- 卡片 ---------- */
 
 .card {
-  background: linear-gradient(180deg, var(--sea-2), #0f273d);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line);
   border-left: 4px solid var(--normal);
   border-radius: var(--radius);
   padding: 12px 14px;
   margin-bottom: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+  box-shadow: var(--shadow);
 }
 .card.imp-critical { border-left-color: var(--critical); }
 .card.imp-high { border-left-color: var(--high); }
@@ -268,7 +502,9 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .card.imp-someday { border-left-color: var(--someday); }
 .card.status-done { opacity: .72; }
 .card.status-blocked { border-left-color: var(--block); }
-.card.has-agent { box-shadow: 0 0 0 1px rgba(79, 208, 138, .35), 0 2px 8px rgba(0, 0, 0, .18); }
+.card.has-agent {
+  box-shadow: 0 0 0 2px var(--ok-line), var(--shadow);
+}
 
 .card-head {
   display: flex;
@@ -278,7 +514,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   color: var(--muted);
   margin-bottom: 4px;
 }
-.card-head .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--foam); opacity: .75; }
+.card-head .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); opacity: .75; }
 .card-head .imp { white-space: nowrap; }
 .card-head .assignee { margin-left: auto; white-space: nowrap; }
 .imp-critical .card-head .imp, .detail-head.imp-critical .imp { color: var(--critical); }
@@ -298,9 +534,9 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .badge {
   font-size: 11px;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: 3px;
 }
-.badge.block { background: #e07a5f22; color: var(--block); }
+.badge.block { background: var(--block-soft); color: var(--block); }
 
 .agent-line {
   display: flex;
@@ -308,11 +544,11 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   gap: 6px;
   min-height: 0;
   font-size: 12px;
-  color: #9fe0bd;
+  color: var(--ok-ink);
   margin-top: 8px;
 }
 .agent-line:empty { display: none; }
-.agent-line .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 208, 138, .18); }
+.agent-line .dot { background: var(--ok); animation: pulse 2s ease-in-out infinite; }
 
 .actions { display: flex; gap: 8px; margin-top: 10px; }
 .actions form { display: contents; }
@@ -322,16 +558,17 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 
 .detail {
   width: min(760px, calc(100% - 32px));
-  margin: 20px auto 60px;
+  margin: 20px auto 40px;
 }
 .back { color: var(--amber); text-decoration: none; font-size: 14px; }
 .detail-head {
-  background: var(--sea-2);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line);
   border-left: 4px solid var(--normal);
   border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow);
 }
 .detail-head.imp-critical { border-left-color: var(--critical); }
 .detail-head.imp-high { border-left-color: var(--high); }
@@ -341,22 +578,22 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .meta-line { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .status {
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 12px;
-  background: var(--sea-3);
-  color: var(--foam);
+  background: var(--panel-3);
+  color: var(--ink);
 }
 /* 注意：卡片 article 也带 status-xxx 类，徽章颜色必须限定到 .status */
-.status.status-draft { background: #5aa9e622; color: var(--busy); }
-.status.status-anchored { background: #88a3b822; color: var(--muted); }
-.status.status-ready { background: #5aa9e622; color: var(--busy); }
-.status.status-in_progress { background: #f2b54422; color: var(--amber); }
-.status.status-blocked { background: #e07a5f22; color: var(--block); }
-.status.status-done { background: #4fd08a22; color: var(--ok); }
+.status.status-draft { background: var(--busy-soft); color: var(--busy); }
+.status.status-anchored { background: var(--busy-soft); color: var(--muted); }
+.status.status-ready { background: var(--busy-soft); color: var(--busy); }
+.status.status-in_progress { background: var(--amber-soft); color: var(--amber); }
+.status.status-blocked { background: var(--block-soft); color: var(--block); }
+.status.status-done { background: var(--ok-soft); color: var(--ok); }
 
 .detail-agent { margin-top: 10px; font-size: 13px; }
 .detail-agent.offline { color: var(--muted); }
-.detail-agent.online { color: #9fe0bd; }
+.detail-agent.online { color: var(--ok-ink); }
 
 .actions.big {
   display: flex;
@@ -380,18 +617,18 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .banner {
   width: 100%;
   margin: 0;
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 10px 14px;
   font-size: 13.5px;
   line-height: 1.6;
 }
-.banner.sea { background: #5aa9e618; border: 1px solid #5aa9e655; color: #b9d9f2; }
-.banner.block { background: #e07a5f18; border: 1px solid #e07a5f55; color: #ffc9bb; }
-.banner.done { background: #4fd08a18; border: 1px solid #4fd08a55; color: #a9e6c6; }
+.banner.sea { background: var(--banner-sea-bg); border: 1.5px solid var(--banner-sea-line); color: var(--banner-sea-ink); }
+.banner.block { background: var(--block-soft); border: 1.5px solid var(--block-line); color: var(--banner-block-ink); }
+.banner.done { background: var(--banner-done-bg); border: 1.5px solid var(--banner-done-line); color: var(--banner-done-ink); }
 
 .detail section {
-  background: var(--sea-2);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line);
   border-radius: var(--radius);
   padding: 14px 18px;
   margin-bottom: 14px;
@@ -406,10 +643,11 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   width: 26px; height: 26px;
   min-height: 26px;
   padding: 0;
-  border-radius: 8px;
-  border: 1.5px solid var(--sea-3);
+  border-radius: 5px;
+  border: 2px solid var(--line);
   background: transparent;
   color: transparent;
+  box-shadow: none;
   flex: none;
 }
 .checkbox.on { background: var(--ok); border-color: var(--ok); color: #08231a; }
@@ -419,28 +657,28 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .logs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .logs li {
   font-size: 13px;
-  color: #c7d8e5;
-  border-left: 2px solid var(--sea-3);
+  color: var(--log-ink);
+  border-left: 2px solid var(--line);
   padding-left: 10px;
 }
 
 .md { font-size: 14.5px; }
 .md h1, .md h2, .md h3 { color: var(--amber); font-size: 15px; margin: 14px 0 6px; }
 .md code {
-  background: var(--sea);
-  border-radius: 5px;
+  background: var(--bg);
+  border-radius: 4px;
   padding: 1px 6px;
   font-size: 13px;
 }
-.md pre { background: var(--sea); padding: 12px; border-radius: 10px; overflow-x: auto; }
+.md pre { background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; }
 .md ul, .md ol { padding-left: 22px; }
 
 .edit {
   margin-top: 18px;
   padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--sea-2);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
   scroll-margin-top: 76px;
 }
 .edit summary {
@@ -459,9 +697,9 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   align-items: center;
   gap: 5px;
   font-size: 13.5px;
-  color: var(--foam);
-  border: 1px solid var(--sea-3);
-  border-radius: 999px;
+  color: var(--ink);
+  border: 2px solid var(--line);
+  border-radius: 5px;
   padding: 5px 14px;
   cursor: pointer;
 }
@@ -469,10 +707,10 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 
 .err {
   margin-top: 12px;
-  background: #e07a5f22;
-  border: 1px solid var(--block);
-  color: #ffc9bb;
-  border-radius: 10px;
+  background: var(--block-soft);
+  border: 2px solid var(--block);
+  color: var(--banner-block-ink);
+  border-radius: 6px;
   padding: 10px 14px;
   font-size: 13.5px;
 }
@@ -481,7 +719,122 @@ footer {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  padding: 28px 0 20px;
+  padding: 14px 0 20px;
+}
+
+/* ---------- 像素码头全景 ---------- */
+
+.harbor {
+  width: min(1180px, calc(100% - 32px));
+  margin: 8px auto 0;
+  line-height: 0;
+  pointer-events: none;
+}
+.harbor svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 108px;
+}
+.harbor .px-tower { fill: var(--px-tower); }
+.harbor .px-stripe { fill: var(--px-stripe); }
+.harbor .px-cap { fill: var(--px-cap); }
+.harbor .px-frame { fill: var(--px-frame); }
+.harbor .px-base { fill: var(--px-base); }
+.harbor .px-base-dark { fill: var(--px-base-dark); }
+.harbor .px-wood { fill: var(--px-wood); }
+.harbor .px-wood-dark { fill: var(--px-wood-dark); }
+.harbor .px-rope { fill: var(--px-rope); }
+.harbor .px-cargo { fill: var(--px-cargo); }
+.harbor .px-crate-band { fill: var(--px-crate-band); }
+.harbor .px-sail { fill: var(--px-sail); }
+.harbor .px-flag { fill: var(--px-flag); }
+.harbor .px-water-deep { fill: var(--px-water-deep); }
+.harbor .px-water-near { fill: var(--px-water-near); }
+.harbor .px-water-far { fill: var(--px-water-far); }
+.harbor .star { fill: var(--star); }
+
+/* 品牌灯塔像素色（与码头全景同款，类名直接挂在各 rect/path 上） */
+.px-tower { fill: var(--px-tower); }
+.px-stripe { fill: var(--px-stripe); }
+.px-cap { fill: var(--px-cap); }
+.px-frame { fill: var(--px-frame); }
+.px-base { fill: var(--px-base); }
+.px-base-dark { fill: var(--px-base-dark); }
+.px-lamp { fill: var(--px-lamp); }
+.px-beam { fill: var(--px-beam); }
+
+/* 灯塔：摩尔斯式硬闪（短-短-长节奏），远岸小灯错峰 */
+.lamp-blink { animation: beaconLamp 3.6s steps(1, end) infinite; }
+.beam-blink { animation: beaconBeam 3.6s steps(1, end) infinite; }
+.far-light .lamp-blink { animation-delay: -1.7s; }
+.lamp-soft { animation: softBlink 2.4s ease-in-out infinite alternate; }
+@keyframes beaconLamp {
+  0%, 10% { opacity: 1; }
+  16%, 44% { opacity: .3; }
+  50%, 60% { opacity: 1; }
+  66%, 100% { opacity: .3; }
+}
+@keyframes beaconBeam {
+  0%, 10% { opacity: .5; }
+  16%, 44% { opacity: 0; }
+  50%, 60% { opacity: .5; }
+  66%, 100% { opacity: 0; }
+}
+@keyframes softBlink { from { opacity: .45; } to { opacity: 1; } }
+
+/* 星星眨眼（日港 star 透明，自动隐藏） */
+.star { animation: twinkle 3s ease-in-out infinite alternate; }
+.star.s2 { animation-delay: -1s; }
+.star.s3 { animation-delay: -2.1s; }
+@keyframes twinkle { from { opacity: .25; } to { opacity: .9; } }
+
+/* 吊机：滑车在两岸间往复，货箱两端吊起/放下，途中轻微摇摆 */
+.crane-anim { animation: craneCycle 9s ease-in-out infinite alternate; }
+@keyframes craneCycle {
+  0%   { transform: translate(22px, 10px); }
+  18%  { transform: translate(22px, 0); }
+  50%  { transform: translate(84px, 0); }
+  82%  { transform: translate(84px, 0); }
+  100% { transform: translate(84px, 10px); }
+}
+.crate {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: crateSway 2.8s ease-in-out infinite alternate;
+}
+@keyframes crateSway {
+  from { transform: rotate(-2.5deg); }
+  to   { transform: rotate(2.5deg); }
+}
+
+/* 波浪：两层反向横移，周期等于图案宽度，无缝循环 */
+.wave-far { fill: var(--px-water-far); animation: waveMove 6.5s linear infinite; }
+.wave-near { fill: var(--px-water-near); animation: waveMoveRev 4.5s linear infinite; }
+@keyframes waveMove { to { transform: translateX(-16px); } }
+@keyframes waveMoveRev { to { transform: translateX(12px); } }
+
+/* 两艘帆船：一来一往，两端淡入淡出，船身轻晃 */
+.ship-a { animation: sailA 26s linear infinite; }
+.ship-b { animation: sailB 34s linear infinite; animation-delay: -13s; }
+.bob-a, .bob-b { transform-box: fill-box; }
+.bob-a { transform-origin: 50% 90%; animation: bob 2.6s ease-in-out infinite alternate; }
+.bob-b { transform-origin: 50% 90%; animation: bob 3.1s ease-in-out infinite alternate; animation-delay: -1.2s; }
+@keyframes sailA {
+  0%   { transform: translateX(116px); opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { transform: translateX(300px); opacity: 0; }
+}
+@keyframes sailB {
+  0%   { transform: translateX(-300px); opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { transform: translateX(-145px); opacity: 0; }
+}
+@keyframes bob {
+  from { transform: translateY(0) rotate(-1.2deg); }
+  to   { transform: translateY(-2px) rotate(1.2deg); }
 }
 
 /* 中等屏：四列改 2×2 */
@@ -493,16 +846,20 @@ footer {
 
 @media (max-width: 720px) {
   body { font-size: 15px; }
-  .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 0; }
-  .top-right { flex: 1 1 100%; width: 100%; }
-  .brand { font-size: 17px; }
-  .brand span { display: none; }
-  .brand em { display: none; }
-  /* 船队状态独占第二行，在忙/上次报到始终可见 */
-  .agents { max-width: none; justify-content: flex-start; gap: 5px; }
-  .chip { padding: 4px 10px; font-size: 11.5px; }
-  .chip b { font-size: 12px; }
-  .chip em { font-size: 10.5px; }
+  .topbar { flex-wrap: nowrap; gap: 8px; padding: 8px 0; }
+  .brand-text i, .brand-text em { display: none; }
+  .brand-text { font-size: 17px; }
+  .brand-mark .px-lighthouse { width: 24px; height: 24px; }
+  .top-right { flex: none; width: auto; gap: 7px; }
+
+  .fleet-pop {
+    right: 0;
+    min-width: 0;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+
+  .harbor svg { max-height: 74px; }
 
   .capture { padding: 10px; }
   .capture-row { flex-wrap: wrap; }
@@ -525,4 +882,16 @@ footer {
   .logform { flex-wrap: wrap; }
   .logform input { flex-basis: 100%; }
   .logform button { flex: 1 1 100%; }
+}
+
+/* 尊重系统「减少动态效果」：码头全景保留静态，灯常亮 */
+@media (prefers-reduced-motion: reduce) {
+  *, .lamp-blink, .beam-blink, .lamp-soft, .star,
+  .crane-anim, .crate, .wave-far, .wave-near,
+  .ship-a, .ship-b, .bob-a, .bob-b {
+    animation: none !important;
+  }
+  .lamp-blink, .beam-blink, .lamp-soft { opacity: 1; }
+  .ship-a { transform: translateX(180px); opacity: 1; }
+  .ship-b { transform: translateX(-220px); opacity: 1; }
 }

@@ -1,5 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f2233"/>
-  <text x="256" y="362" font-size="320" text-anchor="middle"
-        fill="#f5b53f" font-family="-apple-system, PingFang SC, sans-serif">港</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <rect width="16" height="16" fill="#221b14"/>
+  <rect x="2" y="3" width="1" height="1" fill="#f0e4cd" opacity=".7"/>
+  <rect x="12" y="5" width="1" height="1" fill="#f0e4cd" opacity=".5"/>
+  <rect x="7" y="1" width="2" height="1" fill="#9c4632"/>
+  <rect x="6" y="2" width="4" height="1" fill="#9c4632"/>
+  <rect x="6" y="3" width="1" height="1" fill="#4a3520"/>
+  <rect x="7" y="3" width="2" height="1" fill="#ffd668"/>
+  <rect x="9" y="3" width="1" height="1" fill="#4a3520"/>
+  <rect x="6" y="4" width="4" height="1" fill="#4a3520"/>
+  <rect x="6" y="5" width="4" height="2" fill="#c06a45"/>
+  <rect x="6" y="7" width="4" height="1" fill="#f0e4cd"/>
+  <rect x="5" y="8" width="6" height="1" fill="#c06a45"/>
+  <rect x="5" y="9" width="6" height="1" fill="#f0e4cd"/>
+  <rect x="5" y="10" width="6" height="1" fill="#c06a45"/>
+  <rect x="4" y="11" width="8" height="1" fill="#f0e4cd"/>
+  <rect x="4" y="12" width="8" height="1" fill="#c06a45"/>
+  <rect x="2" y="12" width="12" height="1" fill="#6b4f30"/>
+  <path d="M0 13h2v-1h2v1h2v-1h2v1h2v-1h2v1h2v-1h2v1h0v3H0z" fill="#3a5a63"/>
+  <rect x="0" y="14" width="16" height="2" fill="#243944"/>
 </svg>

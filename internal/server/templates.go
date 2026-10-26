@@ -5,7 +5,8 @@ const head = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b1c2c">
+<meta name="theme-color" content="#221b14">
+<script>(function(){try{var t=localStorage.getItem('mindport-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.dataset.theme='light';}catch(e){}})();</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -16,11 +17,152 @@ const head = `<!doctype html>
 
 {{define "topbar"}}
 <header class="topbar">
-  <a class="brand" href="/">思港 <span>MindPort</span><em>调度长官台</em></a>
+  <a class="brand" href="/">
+    <span class="brand-mark">{{template "pxLighthouse" .}}</span>
+    <span class="brand-text">思港 <i>MindPort</i><em>调度长官台</em></span>
+  </a>
   <div class="top-right">
-    <div id="agents" class="agents">{{template "chips" .Agents}}</div>
+    <button id="theme-toggle" class="icon-btn" type="button"
+            aria-label="切换到日间配色（日港）" title="切换日港 / 夜港配色">
+      <svg class="icon-sun" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">
+        <rect x="4" y="4" width="4" height="4"/>
+        <rect x="5" y="1" width="2" height="2"/><rect x="5" y="9" width="2" height="2"/>
+        <rect x="1" y="5" width="2" height="2"/><rect x="9" y="5" width="2" height="2"/>
+        <rect x="2" y="2" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/>
+        <rect x="2" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/>
+      </svg>
+      <svg class="icon-moon" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">
+        <rect x="4" y="2" width="4" height="1"/><rect x="3" y="3" width="6" height="6"/>
+        <rect x="4" y="9" width="4" height="1"/>
+        <rect x="5" y="4" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/>
+      </svg>
+    </button>
+    <details class="fleet" id="fleet">
+      <summary class="fleet-btn">
+        <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label">船队</span><b id="fleet-count">…</b><i class="caret"></i>
+      </summary>
+      <div class="fleet-pop">
+        <div class="fleet-pop-head"><span>港内船位</span><span id="fleet-sub"></span></div>
+        <div id="agents" class="agents">{{template "chips" .Agents}}</div>
+      </div>
+    </details>
   </div>
 </header>
+{{end}}
+
+{{/* 16×16 像素灯塔：塔灯按摩尔斯节奏硬闪，夜港两束扫光，日港只亮灯 */}}
+{{define "pxLighthouse"}}
+<svg class="px-lighthouse" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+  <g class="beam-blink">
+    <path class="px-beam" d="M0 2h7v1H0zM9 2h7v1H9zM0 4h8v1H0zM8 4h8v1H8z"/>
+  </g>
+  <rect x="7" y="1" width="2" height="1" class="px-cap"/>
+  <rect x="6" y="2" width="4" height="1" class="px-cap"/>
+  <rect x="6" y="3" width="1" height="1" class="px-frame"/>
+  <rect x="7" y="3" width="2" height="1" class="px-lamp lamp-blink"/>
+  <rect x="9" y="3" width="1" height="1" class="px-frame"/>
+  <rect x="6" y="4" width="4" height="1" class="px-frame"/>
+  <rect x="6" y="5" width="4" height="2" class="px-tower"/>
+  <rect x="6" y="7" width="4" height="1" class="px-stripe"/>
+  <rect x="5" y="8" width="6" height="1" class="px-tower"/>
+  <rect x="5" y="9" width="6" height="1" class="px-stripe"/>
+  <rect x="5" y="10" width="6" height="1" class="px-tower"/>
+  <rect x="4" y="11" width="8" height="1" class="px-stripe"/>
+  <rect x="4" y="12" width="8" height="1" class="px-tower"/>
+  <rect x="3" y="13" width="10" height="1" class="px-base"/>
+  <rect x="3" y="14" width="10" height="1" class="px-base"/>
+  <rect x="3" y="15" width="10" height="1" class="px-base-dark"/>
+</svg>
+{{end}}
+
+{{/* 页脚像素码头全景：吊机来回搬货箱、两艘帆船对开、波浪横移、远岸小灯错峰闪烁 */}}
+{{define "harbor"}}
+<div class="harbor" aria-hidden="true">
+<svg viewBox="0 0 360 96" preserveAspectRatio="xMidYMax meet" shape-rendering="crispEdges">
+  <rect class="star" x="58" y="12" width="2" height="2"/>
+  <rect class="star s2" x="180" y="8" width="2" height="2"/>
+  <rect class="star s3" x="258" y="20" width="2" height="2"/>
+
+  <!-- 右岸小灯塔（灯与左上角主灯错峰闪） -->
+  <g class="far-light">
+    <rect x="333" y="28" width="2" height="1" class="px-cap"/>
+    <rect x="332" y="29" width="4" height="1" class="px-cap"/>
+    <rect x="332" y="30" width="1" height="1" class="px-frame"/>
+    <rect x="333" y="30" width="2" height="1" class="px-lamp lamp-blink"/>
+    <rect x="335" y="30" width="1" height="1" class="px-frame"/>
+    <rect x="332" y="31" width="4" height="1" class="px-frame"/>
+    <rect x="333" y="32" width="2" height="5" class="px-tower"/>
+    <rect x="333" y="34" width="2" height="1" class="px-stripe"/>
+    <rect x="332" y="37" width="4" height="3" class="px-tower"/>
+    <rect x="332" y="39" width="4" height="1" class="px-stripe"/>
+    <rect x="331" y="40" width="6" height="4" class="px-tower"/>
+    <rect x="331" y="43" width="6" height="1" class="px-stripe"/>
+    <rect x="330" y="44" width="8" height="18" class="px-base"/>
+  </g>
+  <rect x="318" y="62" width="42" height="8" class="px-base-dark"/>
+
+  <!-- 左岸码头 -->
+  <rect x="0" y="56" width="120" height="6" class="px-wood"/>
+  <rect x="0" y="62" width="120" height="2" class="px-wood-dark"/>
+  <rect x="8" y="64" width="4" height="8" class="px-wood-dark"/>
+  <rect x="28" y="64" width="4" height="9" class="px-wood-dark"/>
+  <rect x="48" y="64" width="4" height="8" class="px-wood-dark"/>
+  <rect x="68" y="64" width="4" height="9" class="px-wood-dark"/>
+  <rect x="88" y="64" width="4" height="8" class="px-wood-dark"/>
+  <rect x="108" y="64" width="4" height="9" class="px-wood-dark"/>
+
+  <!-- 门式吊机 -->
+  <rect x="12" y="14" width="6" height="42" class="px-wood"/>
+  <rect x="100" y="22" width="6" height="34" class="px-wood"/>
+  <rect x="10" y="10" width="106" height="6" class="px-wood"/>
+  <rect x="10" y="16" width="106" height="2" class="px-wood-dark"/>
+  <rect x="13" y="10" width="3" height="2" class="px-lamp lamp-soft"/>
+  <rect x="12" y="24" width="6" height="3" class="px-wood-dark"/>
+  <rect x="12" y="36" width="6" height="3" class="px-wood-dark"/>
+  <rect x="100" y="32" width="6" height="3" class="px-wood-dark"/>
+  <rect x="100" y="44" width="6" height="3" class="px-wood-dark"/>
+
+  <!-- 滑车 + 吊索 + 货箱：横梁上往复，两端吊起放下 -->
+  <g class="crane-anim">
+    <rect x="0" y="16" width="12" height="4" class="px-wood-dark"/>
+    <rect x="1" y="20" width="2" height="2" class="px-base-dark"/>
+    <rect x="9" y="20" width="2" height="2" class="px-base-dark"/>
+    <rect x="5" y="20" width="2" height="18" class="px-rope"/>
+    <rect x="4" y="38" width="4" height="2" class="px-base-dark"/>
+    <g class="crate">
+      <rect x="-2" y="40" width="16" height="11" class="px-cargo"/>
+      <rect x="-2" y="40" width="16" height="2" class="px-crate-band"/>
+      <rect x="5" y="40" width="2" height="11" class="px-crate-band"/>
+    </g>
+  </g>
+
+  <!-- 水面与波浪（两层反向横移，图案周期无缝） -->
+  <rect x="0" y="70" width="360" height="26" class="px-water-deep"/>
+  <path class="wave wave-far" d="M-16 68h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8v2h-384z"/>
+  <path class="wave wave-near" d="M-12 74h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6v3h-372z"/>
+
+  <!-- 两艘帆船对开（远小近大），各自轻轻摇晃。
+       船体直接内联两份：<use> 影子树吃不到外部 class 选择器，会渲染成黑剪影。 -->
+  <g transform="translate(0,46)"><g class="ship-a"><g class="bob-a"><g transform="scale(1.25)">
+    <rect x="7" y="1" width="1" height="11" class="px-rope"/>
+    <rect x="8" y="1" width="2" height="1" class="px-flag"/>
+    <path class="px-sail" d="M7 2h1v1H7zM6 3h2v1H6zM5 4h3v1H5zM4 5h4v1H4zM3 6h5v2H3zM2 8h6v2H2zM1 10h7v1H1z"/>
+    <rect x="2" y="11" width="12" height="1" class="px-wood"/>
+    <rect x="1" y="12" width="14" height="1" class="px-wood"/>
+    <rect x="2" y="13" width="12" height="1" class="px-wood-dark"/>
+    <rect x="4" y="14" width="8" height="1" class="px-wood-dark"/>
+  </g></g></g></g>
+  <g transform="translate(0,50) scale(-1,1)"><g class="ship-b"><g class="bob-b"><g transform="scale(1.55)">
+    <rect x="7" y="1" width="1" height="11" class="px-rope"/>
+    <rect x="8" y="1" width="2" height="1" class="px-flag"/>
+    <path class="px-sail" d="M7 2h1v1H7zM6 3h2v1H6zM5 4h3v1H5zM4 5h4v1H4zM3 6h5v2H3zM2 8h6v2H2zM1 10h7v1H1z"/>
+    <rect x="2" y="11" width="12" height="1" class="px-wood"/>
+    <rect x="1" y="12" width="14" height="1" class="px-wood"/>
+    <rect x="2" y="13" width="12" height="1" class="px-wood-dark"/>
+    <rect x="4" y="14" width="8" height="1" class="px-wood-dark"/>
+  </g></g></g></g>
+</svg>
+</div>
 {{end}}
 
 {{define "chips"}}
@@ -56,6 +198,33 @@ const head = `<!doctype html>
 const sseBoot = `
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+// 日港 / 夜港配色切换（选择持久化；head 内联脚本已提前设置 data-theme，无闪烁）
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  var meta = document.querySelector('meta[name="theme-color"]');
+  function apply(t) {
+    root.dataset.theme = t;
+    if (meta) meta.setAttribute('content', t === 'light' ? '#f1e6cf' : '#221b14');
+    if (btn) {
+      btn.setAttribute('aria-label', t === 'light' ? '切换到夜间配色（夜港）' : '切换到日间配色（日港）');
+      btn.title = t === 'light' ? '切回夜港配色' : '切到日港配色';
+    }
+    try { localStorage.setItem('mindport-theme', t); } catch (e) {}
+  }
+  if (btn) btn.addEventListener('click', function () {
+    apply(root.dataset.theme === 'light' ? 'dark' : 'light');
+  });
+})();
+// 船队浮层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换内部列表，不丢状态）
+document.addEventListener('click', function (e) {
+  var f = document.getElementById('fleet');
+  if (f && f.open && !f.contains(e.target)) f.open = false;
+});
+document.addEventListener('keydown', function (e) {
+  var f = document.getElementById('fleet');
+  if (e.key === 'Escape' && f) f.open = false;
+});
 (function () {
   var es = new EventSource('/events');
   es.addEventListener('changed', function () {
@@ -134,6 +303,15 @@ document.addEventListener('submit', function (e) {
     fetch('/api/agents').then(function (r) { return r.json(); }).then(function (agents) {
       var box = document.getElementById('agents');
       if (box) box.innerHTML = chips(agents);
+      var live = agents.filter(function (p) { return p.online; }).length;
+      var fleet = document.getElementById('fleet');
+      if (fleet) {
+        fleet.classList.toggle('has-live', live > 0);
+        var cnt = document.getElementById('fleet-count');
+        var sub = document.getElementById('fleet-sub');
+        if (cnt) cnt.textContent = live;
+        if (sub) sub.textContent = live + ' 在线 · 共 ' + agents.length + ' 个会话';
+      }
       var byTask = {};
       agents.forEach(function (p) { if (p.online && p.task) byTask[p.task] = p; });
       document.querySelectorAll('[data-task]').forEach(function (card) {
@@ -218,6 +396,7 @@ const boardHTML = head + `
   {{end}}
 </section>
 
+{{template "harbor" .}}
 <footer>调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</footer>
 ` + sseBoot + `
 </body></html>`
@@ -361,5 +540,6 @@ const taskHTML = head + `
     </ul>
   </section>
 </article>
+{{template "harbor" .}}
 ` + sseBoot + `
 </body></html>`
