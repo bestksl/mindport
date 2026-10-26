@@ -341,7 +341,7 @@ h2 { font-size: 14px; margin: 22px 0 10px; color: var(--amber); letter-spacing: 
 h2 small { color: var(--muted); font-weight: 400; margin-left: 4px; }
 a { color: inherit; }
 
-.wrap, .topbar > *, .capture, .board, .drafts, .err, footer {
+.wrap, .topbar > *, .capture, .board, .drafts, .err {
   width: min(1180px, calc(100% - 32px));
   margin-inline: auto;
 }
@@ -933,55 +933,64 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   font-size: 13.5px;
 }
 
-footer {
+/* ---------- 入港信条小字（行动区下方，不占页脚） ---------- */
+.capture-hint {
+  margin: 8px 0 0;
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  padding: 14px 0 20px;
+  letter-spacing: 1px;
 }
 
-/* ---------- 像素码头全景 ---------- */
+/* ---------- 草稿：放行 + 删除并排；删除是危险操作，单色描边 ---------- */
+.draft-actions { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+.draft-actions .publish-row { flex: 1; margin-top: 0; min-width: 0; }
+.del-form { margin: 0; display: inline-flex; }
+.detail-del { margin-top: 10px; }
+button.danger {
+  background: var(--panel);
+  color: var(--critical);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--px-shadow);
+  padding: 0 12px;
+  font-weight: 700;
+  min-height: 38px;
+}
+button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
 
-.harbor {
-  width: min(1180px, calc(100% - 32px));
-  margin: 4px auto 0;
-  line-height: 0;
+/* ---------- 顶栏中间微型海景 ---------- */
+.top-sea {
+  flex: 1 1 auto;
+  min-width: 48px;
+  height: 36px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
   pointer-events: none;
+  overflow: hidden;
 }
-.harbor svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 92px;
-}
-.harbor .px-tower { fill: var(--px-tower); }
-.harbor .px-stripe { fill: var(--px-stripe); }
-.harbor .px-cap { fill: var(--px-cap); }
-.harbor .px-frame { fill: var(--px-frame); }
-.harbor .px-base { fill: var(--px-base); }
-.harbor .px-base-dark { fill: var(--px-base-dark); }
-.harbor .px-wood { fill: var(--px-wood); }
-.harbor .px-wood-dark { fill: var(--px-wood-dark); }
-.harbor .px-rope { fill: var(--px-rope); }
-.harbor .px-cargo { fill: var(--px-cargo); }
-.harbor .px-crate-band { fill: var(--px-crate-band); }
-.harbor .px-sail { fill: var(--px-sail); }
-.harbor .px-flag { fill: var(--px-flag); }
-.harbor .px-water-deep { fill: var(--px-water-deep); }
-.harbor .px-water-near { fill: var(--px-water-near); }
-.harbor .px-water-far { fill: var(--px-water-far); }
-.harbor .star { fill: var(--star); }
+.mini-sea { width: 100%; max-width: 280px; height: 36px; display: block; }
+.mini-sea .px-wood { fill: var(--px-wood); }
+.mini-sea .px-wood-dark { fill: var(--px-wood-dark); }
+.mini-sea .px-rope { fill: var(--px-rope); }
+.mini-sea .px-cargo { fill: var(--px-cargo); }
+.mini-sea .px-crate-band { fill: var(--px-crate-band); }
+.mini-sea .px-water-deep { fill: var(--px-water-deep); }
+.mini-sea .px-water-far { fill: var(--px-water-far); }
+.mini-sea .px-water-near { fill: var(--px-water-near); }
 
-/* Q 版集装箱货轮 */
-.harbor .px-hull { fill: var(--px-hull); }
-.harbor .px-hull-dark { fill: var(--px-hull-dark); }
-.harbor .px-cabin { fill: var(--px-cabin); }
-.harbor .px-stack { fill: var(--px-stack); }
-.harbor .px-box-a { fill: var(--px-box-a); }
-.harbor .px-box-b { fill: var(--px-box-b); }
-.harbor .px-box-c { fill: var(--px-box-c); }
-.harbor .px-box-d { fill: var(--px-box-d); }
-.harbor .px-box-band { fill: var(--px-box-band); }
+/* Q 版集装箱货轮像素色 */
+.mini-sea .px-hull { fill: var(--px-hull); }
+.mini-sea .px-hull-dark { fill: var(--px-hull-dark); }
+.mini-sea .px-cabin { fill: var(--px-cabin); }
+.mini-sea .px-stack { fill: var(--px-stack); }
+.mini-sea .px-box-a { fill: var(--px-box-a); }
+.mini-sea .px-box-b { fill: var(--px-box-b); }
+.mini-sea .px-box-c { fill: var(--px-box-c); }
+.mini-sea .px-box-d { fill: var(--px-box-d); }
+.mini-sea .px-box-band { fill: var(--px-box-band); }
+
 .px-smoke {
   fill: var(--px-smoke);
   transform-box: fill-box;
@@ -994,7 +1003,7 @@ footer {
   100% { opacity: .08; transform: translate(2px, -2px) scale(.8); }
 }
 
-/* 品牌灯塔像素色（与码头全景同款，类名直接挂在各 rect/path 上） */
+/* 品牌灯塔像素色（类名直接挂在各 rect/path 上，顶栏灯塔共用） */
 .px-tower { fill: var(--px-tower); }
 .px-stripe { fill: var(--px-stripe); }
 .px-cap { fill: var(--px-cap); }
@@ -1004,10 +1013,9 @@ footer {
 .px-lamp { fill: var(--px-lamp); }
 .px-beam { fill: var(--px-beam); }
 
-/* 灯塔：摩尔斯式硬闪（短-短-长节奏），远岸小灯错峰 */
+/* 灯塔：摩尔斯式硬闪（短-短-长节奏） */
 .lamp-blink { animation: beaconLamp 3.6s steps(1, end) infinite; }
 .beam-blink { animation: beaconBeam 3.6s steps(1, end) infinite; }
-.far-light .lamp-blink { animation-delay: -1.7s; }
 .lamp-soft { animation: softBlink 2.4s ease-in-out infinite alternate; }
 @keyframes beaconLamp {
   0%, 10% { opacity: 1; }
@@ -1023,58 +1031,43 @@ footer {
 }
 @keyframes softBlink { from { opacity: .45; } to { opacity: 1; } }
 
-/* 星星眨眼（日港 star 透明，自动隐藏） */
-.star { animation: twinkle 3s ease-in-out infinite alternate; }
-.star.s2 { animation-delay: -1s; }
-.star.s3 { animation-delay: -2.1s; }
-@keyframes twinkle { from { opacity: .25; } to { opacity: .9; } }
-
-/* 吊机：滑车在两岸间往复，货箱两端吊起/放下，途中轻微摇摆 */
-.crane-anim { animation: craneCycle 9s ease-in-out infinite alternate; }
-@keyframes craneCycle {
-  0%   { transform: translate(22px, 10px); }
-  18%  { transform: translate(22px, 0); }
-  50%  { transform: translate(84px, 0); }
-  82%  { transform: translate(84px, 0); }
-  100% { transform: translate(84px, 10px); }
-}
-.crate {
+/* 迷你吊机：货箱轻轻起吊 */
+.mini-lift {
   transform-box: fill-box;
-  transform-origin: 50% 0;
-  animation: crateSway 2.8s ease-in-out infinite alternate;
+  animation: miniLift 3.4s ease-in-out infinite alternate;
 }
-@keyframes crateSway {
-  from { transform: rotate(-2.5deg); }
-  to   { transform: rotate(2.5deg); }
+@keyframes miniLift {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-3px); }
 }
 
-/* 波浪：两层反向横移，周期等于图案宽度，无缝循环 */
-.wave-far { fill: var(--px-water-far); animation: waveMove 6.5s linear infinite; }
-.wave-near { fill: var(--px-water-near); animation: waveMoveRev 4.5s linear infinite; }
-@keyframes waveMove { to { transform: translateX(-16px); } }
-@keyframes waveMoveRev { to { transform: translateX(12px); } }
+/* 波浪：两层向左横移，位移等于图案周期（远 10 / 近 8），无缝循环 */
+.mini-wave-far { animation: miniWaveFar 1.1s linear infinite; }
+.mini-wave-near { animation: miniWaveNear .8s linear infinite; }
+@keyframes miniWaveFar { to { transform: translateX(-10px); } }
+@keyframes miniWaveNear { to { transform: translateX(-8px); } }
 
-/* 两艘货轮：一来一往，两端淡入淡出，船身轻晃（航线避开左岸码头与灯塔岛） */
-.ship-a { animation: sailA 26s linear infinite; }
-.ship-b { animation: sailB 34s linear infinite; animation-delay: -13s; }
-.bob-a, .bob-b { transform-box: fill-box; }
-.bob-a { transform-origin: 50% 90%; animation: bob 2.6s ease-in-out infinite alternate; }
-.bob-b { transform-origin: 50% 90%; animation: bob 3.1s ease-in-out infinite alternate; animation-delay: -1.2s; }
-@keyframes sailA {
-  0%   { transform: translateX(124px); opacity: 0; }
-  8%   { opacity: 1; }
-  92%  { opacity: 1; }
-  100% { transform: translateX(284px); opacity: 0; }
+/* 货轮：开到右端掉头再开回来，船身随浪轻晃；掉头用 scaleX 原地翻面 */
+.mini-ship {
+  transform-box: fill-box;
+  transform-origin: 50% 60%;
+  animation: miniSail 26s linear infinite;
 }
-@keyframes sailB {
-  0%   { transform: translateX(-294px); opacity: 0; }
-  8%   { opacity: 1; }
-  92%  { opacity: 1; }
-  100% { transform: translateX(-170px); opacity: 0; }
+@keyframes miniSail {
+  0%    { transform: translateX(54px) scaleX(1); }
+  46%   { transform: translateX(214px) scaleX(1); }
+  50%   { transform: translateX(214px) scaleX(-1); }
+  96%   { transform: translateX(54px) scaleX(-1); }
+  100%  { transform: translateX(54px) scaleX(1); }
 }
-@keyframes bob {
-  from { transform: translateY(0) rotate(-1.2deg); }
-  to   { transform: translateY(-2px) rotate(1.2deg); }
+.mini-bob {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+  animation: miniBob 2.6s ease-in-out infinite alternate;
+}
+@keyframes miniBob {
+  from { transform: translateY(0) rotate(-1.5deg); }
+  to   { transform: translateY(-1.5px) rotate(1.5deg); }
 }
 
 /* 中等屏：四列改 2×2 */
@@ -1099,8 +1092,9 @@ footer {
     max-width: calc(100vw - 32px);
   }
 
-  .harbor { margin-top: 2px; }
-  .harbor svg { max-height: 64px; }
+  .top-sea { height: 28px; min-width: 36px; margin: 0 2px; }
+  .mini-sea { max-width: 150px; height: 28px; }
+  .mini-port { display: none; }
 
   .capture { padding: 10px; }
   .capture-row { flex-wrap: wrap; }
@@ -1125,15 +1119,156 @@ footer {
   .logform button { flex: 1 1 100%; }
 }
 
-/* 尊重系统「减少动态效果」：码头全景保留静态，灯常亮 */
+/* 尊重系统「减少动态效果」：微型海景保留静态（船停在港中），灯常亮 */
 @media (prefers-reduced-motion: reduce) {
-  *, .lamp-blink, .beam-blink, .lamp-soft, .star,
-  .crane-anim, .crate, .wave-far, .wave-near,
-  .ship-a, .ship-b, .bob-a, .bob-b, .px-smoke {
+  .lamp-blink, .beam-blink, .lamp-soft, .px-smoke,
+  .mini-lift, .mini-wave-far, .mini-wave-near, .mini-ship, .mini-bob {
     animation: none !important;
   }
   .px-smoke { opacity: .35; }
   .lamp-blink, .beam-blink, .lamp-soft { opacity: 1; }
-  .ship-a { transform: translateX(180px); opacity: 1; }
-  .ship-b { transform: translateX(-220px); opacity: 1; }
+  .mini-ship { transform: translateX(128px); }
+}
+
+/* ============================================================
+   防老板皮相（stealth / "debug console"）
+   html[data-stealth="1"] 由 head 内联脚本据 sessionStorage.mpdbg
+   提前设置：刷新不露馅，关掉标签页即恢复。顶栏 </> 一个按钮切换。
+   ============================================================ */
+.stealth-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: .42;
+  cursor: pointer;
+  padding: 6px 5px;
+  min-height: 32px;
+  box-shadow: none;
+}
+.stealth-btn:hover { opacity: 1; filter: none; }
+.stealth-btn:active { transform: none; box-shadow: none; }
+.stealth-btn .s-back { display: none; }
+.stealth-btn.on .s-go { display: none; }
+.stealth-btn.on .s-back { display: inline; }
+
+html[data-stealth="1"] body::before {
+  content: "mindportd/3.1 [dbg] tcp/0.0.0.0:8787 — GET /api/state 200 4ms · GET /api/agents 200 9ms · GET /events 200 (text/event-stream)";
+  display: block;
+  background: #000;
+  color: #cfcfcf;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.7;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+html[data-stealth="1"],
+html[data-stealth="1"] body {
+  background: #fff !important;
+  color: #000 !important;
+}
+html[data-stealth="1"] * {
+  background: #fff !important;
+  color: #000 !important;
+  border-color: #000 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  animation: none !important;
+  transition: none !important;
+  letter-spacing: 0 !important;
+}
+html[data-stealth="1"] a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* 布局：去居中限宽，像内部调试台一样铺满 */
+html[data-stealth="1"] .topbar {
+  position: static;
+  width: auto;
+  margin: 0;
+  gap: 12px;
+  padding: 4px 10px;
+  border-bottom: 1px solid #000;
+}
+html[data-stealth="1"] .wrap,
+html[data-stealth="1"] .capture,
+html[data-stealth="1"] .board,
+html[data-stealth="1"] .drafts,
+html[data-stealth="1"] .err,
+html[data-stealth="1"] .detail {
+  width: auto !important;
+  margin: 0 !important;
+  padding-inline: 10px;
+}
+
+/* 装饰全部撤场 */
+html[data-stealth="1"] .top-sea,
+html[data-stealth="1"] .brand-mark,
+html[data-stealth="1"] .caret,
+html[data-stealth="1"] .fleet-dot,
+html[data-stealth="1"] #themes { display: none !important; }
+
+/* 中文招牌换英文变量名：::before 顶替元素内文本 */
+html[data-stealth="1"] .brand { font-size: 0; text-decoration: none; }
+html[data-stealth="1"] .brand::before { content: attr(data-debug); font-size: 12px; font-weight: 700; }
+html[data-stealth="1"] .brand > * { display: none !important; }
+
+html[data-stealth="1"] .fleet-label { font-size: 0; }
+html[data-stealth="1"] .fleet-label::before { content: attr(data-debug); font-size: 12px; }
+
+html[data-stealth="1"] .capture-hint { text-align: left; font-size: 0; margin: 3px 0 0; }
+html[data-stealth="1"] .capture-hint::before { content: "// " attr(data-debug); font-size: 10.5px; }
+
+html[data-stealth="1"] h2[data-debug] { color: #000; font-size: 0; margin: 14px 0 5px; }
+html[data-stealth="1"] h2[data-debug]::before { content: "## " attr(data-debug); font-size: 12px; }
+html[data-stealth="1"] h2[data-debug] small { font-size: 11px; }
+
+html[data-stealth="1"] .status[data-debug] {
+  font-size: 0;
+  border: 1px solid #000;
+  padding: 0 5px;
+  display: inline-block;
+}
+html[data-stealth="1"] .status[data-debug]::before { content: attr(data-debug); font-size: 11px; }
+
+/* 操作按钮：中文动词换英文命令名 */
+html[data-stealth="1"] button[data-debug] { font-size: 0; }
+html[data-stealth="1"] button[data-debug]::before { content: attr(data-debug); font-size: 12px; font-weight: 400; }
+
+/* 控件：朴素 debug 表单 */
+html[data-stealth="1"] .card,
+html[data-stealth="1"] .detail-head,
+html[data-stealth="1"] .fleet-pop {
+  border: 1px solid #000 !important;
+}
+html[data-stealth="1"] button,
+html[data-stealth="1"] input,
+html[data-stealth="1"] select,
+html[data-stealth="1"] textarea {
+  border: 1px solid #000 !important;
+  border-radius: 0 !important;
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+html[data-stealth="1"] button { cursor: default; }
+html[data-stealth="1"] .stealth-btn { padding: 1px 7px; opacity: 1; }
+html[data-stealth="1"] .stealth-btn.on { border: 1px solid #000 !important; }
+html[data-stealth="1"] .chip { border: 1px solid #000; }
+html[data-stealth="1"] .chip .dot { border-radius: 0 !important; }
+html[data-stealth="1"] .banner { border: 1px solid #000 !important; }
+html[data-stealth="1"] ::placeholder { color: #777 !important; }
+
+/* debug 态手机宽也铺满，按钮不放大 */
+@media (max-width: 720px) {
+  html[data-stealth="1"] button { min-height: 0; }
+  html[data-stealth="1"] .topbar { flex-wrap: nowrap; }
 }

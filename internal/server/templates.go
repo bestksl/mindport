@@ -6,7 +6,8 @@ const head = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#221b14">
-<script>(function(){try{var t=localStorage.getItem('mindport-theme');var legacy={dark:'night',light:'day'};if(legacy[t])t=legacy[t];if(['night','day','abyss','porcelain'].indexOf(t)<0)t=window.matchMedia('(prefers-color-scheme: light)').matches?'day':'night';document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<script>(function(){try{var t=localStorage.getItem('mindport-theme');var legacy={dark:'night',light:'day'};if(legacy[t])t=legacy[t];if(['night','day','abyss','porcelain'].indexOf(t)<0)t=window.matchMedia('(prefers-color-scheme: light)').matches?'day':'night';document.documentElement.dataset.theme=t;}catch(e){}
+try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.stealth='1';document.title='mindportd — debug';var mc=document.querySelector('meta[name="theme-color"]');if(mc)mc.setAttribute('content','#ffffff');}}catch(e){}})();</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -17,11 +18,15 @@ const head = `<!doctype html>
 
 {{define "topbar"}}
 <header class="topbar">
-  <a class="brand" href="/">
-    <span class="brand-mark">{{template "pxLighthouse" .}}</span>
+  <a class="brand" href="/" data-debug="mindportd">
+    <span class="brand-mark" title="">{{template "pxLighthouse" .}}</span>
     <span class="brand-text">思港 <i>MindPort</i><em>调度长官台</em></span>
   </a>
+  <div class="top-sea">{{template "topSea" .}}</div>
   <div class="top-right">
+    <button id="stealth-btn" class="stealth-btn" type="button" aria-label="dev">
+      <span class="s-go">&lt;/&gt;</span><span class="s-back">✕</span>
+    </button>
     <details class="themes pop" id="themes">
       <summary class="themes-btn" role="button" aria-label="选择港口配色" title="选择港口配色">
         <svg viewBox="0 0 8" height="17" width="17" shape-rendering="crispEdges" aria-hidden="true">
@@ -53,7 +58,7 @@ const head = `<!doctype html>
     </details>
     <details class="fleet pop" id="fleet">
       <summary class="fleet-btn">
-        <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label">船队</span><b id="fleet-count">…</b><i class="caret"></i>
+        <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="agents">船队</span><b id="fleet-count">…</b><i class="caret"></i>
       </summary>
       <div class="fleet-pop">
         <div class="fleet-pop-head"><span>港内船位</span><span id="fleet-sub"></span></div>
@@ -89,94 +94,36 @@ const head = `<!doctype html>
 </svg>
 {{end}}
 
-{{/* 页脚像素码头全景：吊机来回搬货箱、两艘帆船对开、波浪横移、远岸小灯错峰闪烁 */}}
-{{define "harbor"}}
-<div class="harbor" aria-hidden="true">
-<svg viewBox="0 0 360 96" preserveAspectRatio="xMidYMax meet" shape-rendering="crispEdges">
-  <rect class="star" x="58" y="12" width="2" height="2"/>
-  <rect class="star s2" x="180" y="8" width="2" height="2"/>
-  <rect class="star s3" x="258" y="20" width="2" height="2"/>
-
-  <!-- 右岸小灯塔（灯与左上角主灯错峰闪） -->
-  <g class="far-light">
-    <rect x="333" y="28" width="2" height="1" class="px-cap"/>
-    <rect x="332" y="29" width="4" height="1" class="px-cap"/>
-    <rect x="332" y="30" width="1" height="1" class="px-frame"/>
-    <rect x="333" y="30" width="2" height="1" class="px-lamp lamp-blink"/>
-    <rect x="335" y="30" width="1" height="1" class="px-frame"/>
-    <rect x="332" y="31" width="4" height="1" class="px-frame"/>
-    <rect x="333" y="32" width="2" height="5" class="px-tower"/>
-    <rect x="333" y="34" width="2" height="1" class="px-stripe"/>
-    <rect x="332" y="37" width="4" height="3" class="px-tower"/>
-    <rect x="332" y="39" width="4" height="1" class="px-stripe"/>
-    <rect x="331" y="40" width="6" height="4" class="px-tower"/>
-    <rect x="331" y="43" width="6" height="1" class="px-stripe"/>
-    <rect x="330" y="44" width="8" height="18" class="px-base"/>
-  </g>
-  <rect x="318" y="62" width="42" height="8" class="px-base-dark"/>
-
-  <!-- 左岸码头 -->
-  <rect x="0" y="56" width="120" height="6" class="px-wood"/>
-  <rect x="0" y="62" width="120" height="2" class="px-wood-dark"/>
-  <rect x="8" y="64" width="4" height="8" class="px-wood-dark"/>
-  <rect x="28" y="64" width="4" height="9" class="px-wood-dark"/>
-  <rect x="48" y="64" width="4" height="8" class="px-wood-dark"/>
-  <rect x="68" y="64" width="4" height="9" class="px-wood-dark"/>
-  <rect x="88" y="64" width="4" height="8" class="px-wood-dark"/>
-  <rect x="108" y="64" width="4" height="9" class="px-wood-dark"/>
-
-  <!-- 门式吊机 -->
-  <rect x="12" y="14" width="6" height="42" class="px-wood"/>
-  <rect x="100" y="22" width="6" height="34" class="px-wood"/>
-  <rect x="10" y="10" width="106" height="6" class="px-wood"/>
-  <rect x="10" y="16" width="106" height="2" class="px-wood-dark"/>
-  <rect x="13" y="10" width="3" height="2" class="px-lamp lamp-soft"/>
-  <rect x="12" y="24" width="6" height="3" class="px-wood-dark"/>
-  <rect x="12" y="36" width="6" height="3" class="px-wood-dark"/>
-  <rect x="100" y="32" width="6" height="3" class="px-wood-dark"/>
-  <rect x="100" y="44" width="6" height="3" class="px-wood-dark"/>
-
-  <!-- 滑车 + 吊索 + 货箱：横梁上往复，两端吊起放下 -->
-  <g class="crane-anim">
-    <rect x="0" y="16" width="12" height="4" class="px-wood-dark"/>
-    <rect x="1" y="20" width="2" height="2" class="px-base-dark"/>
-    <rect x="9" y="20" width="2" height="2" class="px-base-dark"/>
-    <rect x="5" y="20" width="2" height="18" class="px-rope"/>
-    <rect x="4" y="38" width="4" height="2" class="px-base-dark"/>
-    <g class="crate">
-      <rect x="-2" y="40" width="16" height="11" class="px-cargo"/>
-      <rect x="-2" y="40" width="16" height="2" class="px-crate-band"/>
-      <rect x="5" y="40" width="2" height="11" class="px-crate-band"/>
+{{/* 顶栏中间的微型海景：一艘 Q 版集装箱货轮在港内往返，左岸迷你吊机轻吊货箱。
+     收进顶栏一行，不再占独立横带。viewBox 宽 240 = 远波周期 10 × 近波周期 8 的公倍数，横移无缝。 */}}
+{{define "topSea"}}
+<svg class="mini-sea" viewBox="0 0 240 40" preserveAspectRatio="xMidYMax meet" shape-rendering="crispEdges" aria-hidden="true">
+  <!-- 左岸迷你码头 + 小吊机（窄屏隐藏，只留船和水） -->
+  <g class="mini-port">
+    <rect x="-6" y="26" width="58" height="3" class="px-wood"/>
+    <rect x="-6" y="29" width="58" height="1" class="px-wood-dark"/>
+    <rect x="6" y="29" width="3" height="7" class="px-wood-dark"/>
+    <rect x="24" y="29" width="3" height="7" class="px-wood-dark"/>
+    <rect x="42" y="29" width="3" height="7" class="px-wood-dark"/>
+    <rect x="14" y="12" width="4" height="15" class="px-wood"/>
+    <rect x="10" y="9" width="42" height="4" class="px-wood"/>
+    <rect x="10" y="13" width="42" height="1" class="px-wood-dark"/>
+    <rect x="12" y="9" width="3" height="2" class="px-lamp lamp-soft"/>
+    <rect x="31" y="13" width="1" height="7" class="px-rope"/>
+    <g class="mini-lift">
+      <rect x="27" y="20" width="9" height="5" class="px-cargo"/>
+      <rect x="27" y="20" width="9" height="1" class="px-crate-band"/>
+      <rect x="31" y="20" width="1" height="5" class="px-crate-band"/>
     </g>
   </g>
 
-  <!-- 水面与波浪（两层反向横移，图案周期无缝） -->
-  <rect x="0" y="70" width="360" height="26" class="px-water-deep"/>
-  <path class="wave wave-far" d="M-16 68h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8h4v-2h4v2h8v2h-384z"/>
-  <path class="wave wave-near" d="M-12 74h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6h3v-2h3v2h6v3h-372z"/>
+  <!-- 水（波浪路径由周期单元铺满 240 宽，CSS 按单元宽度横移循环） -->
+  <rect x="0" y="30" width="240" height="10" class="px-water-deep"/>
+  <path class="mini-wave-far" d="M0 30h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4h3v-1h3v1h4v1h-240z"/>
+  <path class="mini-wave-near" d="M0 33h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4h2v-1h2v1h4v2h-240z"/>
 
-  <!-- 两艘 Q 版集装箱货轮对开（远小近大），各自轻轻摇晃；船上堆彩色货箱、烟囱冒烟。
-       船体直接内联两份：<use> 影子树吃不到外部 class 选择器，会渲染成黑剪影。 -->
-  <!-- 远船：16 宽，驾驶室 + 两只集装箱 -->
-  <g transform="translate(0,46)"><g class="ship-a"><g class="bob-a"><g transform="scale(1.8)">
-    <rect class="px-smoke s1" x="1" y="4" width="2" height="2"/>
-    <rect class="px-smoke s2" x="3" y="2" width="2" height="2"/>
-    <rect x="2" y="6" width="2" height="2" class="px-stack"/>
-    <rect x="1" y="8" width="4" height="3" class="px-cabin"/>
-    <rect x="2" y="9" width="2" height="1" class="px-frame"/>
-    <rect x="6" y="8" width="4" height="3" class="px-box-a"/>
-    <rect x="6" y="8" width="4" height="1" class="px-box-band"/>
-    <rect x="7" y="8" width="1" height="3" class="px-box-band"/>
-    <rect x="11" y="8" width="4" height="3" class="px-box-c"/>
-    <rect x="11" y="8" width="4" height="1" class="px-box-band"/>
-    <rect x="12" y="8" width="1" height="3" class="px-box-band"/>
-    <rect x="0" y="11" width="16" height="1" class="px-hull"/>
-    <rect x="0" y="12" width="16" height="1" class="px-hull"/>
-    <rect x="1" y="13" width="14" height="1" class="px-hull"/>
-    <rect x="3" y="14" width="10" height="1" class="px-hull-dark"/>
-  </g></g></g></g>
-  <!-- 近船：22 宽，双排四只集装箱 + 驾驶室烟囱，朝左开 -->
-  <g transform="translate(0,48) scale(-1,1)"><g class="ship-b"><g class="bob-b"><g transform="scale(2.1)">
+  <!-- Q 版集装箱货轮：港内往返 + 随浪轻晃（内联船体：<use> 影子树吃不到外部 class） -->
+  <g class="mini-ship"><g class="mini-bob"><g transform="translate(0,12) scale(1.2)">
     <rect class="px-smoke s1" x="1" y="4" width="2" height="2"/>
     <rect class="px-smoke s2" x="3" y="2" width="2" height="2"/>
     <rect x="2" y="6" width="2" height="2" class="px-stack"/>
@@ -198,9 +145,8 @@ const head = `<!doctype html>
     <rect x="0" y="12" width="22" height="1" class="px-hull"/>
     <rect x="1" y="13" width="20" height="1" class="px-hull"/>
     <rect x="3" y="14" width="16" height="1" class="px-hull-dark"/>
-  </g></g></g></g>
+  </g></g></g>
 </svg>
-</div>
 {{end}}
 
 {{define "chips"}}
@@ -255,6 +201,32 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
     if (b) apply(b.dataset.theme);
   });
   apply(root.dataset.theme);
+})();
+// 防老板皮相：顶栏一个 </> 按钮，单击切到黑白 debug 台；状态存 sessionStorage
+// （刷新不露馅，关标签即恢复）。不用 Esc、不用连点。
+(function () {
+  var btn = document.getElementById('stealth-btn');
+  if (!btn) return;
+  function on() { return document.documentElement.dataset.stealth === '1'; }
+  function sync() {
+    btn.classList.toggle('on', on());
+    btn.setAttribute('aria-label', on() ? 'exit debug view' : 'dev view');
+    btn.title = on() ? '退出' : '';
+  }
+  sync();
+  btn.addEventListener('click', function () {
+    try {
+      if (on()) sessionStorage.removeItem('mpdbg');
+      else sessionStorage.setItem('mpdbg', '1');
+    } catch (e) {}
+    location.reload();
+  });
+  if (on()) {
+    var cap = document.querySelector('.capture-row input[name="title"]');
+    if (cap) cap.placeholder = 'new task title …';
+    var lg = document.querySelector('.logform input[name="line"]');
+    if (lg) lg.placeholder = 'append log line …';
+  }
 })();
 // 船队/配色弹层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换船队内部列表，不丢状态）
 document.addEventListener('click', function (e) {
@@ -371,20 +343,20 @@ document.addEventListener('submit', function (e) {
 
 const boardHTML = head + `
 {{template "topbar" .}}
-{{template "harbor" .}}
 
 {{if .Error}}<div class="err">⚠️ {{.Error}}</div>{{end}}
 
 <section class="capture">
   <form method="post" action="/tasks" class="capture-row">
     <input name="title" placeholder="想到什么先扔下来…入港即立箱（草稿，随后补验收/派船）" autocomplete="off" autofocus required>
-    <button type="submit" class="primary">入港</button>
+    <button type="submit" class="primary" data-debug="add">入港</button>
   </form>
+  <p class="capture-hint" data-debug="dispatcher rule: assign → execute → report">调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</p>
 </section>
 
 {{if .Drafts}}
 <section class="drafts">
-  <h2>📝 草稿·备货中 <small>{{len .Drafts}}</small></h2>
+  <h2 data-debug="drafts">📝 草稿·备货中 <small>{{len .Drafts}}</small></h2>
   <div class="draft-grid">
   {{range .Drafts}}
     <article class="card draft-card {{impClass .Meta.Importance}}" data-task="{{.Meta.ID}}">
@@ -394,13 +366,18 @@ const boardHTML = head + `
       </div>
       <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
-      <form method="post" action="/tasks/{{.Meta.ID}}/publish" class="publish-row">
-        <select name="assignee" aria-label="放行去向">
-          <option value="">⚓ 放进锚地</option>
-          {{template "shipoptions" $.Ships}}
-        </select>
-        <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？">放行</button>
-      </form>
+      <div class="draft-actions">
+        <form method="post" action="/tasks/{{.Meta.ID}}/publish" class="publish-row">
+          <select name="assignee" aria-label="放行去向">
+            <option value="">⚓ 放进锚地</option>
+            {{template "shipoptions" $.Ships}}
+          </select>
+          <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？" data-debug="publish">放行</button>
+        </form>
+        <form method="post" action="/tasks/{{.Meta.ID}}/delete" class="del-form">
+          <button class="danger mini" data-confirm="删除草稿 {{.Meta.ID}}？仅草稿可删，删除后不可恢复">🗑</button>
+        </form>
+      </div>
     </article>
   {{end}}
   </div>
@@ -410,7 +387,7 @@ const boardHTML = head + `
 <section class="board four">
   {{range .Cols}}
   <div class="col col-{{.Key}}">
-    <h2>{{.Title}} <small>{{len .Tasks}}</small></h2>
+    <h2 data-debug="{{.Key}}">{{.Title}} <small>{{len .Tasks}}</small></h2>
     {{if not .Tasks}}<p class="empty">—</p>{{end}}
     {{range .Tasks}}
     <article class="card status-{{.Meta.Status}} {{impClass .Meta.Importance}}" data-task="{{.Meta.ID}}">
@@ -428,7 +405,7 @@ const boardHTML = head + `
         <select name="assignee" aria-label="派给哪艘船">
           {{template "shipoptions" $.Ships}}
         </select>
-        <button class="mini" data-confirm="派船命令：{{.Meta.ID}} 派给所选船？只有这艘船能接令">派船</button>
+        <button class="mini" data-confirm="派船命令：{{.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">派船</button>
       </form>
       {{end}}
     </article>
@@ -436,21 +413,18 @@ const boardHTML = head + `
   </div>
   {{end}}
 </section>
-
-<footer>调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</footer>
 ` + sseBoot + `
 </body></html>`
 
 const taskHTML = head + `
 {{template "topbar" .}}
-{{template "harbor" .}}
 
 <article class="detail">
   <div class="detail-head {{impClass .R.Meta.Importance}}">
     <a class="back" href="/">← 调度台</a>
     <h1><span class="id">{{.R.Meta.ID}}</span> {{.R.Meta.Title}}</h1>
     <div class="meta-line">
-      <span class="status status-{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
+      <span class="status status-{{.R.Meta.Status}}" data-debug="{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
       <span class="imp">● {{impZH .R.Meta.Importance}}</span>
       {{if .R.Meta.Assignee}}<span class="assignee">🚢 {{.R.Meta.AssigneeValue}}{{if .R.Meta.AssignCwd}} · 📍{{baseName .R.Meta.AssignCwd}}{{end}}</span>{{end}}
     </div>
@@ -471,24 +445,27 @@ const taskHTML = head + `
     <div class="dispatch-box">
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
-        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进锚地？船在锚地看不到货">⚓ 放进锚地</button>
+        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进锚地？船在锚地看不到货" data-debug="anchor">⚓ 放进锚地</button>
       </form>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
         <select name="assignee" aria-label="直接派船">
           {{template "shipoptions" .Ships}}
         </select>
-        <button class="primary" data-confirm="直接派船：{{.R.Meta.ID}} 将命令给所选船，只有它能接令">🚢 打磨完，直接派船</button>
+        <button class="primary" data-confirm="直接派船：{{.R.Meta.ID}} 将命令给所选船，只有它能接令" data-debug="dispatch">🚢 打磨完，直接派船</button>
       </form>
     </div>
     <p class="hint">备货中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
+      <button class="danger" data-confirm="删除草稿 {{.R.Meta.ID}}？仅草稿可删，删除后不可恢复" data-debug="del">🗑 删除草稿</button>
+    </form>
 
     {{else if eq .R.Meta.Status "anchored"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
       <select name="assignee" aria-label="派给哪艘船">
         {{template "shipoptions" .Ships}}
       </select>
-      <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令">🚢 派船</button>
+      <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">🚢 派船</button>
     </form>
     <p class="hint">锚地待派：船在自己的终端上看不到这票货。派船后进入「待接令」，船 port claim 接令出港。</p>
     <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（派船前都能改）</a>
@@ -498,7 +475,7 @@ const taskHTML = head + `
       <select name="assignee" aria-label="改派给哪个船位">
         {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="改派 {{.R.Meta.ID}}？原船位将不能再接令">改派</button>
+      <button data-confirm="改派 {{.R.Meta.ID}}？原船位将不能再接令" data-debug="reassign">改派</button>
     </form>
     <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 接令。派船时可点名具体项目会话，防止别的项目里的会话接错票。调度台不能代领。</p>
 
@@ -511,7 +488,7 @@ const taskHTML = head + `
       <select name="assignee" aria-label="改派给哪个船位">
         {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船位改派给所选船位？">受阻改派</button>
+      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船位改派给所选船位？" data-debug="reassign">受阻改派</button>
     </form>
 
     {{else if eq .R.Meta.Status "done"}}
@@ -537,7 +514,7 @@ const taskHTML = head + `
       <input name="goal" value="{{.R.Meta.Goal}}" placeholder="这个任务为哪个目标服务？">
       <label>正文（Markdown；在「## 验收标准」下加 - [ ] 即新增验收项）</label>
       <textarea name="body" rows="16">{{.R.Body}}</textarea>
-      <button type="submit" class="primary">保存打磨结果</button>
+      <button type="submit" class="primary" data-debug="save">保存打磨结果</button>
     </form>
   </details>
   {{end}}
@@ -573,7 +550,7 @@ const taskHTML = head + `
     <h2>过程日志</h2>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/log" class="logform">
       <input name="line" placeholder="批注一笔…（船用 port log 汇报进展）" autocomplete="off" required>
-      <button>批注</button>
+      <button data-debug="append">批注</button>
     </form>
     <ul class="logs">
       {{range .Logs}}<li>{{.}}</li>{{end}}

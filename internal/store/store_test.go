@@ -476,3 +476,37 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeleteTask(t *testing.T) {
+	v, _ := Open(t.TempDir())
+
+	draft, err := v.NewTask("没打磨完的闪念", "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchored, _ := v.NewTask("已放行的货", "", "", false)
+
+	// 草稿可删：文件抹掉，再查 ErrNotFound
+	if err := v.DeleteTask(draft.Meta.ID); err != nil {
+		t.Fatalf("草稿应可删除: %v", err)
+	}
+	if _, err := v.GetTask(draft.Meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除后 GetTask 应 ErrNotFound，得到 %v", err)
+	}
+	if tasks, _ := v.ListTasks(StatusDraft); len(tasks) != 0 {
+		t.Fatalf("删除后草稿列表应为空，得到 %d 条", len(tasks))
+	}
+
+	// 放行后的货有流转历史，不能直接删
+	if err := v.DeleteTask(anchored.Meta.ID); !errors.Is(err, ErrNotDraft) {
+		t.Fatalf("非草稿删除应 ErrNotDraft，得到 %v", err)
+	}
+	if _, err := v.GetTask(anchored.Meta.ID); err != nil {
+		t.Fatalf("被拒后任务应仍在: %v", err)
+	}
+
+	// 不存在的编号也是 not found
+	if err := v.DeleteTask("T9999"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除不存在任务应 ErrNotFound，得到 %v", err)
+	}
+}

@@ -91,6 +91,8 @@ var (
 	ErrNotAssignee = errors.New("任务未指派给你")
 	// ErrWrongBerth 表示任务指定了船位（项目会话目录），当前目录的会话无权接令。
 	ErrWrongBerth = errors.New("这票货派给了别的船位")
+	// ErrNotDraft 表示只有草稿能删除，任务已放行不能直接删。
+	ErrNotDraft = errors.New("只有草稿能删除")
 	// ErrResultRequired 表示归港缺少交付结果（除非带理由强制归港）。
 	ErrResultRequired = errors.New("归港必须交付结果")
 )
@@ -648,6 +650,24 @@ func (v *Vault) GetTask(id string) (*Record, error) {
 		return nil
 	})
 	return r, err
+}
+
+// DeleteTask 删除草稿任务文件（仅 draft 可删；放行后的货有流转历史，不能直接抹掉）。
+func (v *Vault) DeleteTask(id string) error {
+	return v.withLock(func() error {
+		path, err := v.findTaskPath(id)
+		if err != nil {
+			return err
+		}
+		rec, err := parseFile(path)
+		if err != nil {
+			return err
+		}
+		if rec.Meta.Status != StatusDraft {
+			return fmt.Errorf("%w: %s 当前为 %s", ErrNotDraft, id, rec.Meta.Status)
+		}
+		return os.Remove(path)
+	})
 }
 
 // ListTasks 列出任务，可按状态过滤（空串=全部），按重要程度再按编号升序。

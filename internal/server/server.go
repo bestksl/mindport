@@ -130,6 +130,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/log", s.handleLog)
 	mux.HandleFunc("POST /tasks/{id}/check", s.handleCheck)
 	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
+	mux.HandleFunc("POST /tasks/{id}/delete", s.handleDeleteTask)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tasks", s.handleAPITasks)
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
@@ -385,6 +386,16 @@ func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
+}
+
+// handleDeleteTask 删除草稿（只有 draft 能删；store 层把关，误请求带错误回到看板）。
+func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.V.DeleteTask(id); err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // listPresence 返回折叠、并用官方发现口校正过在线状态的全部船位心跳。
