@@ -11,7 +11,7 @@ var showJSON bool
 
 var showCmd = &cobra.Command{
 	Use:   "show <T 编号>",
-	Short: "查看任务全文（描述/验收/日志），agent 领取后读完整上下文",
+	Short: "查看任务全文（描述/验收/日志），船接令后读完整上下文",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()

@@ -58,14 +58,16 @@ type Record struct {
 	Path string
 }
 
-// 任务状态（ADR-0003 状态机；v0.3 加入 draft）。
-// 人是发布者：任务先以 draft 进港打磨，发布后才允许 agent 领取。
+// 任务状态（ADR-0003；v0.3 draft；v0.4 调度模型）。
+// 人是调度长官：需求是集装箱，任务先以 draft 打磨，可停在 anchored 锚地
+// 等待派船；派船（ready，指名 assignee）后只有被指派的船能接令。
 const (
-	StatusDraft      = "draft"
-	StatusReady      = "ready"
-	StatusInProgress = "in_progress"
-	StatusBlocked    = "blocked"
-	StatusDone       = "done"
+	StatusDraft      = "draft"       // 备货中：长官打磨描述与验收标准
+	StatusAnchored   = "anchored"    // 锚地：已就绪但未派船，船看不到
+	StatusReady      = "ready"       // 已派船待接令：assignee 必填且唯一可接令
+	StatusInProgress = "in_progress" // 出港中
+	StatusBlocked    = "blocked"     // 受阻上浮
+	StatusDone       = "done"        // 归港（必须带结果，强制归港需理由）
 	StatusCancelled  = "cancelled"
 )
 
@@ -84,6 +86,10 @@ var (
 	ErrInvalidTransition = errors.New("invalid status transition")
 	// ErrInvalidImportance 表示重要程度取值非法。
 	ErrInvalidImportance = errors.New("invalid importance")
+	// ErrNotAssignee 表示任务未指派给该执行者，无权接令/推进。
+	ErrNotAssignee = errors.New("任务未指派给你")
+	// ErrResultRequired 表示归港缺少交付结果（除非带理由强制归港）。
+	ErrResultRequired = errors.New("归港必须交付结果")
 )
 
 // importanceRank 越小越重要，看板与 next 按此排序。
@@ -205,7 +211,7 @@ func (v *Vault) PromoteThought(filename, importance string) (*Record, error) {
 		}
 		m := Meta{
 			Type: "task", ID: id, Title: thought.Meta.Title,
-			Status: StatusReady, Importance: imp,
+			Status: StatusDraft, Importance: imp,
 			Created: now,
 		}
 		desc := strings.TrimSpace(thought.Body)
@@ -251,8 +257,8 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 		if imp == "" {
 			imp = ImpNormal
 		}
-		status := StatusReady
-		createdNote := "created by port"
+		status := StatusAnchored
+		createdNote := "created by port（锚地待派）"
 		if draft {
 			status = StatusDraft
 			createdNote = "created as draft by port"
@@ -277,19 +283,73 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 	return rec, err
 }
 
-// Claim 领取任务：ready → in_progress。领取即心跳：该执行者显示在线且在做此任务。
+// Claim 接令：ready → in_progress。只有被指派的船能接令；接令即心跳。
 func (v *Vault) Claim(id, by string) (*Record, error) {
 	rec, err := v.transition(id, "claim", "", by)
 	if err != nil {
 		return rec, err
 	}
-	_, _ = v.Present(by, id, "") // 心跳失败不影响领取本身
+	_, _ = v.Present(by, id, "") // 心跳失败不影响接令本身
 	return rec, nil
 }
 
-// Done 完成任务：in_progress（或 blocked 显式归港）→ done，并清掉心跳上的任务号。
-func (v *Vault) Done(id, by string) (*Record, error) {
-	rec, err := v.transition(id, "done", "", by)
+// Done 归港：in_progress/blocked → done。
+// 归港必须带结果——有验收项时须全部勾选；没有验收项时 result 必填。
+// 死锁逃生门：force=true + 必填 reason 可强制归港，理由永久留痕。
+// 归港后清掉心跳上的任务号。
+func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record, error) {
+	result = strings.TrimSpace(result)
+	reason = strings.TrimSpace(reason)
+	var rec *Record
+	err := v.withLock(func() error {
+		path, err := v.findTaskPath(id)
+		if err != nil {
+			return err
+		}
+		r, err := parseFile(path)
+		if err != nil {
+			return err
+		}
+		if r.Meta.Status != StatusInProgress && r.Meta.Status != StatusBlocked {
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中/受阻的任务可归港", ErrInvalidTransition, id, r.Meta.Status)
+		}
+		if err := requireAssignee(r, by); err != nil {
+			return err
+		}
+		doneN, total := acceptanceCount(r.Body)
+
+		if force {
+			if reason == "" {
+				return errors.New("强制归港必须填写理由（留痕）")
+			}
+		} else {
+			switch {
+			case total > 0 && doneN < total:
+				return fmt.Errorf("%w: 还有 %d/%d 项验收未完成；如确需归港，用 --force 并写明理由",
+					ErrResultRequired, total-doneN, total)
+			case total == 0 && result == "":
+				return fmt.Errorf("%w: 没有验收项时归港必须填写交付结果；特殊情况用 --force 并写明理由",
+					ErrResultRequired)
+			}
+		}
+
+		now := time.Now()
+		if result != "" {
+			r.Body = appendLog(r.Body, now, "归港结果（"+by+"）："+result)
+		}
+		if force {
+			r.Body = appendLog(r.Body, now, "⚠️ 强制归港（"+by+"），理由："+reason)
+		}
+		r.Meta.Status = StatusDone
+		r.Meta.CompletedAt = &now
+		touch(&r.Meta)
+		r.Body = appendLog(r.Body, now, "done by "+by)
+		if err := v.rewrite(path, r); err != nil {
+			return err
+		}
+		rec = r
+		return nil
+	})
 	if err != nil {
 		return rec, err
 	}
@@ -297,8 +357,8 @@ func (v *Vault) Done(id, by string) (*Record, error) {
 	return rec, nil
 }
 
-// Publish 发布草稿：draft → ready。assignee 非空时为「委派」——
-// 任务带着指派对象出港，被指使者仍需显式 claim 接走。
+// Publish 发布草稿：assignee 为空 → anchored（锚地待派，船看不到）；
+// assignee 非空 → ready（直接派船，只有被指派者能接令）。
 func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
 	var rec *Record
@@ -315,16 +375,17 @@ func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
 			return fmt.Errorf("%w: %s 当前状态为 %s，只有草稿可发布", ErrInvalidTransition, id, r.Meta.Status)
 		}
 		now := time.Now()
-		r.Meta.Status = StatusReady
-		if assignee != "" {
+		note := ""
+		if assignee == "" {
+			r.Meta.Status = StatusAnchored
+			note = "published to anchorage by " + by + "（锚地待派）"
+		} else {
 			a := assignee
 			r.Meta.Assignee = &a
+			r.Meta.Status = StatusReady
+			note = "dispatched by " + by + "，派船 → " + assignee
 		}
 		touch(&r.Meta)
-		note := "published by " + by
-		if assignee != "" {
-			note += "，指派给 " + assignee
-		}
 		r.Body = appendLog(r.Body, now, note)
 		if err := v.rewrite(path, r); err != nil {
 			return err
@@ -335,7 +396,59 @@ func (v *Vault) Publish(id, by, assignee string) (*Record, error) {
 	return rec, err
 }
 
-// Block 阻塞任务：in_progress → blocked，必须给原因。
+// Assign 派船/改派：anchored → ready；ready 换船（重新待接令）；
+// blocked 可改派给别的船（原船受阻，货回码头待新船接令）。
+// in_progress 的货在海上，不能改派（先等它归港）。
+func (v *Vault) Assign(id, by, assignee string) (*Record, error) {
+	assignee = strings.TrimSpace(assignee)
+	if assignee == "" {
+		return nil, errors.New("派船必须指定执行者（或先发布到锚地）")
+	}
+	var rec *Record
+	err := v.withLock(func() error {
+		path, err := v.findTaskPath(id)
+		if err != nil {
+			return err
+		}
+		r, err := parseFile(path)
+		if err != nil {
+			return err
+		}
+		wasBlocked := false
+		switch r.Meta.Status {
+		case StatusAnchored:
+		case StatusReady:
+		case StatusBlocked:
+			wasBlocked = true
+		default:
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有锚地/待接令/受阻的任务可派船改派",
+				ErrInvalidTransition, id, r.Meta.Status)
+		}
+		old := r.Meta.AssigneeValue()
+		a := assignee
+		r.Meta.Assignee = &a
+		r.Meta.Status = StatusReady
+		r.Meta.BlockedAt = nil
+		now := time.Now()
+		touch(&r.Meta)
+		switch {
+		case old == "":
+			r.Body = appendLog(r.Body, now, "dispatched by "+by+"，派船 → "+assignee)
+		case wasBlocked:
+			r.Body = appendLog(r.Body, now, "reassigned by "+by+"（原船受阻）："+old+" → "+assignee)
+		default:
+			r.Body = appendLog(r.Body, now, "reassigned by "+by+"："+old+" → "+assignee)
+		}
+		if err := v.rewrite(path, r); err != nil {
+			return err
+		}
+		rec = r
+		return nil
+	})
+	return rec, err
+}
+
+// Block 受阻上浮：in_progress → blocked，必须给原因；只有承担船可操作。
 func (v *Vault) Block(id, reason, by string) (*Record, error) {
 	if strings.TrimSpace(reason) == "" {
 		return nil, errors.New("阻塞原因不能为空")
@@ -343,9 +456,44 @@ func (v *Vault) Block(id, reason, by string) (*Record, error) {
 	return v.transition(id, "block", strings.TrimSpace(reason), by)
 }
 
-// Unblock 解除阻塞：blocked → in_progress。
+// Unblock 解除受阻：blocked → in_progress。
 func (v *Vault) Unblock(id, by string) (*Record, error) {
 	return v.transition(id, "unblock", "", by)
+}
+
+// requireAssignee 校验 by 是任务的承担船。
+func requireAssignee(r *Record, by string) error {
+	a := r.Meta.AssigneeValue()
+	if a == "" {
+		return fmt.Errorf("%w: %s 还在锚地未派船", ErrNotAssignee, r.Meta.ID)
+	}
+	if a != by {
+		return fmt.Errorf("%w: %s 派给了 %s，不是 %s", ErrNotAssignee, r.Meta.ID, a, by)
+	}
+	return nil
+}
+
+// acceptanceCount 数「验收标准」区内非空复选框的完成数/总数。
+func acceptanceCount(body string) (done, total int) {
+	for _, sec := range Sections(body) {
+		if sec.Title != "验收标准" {
+			continue
+		}
+		for _, line := range strings.Split(sec.Content, "\n") {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "- [x] ") || strings.HasPrefix(t, "- [X] ") {
+				if strings.TrimSpace(t[6:]) != "" {
+					total++
+					done++
+				}
+			} else if strings.HasPrefix(t, "- [ ] ") {
+				if strings.TrimSpace(t[6:]) != "" {
+					total++
+				}
+			}
+		}
+	}
+	return
 }
 
 func (v *Vault) transition(id, action, arg, by string) (*Record, error) {
@@ -364,25 +512,20 @@ func (v *Vault) transition(id, action, arg, by string) (*Record, error) {
 		switch action {
 		case "claim":
 			if r.Meta.Status != StatusReady {
-				return fmt.Errorf("%w: %s 当前状态为 %s，只有 ready 可领取", ErrInvalidTransition, id, r.Meta.Status)
+				return fmt.Errorf("%w: %s 当前状态为 %s，只有待接令的任务可接令", ErrInvalidTransition, id, r.Meta.Status)
+			}
+			if err := requireAssignee(r, by); err != nil {
+				return err
 			}
 			r.Meta.Status = StatusInProgress
-			r.Meta.Assignee = &by
 			r.Meta.ClaimedAt = &now
 			r.Body = appendLog(r.Body, now, "claimed by "+by)
-		case "done":
-			if r.Meta.Status != StatusInProgress && r.Meta.Status != StatusBlocked {
-				return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中/受阻的任务可归港", ErrInvalidTransition, id, r.Meta.Status)
-			}
-			r.Meta.Status = StatusDone
-			r.Meta.CompletedAt = &now
-			if r.Meta.Assignee == nil {
-				r.Meta.Assignee = &by
-			}
-			r.Body = appendLog(r.Body, now, "done by "+by)
 		case "block":
 			if r.Meta.Status != StatusInProgress {
-				return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中的任务可阻塞", ErrInvalidTransition, id, r.Meta.Status)
+				return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中的任务可上报受阻", ErrInvalidTransition, id, r.Meta.Status)
+			}
+			if err := requireAssignee(r, by); err != nil {
+				return err
 			}
 			r.Meta.Status = StatusBlocked
 			r.Meta.BlockedAt = &now
@@ -390,6 +533,9 @@ func (v *Vault) transition(id, action, arg, by string) (*Record, error) {
 		case "unblock":
 			if r.Meta.Status != StatusBlocked {
 				return fmt.Errorf("%w: %s 当前状态为 %s，并未受阻", ErrInvalidTransition, id, r.Meta.Status)
+			}
+			if err := requireAssignee(r, by); err != nil {
+				return err
 			}
 			r.Meta.Status = StatusInProgress
 			r.Meta.BlockedAt = nil
@@ -486,6 +632,11 @@ func (v *Vault) UpdateTask(id, title, body, importance, goal string) (*Record, e
 		if err != nil {
 			return err
 		}
+		// 派船即封舱：草稿/锚地阶段可随意打磨，一旦派船，验收标准以开船时为准。
+		if r.Meta.Status != StatusDraft && r.Meta.Status != StatusAnchored {
+			return fmt.Errorf("%w: %s 已派船（%s），封舱后不能改单；要调整请批注或改派",
+				ErrInvalidTransition, id, r.Meta.Status)
+		}
 		r.Meta.Title = title
 		r.Meta.Importance = importance
 		r.Meta.Goal = strings.TrimSpace(goal)
@@ -512,16 +663,23 @@ func actorSuffix(by string) string {
 	return "（" + by + "）"
 }
 
-// Next 返回当前最重要的一个 ready 任务（重要程度升序，同级按编号）。
-func (v *Vault) Next() (*Record, error) {
+// Next 返回派给某艘船、待它接令的最重要一个任务（重要程度升序，同级按编号）。
+// 锚地里未派船的货对船不可见。
+func (v *Vault) Next(actor string) (*Record, error) {
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return nil, errors.New("需要 --by 指定船名（谁在接令？）")
+	}
 	tasks, err := v.ListTasks(StatusReady)
 	if err != nil {
 		return nil, err
 	}
-	if len(tasks) == 0 {
-		return nil, fmt.Errorf("%w: 港里没有待领取的任务", ErrNotFound)
+	for i := range tasks {
+		if tasks[i].Meta.AssigneeValue() == actor {
+			return &tasks[i], nil
+		}
 	}
-	return &tasks[0], nil
+	return nil, fmt.Errorf("%w: 没有派给 %s 的待接令任务", ErrNotFound, actor)
 }
 
 // GetTask 按编号取单个任务。
@@ -711,6 +869,10 @@ func canonicalize(m *Meta) {
 		if m.Type == "task" {
 			m.Importance = ImpNormal
 		}
+	}
+	// v0.4 迁移：ready 必须有承担船；旧版「已发布、任领取」的货退回锚地待派。
+	if m.Type == "task" && m.Status == StatusReady && m.AssigneeValue() == "" {
+		m.Status = StatusAnchored
 	}
 }
 

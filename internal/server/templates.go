@@ -10,36 +10,32 @@ const head = `<!doctype html>
 <link rel="icon" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
 <link rel="stylesheet" href="/static/style.css">
-<title>思港 MindPort</title>
+<title>思港 MindPort · 调度台</title>
 </head>
 <body>
 
 {{define "topbar"}}
 <header class="topbar">
-  <a class="brand" href="/">思港 <span>MindPort</span></a>
+  <a class="brand" href="/">思港 <span>MindPort</span><em>调度长官台</em></a>
   <div class="top-right">
     <div id="agents" class="agents">{{template "chips" .Agents}}</div>
-    <form method="post" action="/identity" class="identity">
-      <input type="hidden" name="back" value="{{if .IsTask}}/tasks/{{.BackID}}{{else}}/{{end}}">
-      <select name="actor" onchange="this.form.submit()" aria-label="当前身份">
-        <option value="jmzx@studio" {{if eq .Actor "jmzx@studio"}}selected{{end}}>👤 你本人</option>
-        <option value="claude@studio" {{if eq .Actor "claude@studio"}}selected{{end}}>🤖 Claude</option>
-        <option value="codex@studio" {{if eq .Actor "codex@studio"}}selected{{end}}>🤖 Codex</option>
-      </select>
-    </form>
   </div>
 </header>
 {{end}}
 
 {{define "chips"}}
-{{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的执行者</span>{{end}}
+{{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
 {{range .}}
 <span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}">
   <i class="dot"></i>{{actorName .Actor}}
   <em>{{if .Online}}{{if .Note}}{{.Note}}{{else}}在线{{end}}{{else}}{{ago .Seen}}在{{end}}</em>
 </span>
 {{end}}
-{{end}}`
+{{end}}
+
+{{define "shipoptions"}}
+{{range .}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>
+{{end}}{{end}}`
 
 const sseBoot = `
 <script>
@@ -52,12 +48,12 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
     location.reload();
   });
 })();
-// 状态推进类操作二次确认，防手机误触
+// 调度命令类操作二次确认，防手机误触
 document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-confirm]');
   if (el && !window.confirm(el.getAttribute('data-confirm'))) e.preventDefault();
 });
-// 执行者在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
+// 船队在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
   function ago(t) {
@@ -68,7 +64,7 @@ document.addEventListener('click', function (e) {
     return Math.floor(d / 86400) + ' 天前';
   }
   function chips(agents) {
-    if (!agents.length) return '<span class="chip muted">港里暂无报到的执行者</span>';
+    if (!agents.length) return '<span class="chip muted">港里暂无报到的船</span>';
     return agents.map(function (p) {
       var state = p.online ? (p.note || '在线') : (ago(p.seen) + '在');
       return '<span class="chip ' + (p.online ? 'online' : 'offline') + '" data-actor="' + p.actor + '">' +
@@ -107,21 +103,20 @@ const boardHTML = head + `
     <button type="submit" class="primary">入港</button>
   </form>
   <form method="post" action="/tasks" class="capture-row taskform">
-    <input name="title" placeholder="派一个活（默认先进草稿打磨）…" autocomplete="off">
+    <input name="title" placeholder="立一个集装箱（先进草稿，打磨验收标准）…" autocomplete="off" required>
     <select name="importance" aria-label="重要程度">
       <option value="critical">关键</option>
       <option value="high">重要</option>
       <option value="normal" selected>普通</option>
       <option value="someday">也许</option>
     </select>
-    <label class="publish-check"><input type="checkbox" name="publish" value="1">直接发布</label>
-    <button type="submit">派活</button>
+    <button type="submit">立箱</button>
   </form>
 </section>
 
 {{if .Drafts}}
 <section class="drafts">
-  <h2>📝 草稿·打磨中 <small>{{len .Drafts}}</small></h2>
+  <h2>📝 草稿·备货中 <small>{{len .Drafts}}</small></h2>
   <div class="draft-grid">
   {{range .Drafts}}
     <article class="card draft-card {{impClass .Meta.Importance}}" data-task="{{.Meta.ID}}">
@@ -132,12 +127,11 @@ const boardHTML = head + `
       <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
       <form method="post" action="/tasks/{{.Meta.ID}}/publish" class="publish-row">
-        <select name="assignee" aria-label="指派给">
-          <option value="">留空 · 任领</option>
-          <option value="claude@studio">指派 Claude</option>
-          <option value="codex@studio">指派 Codex</option>
+        <select name="assignee" aria-label="放行去向">
+          <option value="">⚓ 放进锚地</option>
+          {{template "shipoptions" $.Ships}}
         </select>
-        <button class="primary mini" data-confirm="确认发布 {{.Meta.ID}}？发布后执行者可领取">发布出港</button>
+        <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？">放行</button>
       </form>
     </article>
   {{end}}
@@ -145,9 +139,9 @@ const boardHTML = head + `
 </section>
 {{end}}
 
-<section class="board">
+<section class="board four">
   {{range .Cols}}
-  <div class="col">
+  <div class="col col-{{.Key}}">
     <h2>{{.Title}} <small>{{len .Tasks}}</small></h2>
     {{if not .Tasks}}<p class="empty">—</p>{{end}}
     {{range .Tasks}}
@@ -156,18 +150,19 @@ const boardHTML = head + `
         <span class="id">{{.Meta.ID}}</span>
         <span class="imp">● {{impZH .Meta.Importance}}</span>
         {{if eq .Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
-        {{if .Meta.Assignee}}<span class="assignee">⛟ {{actorName .Meta.AssigneeValue}}</span>{{end}}
+        {{if .Meta.Assignee}}<span class="assignee">🚢 {{actorName .Meta.AssigneeValue}}</span>{{end}}
       </div>
       <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
       <div class="agent-line">{{with index $.ByTask .Meta.ID}}<i class="dot"></i>{{actorName .Actor}} 正在做{{if .Note}}：{{.Note}}{{end}}{{end}}</div>
-      <div class="actions">
-        {{if eq .Meta.Status "ready"}}
-        <form method="post" action="/tasks/{{.Meta.ID}}/claim"><button class="mini">领取</button></form>
-        {{else if eq .Meta.Status "in_progress"}}
-        <form method="post" action="/tasks/{{.Meta.ID}}/done"><button class="primary mini" data-confirm="确认 {{.Meta.ID}} 归港？">归港</button></form>
-        {{end}}
-      </div>
+      {{if eq .Meta.Status "anchored"}}
+      <form method="post" action="/tasks/{{.Meta.ID}}/assign" class="publish-row">
+        <select name="assignee" aria-label="派给哪艘船">
+          {{template "shipoptions" $.Ships}}
+        </select>
+        <button class="mini" data-confirm="派船命令：{{.Meta.ID}} 派给所选船？只有这艘船能接令">派船</button>
+      </form>
+      {{end}}
     </article>
     {{end}}
   </div>
@@ -186,7 +181,7 @@ const boardHTML = head + `
       <span class="spacer"></span>
       <form method="post" action="/thoughts/promote">
         <input type="hidden" name="name" value="{{baseName .Path}}">
-        <button type="submit" class="mini">转任务 →</button>
+        <button type="submit" class="mini">转集装箱 →</button>
       </form>
     </div>
   </article>
@@ -194,7 +189,7 @@ const boardHTML = head + `
   </div>
 </section>
 
-<footer>目标导向 · 不谈紧急 · 只问重要</footer>
+<footer>调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</footer>
 ` + sseBoot + `
 </body></html>`
 
@@ -203,17 +198,20 @@ const taskHTML = head + `
 
 <article class="detail">
   <div class="detail-head {{impClass .R.Meta.Importance}}">
-    <a class="back" href="/">← 看板</a>
+    <a class="back" href="/">← 调度台</a>
     <h1><span class="id">{{.R.Meta.ID}}</span> {{.R.Meta.Title}}</h1>
     <div class="meta-line">
       <span class="status status-{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
       <span class="imp">● {{impZH .R.Meta.Importance}}</span>
-      {{if .R.Meta.Assignee}}<span>⛟ {{.R.Meta.AssigneeValue}}</span>{{end}}
+      {{if .R.Meta.Assignee}}<span class="assignee">🚢 {{.R.Meta.AssigneeValue}}</span>{{end}}
     </div>
     {{if .Agent}}
     <div class="agent-line detail-agent {{if .Agent.Online}}online{{else}}offline{{end}}">
       <i class="dot"></i>{{actorName .Agent.Actor}}
-      {{if .Agent.Online}}在线{{if .Agent.Note}}：{{.Agent.Note}}{{end}}{{else}}{{ago .Agent.Seen}}还在{{end}}
+      {{if .Agent.Online}}
+        {{if eq .Agent.Task .R.Meta.ID}}正在做本票货{{if .Agent.Note}}：{{.Agent.Note}}{{end}}
+        {{else if .Agent.Task}}已在做别的票货（{{.Agent.Task}}）{{else}}在线待派{{end}}
+      {{else}}{{ago .Agent.Seen}}还在{{end}}
     </div>
     {{end}}
     {{if .R.Meta.Goal}}<div class="goal">🎯 {{.R.Meta.Goal}}</div>{{end}}
@@ -221,33 +219,61 @@ const taskHTML = head + `
 
   <div class="actions big">
     {{if eq .R.Meta.Status "draft"}}
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-box">
-      <input type="hidden" name="from" value="task">
-      <select name="assignee" aria-label="指派给">
-        <option value="">留空 · 发布后任领</option>
-        <option value="claude@studio" {{if eq .R.Meta.AssigneeValue "claude@studio"}}selected{{end}}>指派 Claude</option>
-        <option value="codex@studio" {{if eq .R.Meta.AssigneeValue "codex@studio"}}selected{{end}}>指派 Codex</option>
+    <div class="dispatch-box">
+      <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
+        <input type="hidden" name="from" value="task">
+        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进锚地？船在锚地看不到货">⚓ 放进锚地</button>
+      </form>
+      <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
+        <input type="hidden" name="from" value="task">
+        <select name="assignee" aria-label="直接派船">
+          {{template "shipoptions" .Ships}}
+        </select>
+        <button class="primary" data-confirm="直接派船：{{.R.Meta.ID}} 将命令给所选船，只有它能接令">🚢 打磨完，直接派船</button>
+      </form>
+    </div>
+    <p class="hint">备货中：在下方正文「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
+
+    {{else if eq .R.Meta.Status "anchored"}}
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
+      <select name="assignee" aria-label="派给哪艘船">
+        {{template "shipoptions" .Ships}}
       </select>
-      <button class="primary" data-confirm="确认发布 {{.R.Meta.ID}}？发布后执行者可领取">📣 发布出港</button>
+      <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令">🚢 派船</button>
     </form>
-    <p class="hint">打磨中：在下方正文的「## 验收标准」里补好完成定义，再发布给执行者。</p>
+    <p class="hint">锚地待派：船在自己的终端上看不到这票货。派船后进入「待接令」，船 port claim 接令出港。</p>
+
     {{else if eq .R.Meta.Status "ready"}}
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/claim"><button class="primary">🚢 领取开工</button></form>
-    {{else if eq .R.Meta.Status "in_progress"}}
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/done"><button class="primary" data-confirm="确认 {{.R.Meta.ID}} 归港？">🏁 归港</button></form>
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/block" class="inline">
-      <input name="reason" placeholder="阻塞原因…" required>
-      <button data-confirm="确认标记为受阻？">⛔ 受阻上浮</button>
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
+      <select name="assignee" aria-label="改派给哪艘船">
+        {{$cur := .R.Meta.AssigneeValue}}
+        {{range .Ships}}{{if ne .Name $cur}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>{{end}}{{end}}
+      </select>
+      <button data-confirm="改派 {{.R.Meta.ID}}？原船将不能再接令">改派</button>
     </form>
+    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b> 在自己的终端 <code>port claim {{.R.Meta.ID}}</code> 接令。调度台不能代领。</p>
+
+    {{else if eq .R.Meta.Status "in_progress"}}
+    <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已接令出港。接令/归港/受阻只在船自己的 CLI 完成；调度台在这里看进展、验货、批注。</p>
+
     {{else if eq .R.Meta.Status "blocked"}}
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/unblock"><button class="primary">▶️ 解封继续</button></form>
-    <form method="post" action="/tasks/{{.R.Meta.ID}}/done"><button data-confirm="受阻状态下直接归港？确认">🏁 直接归港</button></form>
+    <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b> 上报受阻（见日志）。可批注指示，或把货改派给别的船：</p>
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
+      <select name="assignee" aria-label="改派给哪艘船">
+        {{$cur := .R.Meta.AssigneeValue}}
+        {{range .Ships}}{{if ne .Name $cur}}<option value="{{.Name}}">{{.Short}}{{if .Online}} · 在线{{else}} · 未报到{{end}}</option>{{end}}{{end}}
+      </select>
+      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船改派给所选船？">受阻改派</button>
+    </form>
+
+    {{else if eq .R.Meta.Status "done"}}
+    <p class="banner done">🏁 已归港。对照验收标准验货，有问题在此批注，船下一票货会看到。</p>
     {{end}}
   </div>
 
   {{if .Accept}}
   <section>
-    <h2>验收标准 <small>{{.AcceptDone}}/{{len .Accept}}</small></h2>
+    <h2>验收标准 · 验货 <small>{{.AcceptDone}}/{{len .Accept}}</small></h2>
     <ul class="accept">
       {{range .Accept}}
       <li class="{{if .Checked}}done{{end}}">
@@ -275,16 +301,17 @@ const taskHTML = head + `
   <section>
     <h2>过程日志</h2>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/log" class="logform">
-      <input name="line" placeholder="记一笔进展…（agent 用 port log）" autocomplete="off" required>
-      <button>记录</button>
+      <input name="line" placeholder="批注一笔…（船用 port log 汇报进展）" autocomplete="off" required>
+      <button>批注</button>
     </form>
     <ul class="logs">
       {{range .Logs}}<li>{{.}}</li>{{end}}
     </ul>
   </section>
 
+  {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
   <details class="edit">
-    <summary>✏️ 编辑标题 / 正文 / 验收 / 重要程度 / 目标</summary>
+    <summary>✏️ 编辑标题 / 正文 / 验收 / 重要程度 / 目标（派船后封舱）</summary>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
       <label>标题</label>
       <input name="title" value="{{.R.Meta.Title}}" required>
@@ -303,6 +330,7 @@ const taskHTML = head + `
       <button type="submit" class="primary">保存</button>
     </form>
   </details>
+  {{end}}
 </article>
 ` + sseBoot + `
 </body></html>`

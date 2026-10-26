@@ -10,7 +10,7 @@ var claimBy string
 
 var claimCmd = &cobra.Command{
 	Use:   "claim <T 编号>",
-	Short: "领取一个 ready 任务（ready → in_progress，自动归属）",
+	Short: "接令出港（ready → in_progress）；只有被派船的执行者能接令",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()
@@ -25,7 +25,7 @@ var claimCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "🚢 %s 由 %s 领走出港: %s\n", r.Meta.ID, by, r.Meta.Title)
+		fmt.Fprintf(cmd.OutOrStdout(), "🚢 %s 由 %s 接令出港: %s\n", r.Meta.ID, by, r.Meta.Title)
 		return nil
 	},
 }

@@ -18,8 +18,10 @@ func statusZH(s string) string {
 	switch s {
 	case store.StatusDraft:
 		return "草稿  "
+	case store.StatusAnchored:
+		return "锚地  "
 	case store.StatusReady:
-		return "待领取"
+		return "待接令"
 	case store.StatusInProgress:
 		return "进行中"
 	case store.StatusBlocked:

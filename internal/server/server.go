@@ -25,7 +25,12 @@ import (
 //go:embed static/*
 var staticFS embed.FS
 
-const actorCookie = "mp_actor"
+// dispatcher 是调度台（网页端）所有动作的署名：人是调度长官，不是执行者。
+// 接令/归港/受阻只属于船，只能从船自己的 CLI 发出。
+const dispatcher = "jmzx@studio"
+
+// roster 是港里的船队花名册；在线状态由心跳补充，没报到的船也能被派活。
+var roster = []string{"claude@studio", "codex@studio"}
 
 // Server 持有 vault 与事件广播器。
 type Server struct {
@@ -110,16 +115,12 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /", s.handleIndex)
-	mux.HandleFunc("POST /identity", s.handleIdentity)
 	mux.HandleFunc("POST /thoughts", s.handleCreateThought)
 	mux.HandleFunc("POST /thoughts/promote", s.handlePromoteThought)
 	mux.HandleFunc("POST /tasks", s.handleCreateTask)
 	mux.HandleFunc("GET /tasks/{id}", s.handleTaskDetail)
 	mux.HandleFunc("POST /tasks/{id}/publish", s.handlePublish)
-	mux.HandleFunc("POST /tasks/{id}/claim", s.handleClaim)
-	mux.HandleFunc("POST /tasks/{id}/done", s.handleDone)
-	mux.HandleFunc("POST /tasks/{id}/block", s.handleBlock)
-	mux.HandleFunc("POST /tasks/{id}/unblock", s.handleUnblock)
+	mux.HandleFunc("POST /tasks/{id}/assign", s.handleAssign)
 	mux.HandleFunc("POST /tasks/{id}/log", s.handleLog)
 	mux.HandleFunc("POST /tasks/{id}/check", s.handleCheck)
 	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
@@ -140,16 +141,24 @@ func (s *Server) Routes() http.Handler {
 // ---------- 视图模型 ----------
 
 type boardData struct {
-	Actor    string
-	IsTask   bool
-	BackID   string
 	Thoughts []store.Record
 	Drafts   []store.Record
 	Cols     []column
+	Ships    []ShipView
 	Agents   []store.Presence
 	ByTask   map[string]store.Presence // 在线执行者 → 正在做的任务
 	Now      time.Time
 	Error    string
+}
+
+// ShipView 是调度台眼里的一艘船：花名册名字 + 实时心跳。
+type ShipView struct {
+	Name   string
+	Short  string
+	Online bool
+	Task   string
+	Note   string
+	Seen   time.Time
 }
 
 type column struct {
@@ -166,11 +175,9 @@ type acceptItem struct {
 
 type taskView struct {
 	R               *store.Record
-	Actor           string
-	IsTask          bool
-	BackID          string
 	Agents          []store.Presence
-	Agent           *store.Presence // 归属执行者的实时心跳（可能为 nil）
+	Ships           []ShipView
+	Agent           *store.Presence // 承担船的实时心跳（可能为 nil）
 	DescriptionHTML template.HTML
 	Accept          []acceptItem
 	AcceptDone      int
@@ -189,12 +196,13 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	all, _ := s.V.ListTasks("")
 	agents, byTask := s.presenceIndex()
 	d := boardData{
-		Actor: actor(r), Thoughts: thoughts, Now: time.Now(),
-		Agents: agents, ByTask: byTask,
+		Thoughts: thoughts, Now: time.Now(),
+		Agents: agents, ByTask: byTask, Ships: fleet(agents),
 		Error: r.URL.Query().Get("error"),
 		Cols: []column{
-			{Key: "ready", Title: "⚓ 待领取"},
-			{Key: "busy", Title: "🚢 进行中"},
+			{Key: "anchored", Title: "⚓ 锚地待派"},
+			{Key: "ready", Title: "🚢 待接令"},
+			{Key: "busy", Title: "🌊 出港中"},
 			{Key: "done", Title: "🏁 已归港"},
 		},
 	}
@@ -202,17 +210,56 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		switch t.Meta.Status {
 		case store.StatusDraft:
 			d.Drafts = append(d.Drafts, t)
-		case store.StatusReady:
+		case store.StatusAnchored:
 			d.Cols[0].Tasks = append(d.Cols[0].Tasks, t)
-		case store.StatusInProgress, store.StatusBlocked:
+		case store.StatusReady:
 			d.Cols[1].Tasks = append(d.Cols[1].Tasks, t)
+		case store.StatusInProgress, store.StatusBlocked:
+			d.Cols[2].Tasks = append(d.Cols[2].Tasks, t)
 		case store.StatusDone:
-			if len(d.Cols[2].Tasks) < 12 {
-				d.Cols[2].Tasks = append(d.Cols[2].Tasks, t)
+			if len(d.Cols[3].Tasks) < 12 {
+				d.Cols[3].Tasks = append(d.Cols[3].Tasks, t)
 			}
 		}
 	}
 	render(w, http.StatusOK, boardTmpl, d)
+}
+
+// fleet 合并花名册与心跳：在册的船都列出（哪怕没报到），心跳里的外船补在末尾。
+func fleet(agents []store.Presence) []ShipView {
+	seen := map[string]store.Presence{}
+	for _, p := range agents {
+		seen[p.Actor] = p
+	}
+	names := append([]string{}, roster...)
+	for _, p := range agents {
+		known := false
+		for _, n := range names {
+			if n == p.Actor {
+				known = true
+				break
+			}
+		}
+		if !known {
+			names = append(names, p.Actor)
+		}
+	}
+	out := make([]ShipView, 0, len(names))
+	for _, n := range names {
+		sv := ShipView{Name: n, Short: shortActor(n)}
+		if p, ok := seen[n]; ok {
+			sv.Online, sv.Task, sv.Note, sv.Seen = p.Online, p.Task, p.Note, p.Seen
+		}
+		out = append(out, sv)
+	}
+	return out
+}
+
+func shortActor(s string) string {
+	if i := strings.Index(s, "@"); i > 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
@@ -221,11 +268,10 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		redirectErr(w, r, err.Error())
 		return
 	}
-	v := buildTaskView(rec, actor(r))
-	v.IsTask = true
-	v.BackID = rec.Meta.ID
+	v := buildTaskView(rec)
 	agents, _ := s.presenceIndex()
 	v.Agents = agents
+	v.Ships = fleet(agents)
 	if a := rec.Meta.AssigneeValue(); a != "" {
 		for i := range agents {
 			if agents[i].Actor == a {
@@ -235,19 +281,6 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, http.StatusOK, taskTmpl, v)
-}
-
-func (s *Server) handleIdentity(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	http.SetCookie(w, &http.Cookie{
-		Name: actorCookie, Value: r.PostFormValue("actor"),
-		Path: "/", MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode,
-	})
-	back := r.PostFormValue("back")
-	if back == "" {
-		back = "/"
-	}
-	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 func (s *Server) handleCreateThought(w http.ResponseWriter, r *http.Request) {
@@ -275,9 +308,8 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if imp == "" {
 		imp = store.ImpNormal
 	}
-	// 网页默认进草稿打磨；勾选「直接发布」才立即出港。
-	draft := r.PostFormValue("publish") != "1"
-	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "", draft)
+	// 网页建任务一律先进草稿打磨：放行到锚地、派船都是后续显式命令。
+	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "", true)
 	if err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -285,10 +317,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
 }
 
+// handlePublish 放行草稿：assignee 为空进锚地，非空直接派船（draft → anchored/ready）。
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	if _, err := s.V.Publish(id, actor(r), r.PostFormValue("assignee")); err != nil {
+	if _, err := s.V.Publish(id, dispatcher, r.PostFormValue("assignee")); err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
@@ -297,6 +330,17 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleAssign 派船/改派：锚地派船、待接令改派、受阻换船。
+func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	id := r.PathValue("id")
+	if _, err := s.V.Assign(id, dispatcher, r.PostFormValue("assignee")); err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 }
 
 // presenceIndex 返回全部心跳，以及「在线且正在做某任务」的 task→Presence 索引。
@@ -311,43 +355,11 @@ func (s *Server) presenceIndex() ([]store.Presence, map[string]store.Presence) {
 	return agents, byTask
 }
 
-func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.V.Claim(r.PathValue("id"), actor(r)); err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	backToBoardOrTask(w, r)
-}
-
-func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.V.Done(r.PathValue("id"), actor(r)); err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	if _, err := s.V.Block(r.PathValue("id"), r.PostFormValue("reason"), actor(r)); err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	backToBoardOrTask(w, r)
-}
-
-func (s *Server) handleUnblock(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.V.Unblock(r.PathValue("id"), actor(r)); err != nil {
-		redirectErr(w, r, err.Error())
-		return
-	}
-	backToBoardOrTask(w, r)
-}
-
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	if _, err := s.V.Log(id, r.PostFormValue("line"), actor(r)); err != nil {
+	// 网页端只能批注（署名调度长官）；进展汇报由船用 port log 写入。
+	if _, err := s.V.Log(id, r.PostFormValue("line"), dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
@@ -359,7 +371,8 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	n := atoiDefault(r.PostFormValue("n"), 0)
 	checked := r.PostFormValue("checked") == "1"
-	if _, _, _, err := s.V.CheckItem(id, n, checked, actor(r)); err != nil {
+	// 勾选 = 调度长官验货留痕（船在 CLI 自勾是汇报，同一套痕迹）。
+	if _, _, _, err := s.V.CheckItem(id, n, checked, dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return
 	}
@@ -426,10 +439,10 @@ func (s *Server) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPINext(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.V.Next()
+	rec, err := s.V.Next(r.URL.Query().Get("actor"))
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "queue empty"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, rec.Meta)
@@ -454,8 +467,8 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // ---------- 视图构造 ----------
 
-func buildTaskView(r *store.Record, act string) taskView {
-	v := taskView{R: r, Actor: act}
+func buildTaskView(r *store.Record) taskView {
+	v := taskView{R: r}
 	var extra strings.Builder
 	for _, sec := range store.Sections(r.Body) {
 		switch sec.Title {
@@ -518,17 +531,12 @@ func mdToHTML(src string) template.HTML {
 // ---------- 模板与小工具 ----------
 
 var funcMap = template.FuncMap{
-	"statusZH": statusZH,
-	"impZH":    impZH,
-	"impClass": impClass,
-	"baseName": filepath.Base,
-	"ago":      agoText,
-	"actorName": func(s string) string {
-		if i := strings.Index(s, "@"); i > 0 {
-			return s[:i]
-		}
-		return s
-	},
+	"statusZH":  statusZH,
+	"impZH":     impZH,
+	"impClass":  impClass,
+	"baseName":  filepath.Base,
+	"ago":       agoText,
+	"actorName": shortActor,
 }
 
 var boardTmpl = template.Must(template.New("board").Funcs(funcMap).Parse(boardHTML))
@@ -540,24 +548,8 @@ func render(w http.ResponseWriter, code int, tmpl *template.Template, data any) 
 	_ = tmpl.Execute(w, data)
 }
 
-func actor(r *http.Request) string {
-	if c, err := r.Cookie(actorCookie); err == nil && c.Value != "" {
-		return c.Value
-	}
-	return "jmzx@studio"
-}
-
 func redirectErr(w http.ResponseWriter, r *http.Request, msg string) {
 	http.Redirect(w, r, "/?error="+url.QueryEscape(msg), http.StatusSeeOther)
-}
-
-func backToBoardOrTask(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	if r.PostFormValue("from") == "task" {
-		http.Redirect(w, r, "/tasks/"+r.PathValue("id"), http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func atoiDefault(s string, def int) int {
@@ -578,8 +570,10 @@ func statusZH(s string) string {
 	switch s {
 	case store.StatusDraft:
 		return "草稿"
+	case store.StatusAnchored:
+		return "锚地"
 	case store.StatusReady:
-		return "待领取"
+		return "待接令"
 	case store.StatusInProgress:
 		return "进行中"
 	case store.StatusBlocked:

@@ -49,7 +49,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listStatus, "status", "", "过滤状态：draft/ready/in_progress/blocked/done")
+	listCmd.Flags().StringVar(&listStatus, "status", "", "过滤状态：draft/anchored/ready/in_progress/blocked/done")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "输出 JSON")
 	rootCmd.AddCommand(listCmd)
 }

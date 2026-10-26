@@ -22,7 +22,7 @@ var promoteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "⚓ 闪念已转任务: %s [%s] %s\n",
+		fmt.Fprintf(cmd.OutOrStdout(), "⚓ 闪念已转草稿任务: %s [%s] %s（打磨后 publish 放行 / dispatch 派船）\n",
 			r.Meta.ID, impZH(r.Meta.Importance), r.Meta.Title)
 		return nil
 	},

@@ -1,5 +1,6 @@
 /* 思港 MindPort — 海港夜色主题。
-   桌面三列看板；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。 */
+   v0.4 调度台：桌面四列（锚地/待接令/出港中/已归港）；
+   ≤1000px 两列；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。 */
 
 :root {
   --sea: #0b1c2c;
@@ -76,6 +77,16 @@ a { color: inherit; }
   font-weight: 500;
   letter-spacing: 1.5px;
   margin-left: 6px;
+}
+.brand em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 9px;
+  margin-left: 10px;
+  white-space: nowrap;
 }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
 
@@ -174,12 +185,17 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   align-items: start;
   margin-top: 4px;
 }
 .col h2 { border-left: 3px solid var(--amber); padding-left: 8px; }
+.col-anchored h2 { border-left-color: var(--muted); }
+.col-ready h2 { border-left-color: var(--busy); }
+.col-busy h2 { border-left-color: var(--amber); }
+.col-done h2 { border-left-color: var(--ok); }
+.card.status-anchored { border-left-color: var(--muted); }
 .col .empty { color: var(--muted); font-size: 13px; padding: 4px 0 12px 10px; }
 
 /* ---------- 卡片 ---------- */
@@ -286,6 +302,8 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 }
 /* 注意：卡片 article 也带 status-xxx 类，徽章颜色必须限定到 .status */
 .status.status-draft { background: #5aa9e622; color: var(--busy); }
+.status.status-anchored { background: #88a3b822; color: var(--muted); }
+.status.status-ready { background: #5aa9e622; color: var(--busy); }
 .status.status-in_progress { background: #f2b54422; color: var(--amber); }
 .status.status-blocked { background: #e07a5f22; color: var(--block); }
 .status.status-done { background: #4fd08a22; color: var(--ok); }
@@ -306,6 +324,24 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .actions.big button { padding-inline: 22px; }
 .publish-box select { min-width: 180px; }
 .hint { width: 100%; color: var(--muted); font-size: 12.5px; margin: 4px 0 0; }
+
+/* 派船/改派命令区：纵向排开，下拉占满宽 */
+.dispatch-box { width: 100%; display: grid; gap: 8px; }
+.dispatch-box.publish-row { margin-top: 0; }
+.dispatch-box select { flex: 1; min-width: 0; }
+
+/* 调度台状态横幅（出港中/受阻/归港验货） */
+.banner {
+  width: 100%;
+  margin: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.banner.sea { background: #5aa9e618; border: 1px solid #5aa9e655; color: #b9d9f2; }
+.banner.block { background: #e07a5f18; border: 1px solid #e07a5f55; color: #ffc9bb; }
+.banner.done { background: #4fd08a18; border: 1px solid #4fd08a55; color: #a9e6c6; }
 
 .detail section {
   background: var(--sea-2);
@@ -392,6 +428,11 @@ footer {
   padding: 28px 0 20px;
 }
 
+/* 中等屏：四列改 2×2 */
+@media (max-width: 1000px) {
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ---------- 直板手机（Vs3 不展开）：全部单列纵向 ---------- */
 
 @media (max-width: 720px) {
@@ -399,14 +440,14 @@ footer {
   .topbar > * { padding: 8px 0; gap: 8px; }
   .brand { font-size: 17px; }
   .brand span { display: none; }
-  .agents { max-width: 38vw; }
+  .brand em { display: none; }
+  .agents { max-width: 46vw; }
   .chip { padding: 3px 8px; }
   .chip em { display: none; }
 
   .capture { padding: 10px; }
   .taskform { flex-wrap: wrap; }
   .taskform input { flex-basis: 100%; }
-  .publish-check { order: 3; flex-basis: 100%; }
 
   .board { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .col h2 { position: static; margin-top: 20px; }
