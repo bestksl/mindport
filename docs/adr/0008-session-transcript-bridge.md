@@ -109,3 +109,22 @@ transcript 含命令、代码片段、思考与可能的密钥，而 serve 常�
 - 依赖 transcript 文件格式这一未成文接口：解析严格容错（坏行跳过、字段缺席降级），
   格式漂移时最坏是某些块不显示，不影响任务主链路。
 - Codex 等其他 agent 无此 transcript，时间线只对 Claude 会话成立。
+
+## 修订（2026-10-27）：扫盘模式与零输入聚合
+
+初始版只能从船队/心跳进入会话，历史船「看不见也想不起」。追加两层：
+
+- `GET /sessions?dir=<项目绝对路径>`：不依赖心跳，直接扫
+  `~/.claude/projects/<编码目录>/`（300 文件上限），列出该项目全部 transcript，
+  `resolveSession(sid, dirHint)` 以「绝对路径 + transcript.Exists」自证兜底，
+  船台/stream/history/say 全认，离港历史照样实时流与 `--resume`。
+- 空态聚合：不给路径时扫全部编码目录，列最近 40 个会话。真实项目路径不靠
+  可逆编码，而由 transcript 每条消息顶层 `cwd` 自证恢复——只取文件头（真人首句
+  当标题）与文件尾（最后 cwd＝当前目录、末事件时间）各 64KB，规避跨目录
+  `--resume` 时头部 cwd 过期，也不全文扫描大文件（实测 500ms→6ms）。
+  无 cwd 的老文件不展示；聚合行不给消息计数，单目录视图才全文计数。
+- 标题过滤 compaction 续接句、图片占位、系统提醒等非真人「伪首句」。
+- `GET /api/sessions` 轻量 JSON，列表 8s 静默轮询，只切行状态 class，
+  页签隐藏自动停；状态徽标由 CSS 按行 class 显隐，轮询不触碰滚动位置。
+- 输入仍可手贴（支持 `~/` 展开、datalist 补全、localStorage 最近目录），
+  但已非必经路径。
