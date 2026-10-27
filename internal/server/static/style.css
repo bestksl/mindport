@@ -1629,6 +1629,12 @@ html[data-stealth="1"] .dir-hint code { font-size: 10.5px; }
 html[data-stealth="1"] .dir-err::before { content: "!! " attr(data-debug); font-size: 11px; }
 html[data-stealth="1"] .dir-page span[data-debug] { font-size: 0; }
 html[data-stealth="1"] .dir-page span[data-debug]::before { content: attr(data-debug); font-size: 10.5px; }
+html[data-stealth="1"] .dir-page em[data-debug] { font-size: 0; font-style: normal; }
+html[data-stealth="1"] .dir-page em[data-debug]::before { content: attr(data-debug); font-size: 10.5px; font-style: normal; }
+html[data-stealth="1"] .dir-all-link { font-size: 0; }
+html[data-stealth="1"] .dir-all-link::before { content: attr(data-debug); font-size: 11px; }
+html[data-stealth="1"] .dir-known-fold summary span[data-debug] { font-size: 0; }
+html[data-stealth="1"] .dir-known-fold summary span[data-debug]::before { content: attr(data-debug); font-size: 11px; }
 
 /* debug 态手机宽也铺满，按钮不放大 */
 @media (max-width: 720px) {
@@ -1709,7 +1715,8 @@ html[data-stealth="1"] .dir-page span[data-debug]::before { content: attr(data-d
 }
 .dir-list-head h2 { font-size: 17px; margin: 0; font-weight: 700; }
 .dir-list-head .dir-full { color: var(--muted); font-size: 11.5px; font-weight: 400; }
-.dir-list-head > span { margin-left: auto; color: var(--muted); font-size: 12px; }
+.dir-list-head > span { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dir-all-link { color: var(--amber); text-decoration: none; font-weight: 600; }
 .dir-list { display: flex; flex-direction: column; gap: 8px; }
 .dir-row {
   display: flex; align-items: center; gap: 12px;
@@ -1724,19 +1731,63 @@ html[data-stealth="1"] .dir-page span[data-debug]::before { content: attr(data-d
 .dir-state { flex: none; width: 10px; display: flex; justify-content: center; }
 .dir-state .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
 .dir-row.is-online .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok-line); }
-.dir-row.is-busy .dot { background: var(--busy); box-shadow: 0 0 6px rgba(111,179,217,.7); animation: pulseDot 1.4s infinite; }
+.dir-row.is-busy .dot,
+.dir-row.is-waiting .dot { background: var(--busy); box-shadow: 0 0 6px rgba(111,179,217,.7); animation: pulseDot 1.4s infinite; }
+.dir-row:active { transform: scale(.997); }
 .dir-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .dir-title {
   font-size: 14px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dir-title code { font-size: 12px; color: var(--muted); }
-.dir-meta { font-size: 12px; color: var(--muted); }
+.dir-meta { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dir-meta b { font-weight: 400; color: var(--line-strong, var(--muted)); }
 .dir-go { color: var(--muted); flex: none; }
 .dir-row:hover .dir-go { color: var(--amber); }
+
+/* 状态徽标：三个 em 常驻 DOM，按行 class 显隐——轮询只切 class 即可 */
+.row-state { display: inline-flex; align-items: center; gap: 4px; }
+.row-state em { display: none; font-style: normal; font-size: 11px; color: var(--busy); }
+.dir-row.is-busy .st-busy,
+.dir-row.is-waiting .st-waiting,
+.dir-row.is-online .st-idle { display: inline; }
+.dir-row.is-online .row-state em { color: var(--ok); }
+.dir-row.is-off .row-state { display: none; }
+.dir-proj { font-style: normal; color: var(--amber); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+
+/* 空态最近浏览 chips：localStorage 注入，无内容时不占位 */
+#recent-chips:empty { display: none; }
+#recent-chips:not(:empty) { margin-bottom: 14px; }
+#recent-chips:not(:empty)::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 2px 6px;
+}
+.dir-chip-recent { border-style: dashed; }
+.dir-back-recent { margin: 0 2px 12px; font-size: 13px; }
+.dir-back-recent a { color: var(--amber); }
+
+/* 已知船位默认折叠，把首屏让给最近会话 */
+.dir-known-fold { margin-top: 18px; }
+.dir-known-fold summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 4px;
+  list-style: none;
+  user-select: none;
+}
+.dir-known-fold summary::-webkit-details-marker { display: none; }
+.dir-known-fold summary::before { content: '▸ '; }
+.dir-known-fold[open] summary::before { content: '▾ '; }
+.dir-known-fold .dir-chips { margin-top: 8px; }
 
 @media (max-width: 720px) {
   .dir-page { padding: 14px 10px 80px; }
   .dir-chip i { max-width: 170px; }
   .dir-list-head .dir-full { display: none; }
+  .dir-row { padding: 13px 12px; gap: 10px; }
+  .dir-proj { max-width: 110px; }
 }

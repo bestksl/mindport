@@ -113,3 +113,63 @@ func TestSessionListByDir(t *testing.T) {
 		t.Fatalf("无 dir 提示的历史船应 404，得到 %d", rec.Code)
 	}
 }
+
+// 空态零输入：聚合全部项目最近会话（路径从 transcript cwd 自证）+ JSON 轮询口 + ~ 展开。
+func TestSessionRecentAggregateAndAPI(t *testing.T) {
+	s, home := setupSession(t, "", nil)
+	h := s.Routes()
+
+	// 任意命名的编码目录里放一条带 cwd 的会话
+	aggBody := `{"type":"user","uuid":"g1","timestamp":"2026-10-27T12:00:00.000Z","cwd":"/Users/me/proj-agg","message":{"role":"user","content":"聚合页要看到我"}}
+{"type":"assistant","uuid":"g2","timestamp":"2026-10-27T12:00:01.000Z","cwd":"/Users/me/proj-agg","message":{"role":"assistant","content":[{"type":"text","text":"在。"}]}}
+`
+	aggDir := transcript.ProjectDir(home, "/Users/me/proj-agg")
+	if err := os.MkdirAll(aggDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(aggDir, "sess-agg-0001.jsonl"), []byte(aggBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	encAgg := url.QueryEscape("/Users/me/proj-agg")
+
+	// 空态 HTML 直接含聚合行
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions", nil))
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, "聚合页要看到我") ||
+		!strings.Contains(body, "/sessions/sess-agg-0001?dir="+encAgg) {
+		t.Fatalf("空态应聚合最近会话并给带 dir 的链接，code=%d", rec.Code)
+	}
+
+	// JSON 轮询口
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions", nil))
+	var d struct {
+		Rows []struct {
+			SID    string `json:"sid"`
+			Dir    string `json:"dir"`
+			Title  string `json:"title"`
+			Online bool   `json:"online"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil || len(d.Rows) != 1 {
+		t.Fatalf("聚合 JSON 应 1 行，得到 %s", rec.Body.String())
+	}
+	if d.Rows[0].SID != "sess-agg-0001" || d.Rows[0].Dir != "/Users/me/proj-agg" {
+		t.Fatalf("聚合 JSON 行不符: %+v", d.Rows[0])
+	}
+
+	// 指定目录的 JSON 口
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions?dir="+encAgg, nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "sess-agg-0001") {
+		t.Fatalf("按目录 JSON 应 200 含会话，得到 %s", rec.Body.String())
+	}
+
+	// ~ 展开：~/不存在 应被当绝对路径处理（404 找不到目录），而非 400 相对路径
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions?dir="+url.QueryEscape("~/no-such-xyz"), nil))
+	if rec.Code != 404 {
+		t.Fatalf("~/ 应先展开再判存在（期望 404），得到 %d", rec.Code)
+	}
+}

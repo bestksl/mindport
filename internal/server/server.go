@@ -139,7 +139,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 
 	// 会话船台（ADR-0008）：实时 transcript 时间线 + 双向回话
-	mux.HandleFunc("GET /sessions", s.handleSessionList) // ?dir=<绝对路径> 扫盘列全部会话
+	mux.HandleFunc("GET /sessions", s.handleSessionList)         // ?dir=<绝对路径> 扫盘列全部会话
+	mux.HandleFunc("GET /api/sessions", s.handleSessionListJSON) // 列表状态轻量轮询
 	mux.HandleFunc("GET /login", s.handleLogin)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /logout", s.handleLogout)
