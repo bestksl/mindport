@@ -175,6 +175,7 @@ type boardData struct {
 	ByTask map[string]store.Presence // 在线执行者 → 正在做的任务
 	Now    time.Time
 	Error  string
+	Auth   bool // 顶栏据此显示登出口；未启用入港证时隐藏
 }
 
 // ShipView 是调度台眼里的一艘船：花名册名字 + 它的各个项目会话（船位）。
@@ -207,6 +208,7 @@ type taskView struct {
 	AcceptDone      int
 	Logs            []string
 	Extra           template.HTML
+	Auth            bool
 }
 
 // ---------- 页面处理器 ----------
@@ -222,6 +224,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Now:    time.Now(),
 		Agents: agents, ByTask: byTask, Ships: fleet(agents),
 		Error: r.URL.Query().Get("error"),
+		Auth:  s.authOn(),
 		Cols: []column{
 			{Key: "anchored", Title: "⚓ 锚地待派"},
 			{Key: "ready", Title: "🚢 待接令"},
@@ -343,6 +346,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	agents, _ := s.presenceIndex()
 	v.Agents = agents
 	v.Ships = fleet(agents)
+	v.Auth = s.authOn()
 	if a := rec.Meta.AssigneeValue(); a != "" {
 		v.Agent = pickAgent(agents, a, rec.Meta.ID)
 	}

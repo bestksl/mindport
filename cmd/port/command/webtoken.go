@@ -8,11 +8,11 @@ import (
 	"github.com/bestksl/mindport/internal/server"
 )
 
-// webTokenCmd 打印（不存在则生成）网页入港证。serve 绑 0.0.0.0 后整个调度台
-// 含会话 transcript 都在密钥后面（ADR-0008），手机首次打开 /login 粘贴它。
+// webTokenCmd 打印（不存在则生成）网页入港证。默认内网免证敞开，只有
+// serve --auth（或 PORT_AUTH=1）上锁后，手机首次打开 /login 才需要粘贴它。
 var webTokenCmd = &cobra.Command{
 	Use:   "web-token",
-	Short: "查看/生成网页入港证（Web 登录密钥）",
+	Short: "查看/生成网页入港证（仅 serve --auth 上锁时需要）",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()

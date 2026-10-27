@@ -127,6 +127,44 @@ func TestLogoutClearsCookie(t *testing.T) {
 	}
 }
 
+func TestNoAuthAllowsAnonymous(t *testing.T) {
+	// 默认内网模式：不调 EnableAuth，所有页面/API 免证敞开，登录口自身隐身。
+	v, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{V: v, broker: newBroker()}
+	h := s.Routes()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/tasks", nil))
+	if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusSeeOther {
+		t.Fatalf("无鉴权模式 API 应直接放行，得到 %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "logout-btn") {
+		t.Fatalf("无鉴权模式看板应 200 且无登出口，得到 %d", rec.Code)
+	}
+
+	// 登录口在无锁模式一律回首屏，不渲染登录页
+	for _, method := range []string{"GET", "POST"} {
+		rec = httptest.NewRecorder()
+		req := httptest.NewRequest(method, "/login", nil)
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+			t.Fatalf("%s /login 无锁时应 303 回首屏，得到 %d %s", method, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/logout", nil))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Fatalf("无锁时 /logout 应回首屏，得到 %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
 func TestSafeNext(t *testing.T) {
 	cases := map[string]string{
 		"/tasks/T1":       "/tasks/T1",

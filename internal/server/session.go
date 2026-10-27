@@ -116,6 +116,7 @@ type sessionPage struct {
 
 	Found  bool // 心跳/快照里有此会话
 	HasLog bool // transcript 文件已落盘
+	Auth   bool // 顶栏据此显示登出口
 
 	Events  []transcript.Event
 	Cursor  int64
@@ -127,7 +128,7 @@ type sessionPage struct {
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
-	d := sessionPage{Agents: s.listPresence(), SID: sid, ShortSID: shortSid(sid)}
+	d := sessionPage{Agents: s.listPresence(), SID: sid, ShortSID: shortSid(sid), Auth: s.authOn()}
 	if !sidOK(sid) {
 		render(w, http.StatusNotFound, sessionTmpl, d)
 		return

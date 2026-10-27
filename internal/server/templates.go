@@ -65,7 +65,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
         <div id="agents" class="agents">{{template "chips" .Agents}}</div>
       </div>
     </details>
-    <a class="logout-btn" href="/logout" title="收港登出" data-debug="x" aria-label="登出">⇥</a>
+    {{if .Auth}}<a class="logout-btn" href="/logout" title="收港登出" data-debug="x" aria-label="登出">⇥</a>{{end}}
   </div>
 </header>
 {{end}}

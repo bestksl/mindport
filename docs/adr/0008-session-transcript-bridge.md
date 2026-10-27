@@ -66,30 +66,39 @@ Claude Code 没有「attach 旁观运行中会话」的官方 API，但给了两
 - 安全边界：resume 只能「追加一轮」，不能强杀/打断船正在跑的动作
   （那需要终端 Ctrl-C）；信箱保证的是「下一个动作之前必看到」。
 
-### 鉴权（硬前置）
+### 鉴权（可选入港证；默认关闭）
+
+> **修订（2026-10-27，拍板当天）**：初版设计为「serve 一律强制鉴权」，
+> 实际使用中手机每次被登录页打断，用户拍板改回**默认内网免证敞开**：
+> Tailscale（100.64/10，未开 Funnel）与家庭 WiFi 都是单用户网络边界，
+> 鉴权降为 `serve --auth` / `PORT_AUTH=1` 的可选开关。代码与全部测试保留。
 
 transcript 含命令、代码片段、思考与可能的密钥，而 serve 常绑 `0.0.0.0`：
 
-- serve 启动时在 `.port/state/web.token` 无则生成 32B 随机 hex（0600），
-  启动横幅提示用 `port web-token` 查看。
-- 除静态资产与 `/login`、`/logout` 外全部路由需要 cookie `mp_key=<token>`；
-  未登录访问一律 302 到 `/login`（HTML）或 401（/api/）。
+- 仅 `--auth` 启用时，serve 在 `.port/state/web.token` 无则生成 32B 随机
+  hex（0600），启动横幅提示用 `port web-token` 查看；`port web-token`
+  命令本身始终可用（提前取钥）。
+- 启用后除静态资产与 `/login`、`/logout` 外全部路由需要 cookie
+  `mp_key=<token>`；未登录访问一律 302 到 `/login`（HTML）或 401（/api/）。
+  未启用时中间件整体放行，`/login` 自身 303 回首屏，顶栏不显示登出口。
+- 无鉴权 + `0.0.0.0` 的风险（同网段可读全部内容）由启动横幅明示。
 - 单用户内网模型，token 即密钥（不做用户体系）；cookie 30 天、HttpOnly、
   SameSite=Lax、HTTP 本机不加 Secure（Tailscale/局域网场景）。
-- 程序化构造的 Server（测试）不启用鉴权，只有 `serve` 命令显式开启。
+- 程序化构造的 Server（测试）不启用鉴权。
 
 ### 隐私默认折叠
 
 时间线默认只给「调度视角」：thinking 折叠为「💭 思考块」、
 工具输入/输出折叠为动作行（退出码与耗时外露），点开才看原文；
-服务端对单块原文截断 4KB。不做内容级密钥脱敏（不可靠），靠折叠 + 鉴权兜底。
+服务端对单块原文截断 4KB。不做内容级密钥脱敏（不可靠），靠折叠兜底，
+需要时再以 `--auth` 加网络内的第二道防线。
 
 ### 组件
 
 - `internal/transcript`：路径编码、jsonl 解析、按字节范围读取、块白名单摘要。
 - `internal/server`：auth 中间件/登录页；`/sessions/{sid}` 页面；
   `/api/sessions/{sid}/stream|history`；`/sessions/{sid}/say`。
-- `cmd/port`：`port web-token`、`port mail-pull`；serve 启动开鉴权。
+- `cmd/port`：`port web-token`、`port mail-pull`；`serve --auth` 时开鉴权。
 - `.port/state/mail/<sid>.jsonl`：船位信箱（运行时态，不进任务文件、不进 git）。
 
 ## 后果

@@ -99,11 +99,16 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 }
 
 // handleLogin GET 渲染入港证页；POST 校验密钥后写 cookie。
+// 未启用鉴权时（默认内网模式）登录口不露面，一律回首屏。
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.authOn() {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	if r.Method == http.MethodPost {
 		_ = r.ParseForm()
 		tok := r.PostFormValue("key")
-		if tok == "" || s.authOn() && subtle.ConstantTimeCompare([]byte(tok), []byte(s.authToken)) != 1 {
+		if tok == "" || subtle.ConstantTimeCompare([]byte(tok), []byte(s.authToken)) != 1 {
 			render(w, http.StatusOK, loginTmpl, map[string]any{"Error": "密钥不对，再试一次"})
 			return
 		}
@@ -119,17 +124,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, to, http.StatusSeeOther)
 		return
 	}
-	if !s.authOn() {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
 	render(w, http.StatusOK, loginTmpl, map[string]any{"Next": safeNext(r.URL.Query().Get("next"))})
 }
 
-// handleLogout 清 cookie。
+// handleLogout 清 cookie；未启用鉴权时回首屏（/login 自身也会跳回首屏）。
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	to := "/login"
+	if !s.authOn() {
+		to = "/"
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 // safeNext 只允许站内相对路径，挡住开放重定向。反斜杠也拒：浏览器会把

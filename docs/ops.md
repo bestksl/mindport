@@ -34,15 +34,22 @@ nohup env PORT_VAULT=$HOME/MindPort $HOME/.local/bin/port serve \
 
 ### 入港证（Web 鉴权，ADR-0008）
 
-会话船台会展示 transcript（含命令/代码/思考），v0.6 起 serve **一律强制鉴权**：
+**默认不启用，内网免证敞开**（Tailscale/家庭内网单用户模型，2026-10-27 拍板）。
+会话船台会展示 transcript（含命令/代码/思考），不可信网络（公共 WiFi、
+要把端口暴露出去等）用 `--auth` 上锁：
 
+```bash
+port serve --host 0.0.0.0 --port 8787 --auth   # 或 PORT_AUTH=1
+```
+
+- 上锁后：浏览器首次打开任意页 302 到 `/login`，粘贴密钥后写 HttpOnly cookie
+  （SameSite=Lax，30 天）；`/api/*` 未登录直接 401；顶栏出现登出口；
 - 密钥：`~/MindPort/.port/state/web.token`，32B 随机 hex，0600；
-  `port web-token` 查看/首建，密钥只在本机文件里，不要外传；
-- 浏览器首次打开任意页 302 到 `/login`，粘贴密钥后写 HttpOnly cookie
-  （SameSite=Lax，30 天）；`/api/*` 未登录直接 401；
+  `port web-token` 查看/首建，密钥只存本机，不要外传；
 - 手机换机/丢 cookie：在本机再跑一次 `port web-token` 取同一把密钥；
-- Tailscale 网段之外本就不可达（100.64/10 非公网路由，未开 Funnel），
-  入港证是单用户内网模型的第二道防线，不做用户体系。
+- ⚠ 无鉴权 + `--host 0.0.0.0` 时，同 WiFi 网段任何人都能读全部内容，
+  启动横幅会明示这一警告；Tailscale 网段（100.64/10，未开 Funnel）只有
+  自己的设备，日常默认模式即依赖这道网络边界，不做用户体系。
 
 `deploy/com.bestksl.mindport.plist` 是**存档备用**的 launchd 方案
 （自启 + 崩溃拉起），等需要时再按文件头注释安装；当前不要启用。

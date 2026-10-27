@@ -44,7 +44,7 @@
 - 🗑️ **草稿可删**：仅草稿（未放行）能删除，放行后的货有流转历史不可抹除；
 - 🥸 **防老板皮相**：顶栏 `</>` 一键切到黑白等宽「debug 台」外观（招牌/标题/按钮换英文伪装名），状态只存 sessionStorage——刷新不露馅，关掉标签即恢复；
 - ⛵ **会话船台（ADR-0008）**：船队里点任意会话即进它的实时船台——按字节偏移幂等增量读取 `~/.claude/projects` 下的 transcript jsonl，真人/船/工具/思考分角色成时间线，可一直向上翻到会话开端（1.5s 轮询、页面隐藏暂停、uuid 去重不丢不重）；思考与工具原文默认折叠；底部可直接给船**继续派话**：空闲会话经 `claude -p --resume <sid> --bg` 后台续跑，船正忙时留言进信箱，由 UserPromptSubmit 钩子在下一轮自动注入（幂等不重放）；
-- 🔑 **内港入港证**：serve 开启即强制鉴权（网页含会话 transcript，含命令/代码/思考），共享密钥存 `.port/state/web.token`（0600），`port web-token` 查看，登录写 HttpOnly cookie 30 天；
+- 🔓 **内网免证敞开，可选入港证**：默认 serve 不设登录（Tailscale/家庭内网单用户模型）；不可信网络用 `serve --auth`（或 `PORT_AUTH=1`）上锁，共享密钥存 `.port/state/web.token`（0600），`port web-token` 查看，登录写 HttpOnly cookie 30 天——网页里能看到会话 transcript（含命令/代码/思考），只在受信网络裸奔；
 - 🔌 **HTTP / SSH 接口**：调度台 Web 看板已可用，更多集成在规划中。
 
 ---
@@ -173,7 +173,9 @@ go build -o bin/port ./cmd/port
 ./bin/port list [--status anchored] [--json]
 
 ./bin/port serve --host 0.0.0.0 --port 8787
-# 首次开服后取入港证，浏览器打开后在 /login 粘贴（cookie 30 天）：
+# 默认内网免证，手机打开即用；不可信网络加 --auth 上锁（PORT_AUTH=1 同义），
+# 上锁后首次打开跳 /login，取密钥粘贴（cookie 30 天）：
+./bin/port serve --host 0.0.0.0 --port 8787 --auth
 ./bin/port web-token
 # 手机浏览器（同 WiFi 或 Tailscale）：草稿区、锚地/待接令/出港中/已归港四列、
 # 派船/改派下拉、船队在线灯与「正在做」状态行、验货勾选、批注；
@@ -190,7 +192,7 @@ Claude Code 在本仓开会话时，`.claude/settings.json` 钩子自动 present
 代码结构：`internal/store`（vault 文件、frontmatter、flock 锁、状态机、
 锚地/派船/归港门禁、在线心跳、调度长信箱，含表驱动测试）、`internal/transcript`
 （Claude transcript jsonl 的字节偏移增量/上翻读取与容错解析）、`internal/server`
-（net/http + go:embed + fsnotify/SSE + goldmark 渲染 + 入港证鉴权，纯调度台）、
+（net/http + go:embed + fsnotify/SSE + goldmark 渲染 + 可选入港证，纯调度台）、
 `cmd/port`（cobra 子命令）。
 
 ## 技术架构与技术栈
