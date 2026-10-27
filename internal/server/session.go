@@ -29,9 +29,10 @@ type sessInfo struct {
 	state  string
 }
 
-// resolveSession 在官方发现口快照与磁盘心跳里找会话。
-// 离线会话（快照缺席、心跳还在）也找得到——transcript 历史照读，还能 --resume 唤醒。
-func (s *Server) resolveSession(sid string) (sessInfo, bool) {
+// resolveSession 在官方发现口快照与磁盘心跳里找会话；dirHint（URL ?dir=）
+// 是「扫盘模式」兜底——历史会话从不上心跳也定位得到，transcript 照读、可 --resume。
+// 离线会话（快照缺席、心跳还在）也找得到。
+func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 	var info sessInfo
 	found := false
 	if s.poller != nil {
@@ -57,6 +58,14 @@ func (s *Server) resolveSession(sid string) (sessInfo, bool) {
 		if !info.online {
 			// 快照缺席：listPresence 已据此置灰
 			info.online = p.Online
+		}
+	}
+	// 心跳/发现口都没有：相信 URL 带来的目录提示，但必须自证——
+	// 绝对路径且对应 transcript 文件真实存在（防目录穿越与瞎编）。
+	if info.dir == "" && dirHint != "" && filepath.IsAbs(dirHint) {
+		if home, err := os.UserHomeDir(); err == nil && transcript.Exists(home, dirHint, sid) {
+			info.dir = dirHint
+			found = true
 		}
 	}
 	return info, found
@@ -114,9 +123,10 @@ type sessionPage struct {
 	Status   string
 	State    string
 
-	Found  bool // 心跳/快照里有此会话
-	HasLog bool // transcript 文件已落盘
-	Auth   bool // 顶栏据此显示登出口
+	Found    bool // 心跳/快照/目录提示里有此会话
+	HasLog   bool // transcript 文件已落盘
+	Auth     bool // 顶栏据此显示登出口
+	FromList bool // 从 /sessions?dir= 列表点进来：返回键回目录列表
 
 	Events  []transcript.Event
 	Cursor  int64
@@ -133,8 +143,10 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		render(w, http.StatusNotFound, sessionTmpl, d)
 		return
 	}
-	info, found := s.resolveSession(sid)
+	dirHint := r.URL.Query().Get("dir")
+	info, found := s.resolveSession(sid, dirHint)
 	d.Found = found
+	d.FromList = dirHint != ""
 	d.Name = info.name
 	d.Dir = info.dir
 	d.Short = filepath.Base(info.dir)
@@ -143,6 +155,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	d.State = info.state
 	d.Busy = info.status == "busy" || info.status == "waiting"
 	d.Pending, _ = s.V.MailPending(sid)
+	// 历史会话没有心跳简介：用 transcript 首条真人发言当船台标题
+	if found && d.Name == "" && info.dir != "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			d.Name = transcript.Meta(home, info.dir, sid).Title
+		}
+	}
 
 	if found {
 		if p, ok := s.transcriptPath(info, sid); ok {
@@ -177,7 +195,7 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
 	}
-	info, found := s.resolveSession(sid)
+	info, found := s.resolveSession(sid, r.URL.Query().Get("dir"))
 	if !found || info.dir == "" {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
@@ -217,7 +235,7 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
 	}
-	info, found := s.resolveSession(sid)
+	info, found := s.resolveSession(sid, r.URL.Query().Get("dir"))
 	if !found || info.dir == "" {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
@@ -257,7 +275,7 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要说的话不能为空"})
 		return
 	}
-	info, found := s.resolveSession(sid)
+	info, found := s.resolveSession(sid, r.URL.Query().Get("dir"))
 	if !found || info.dir == "" {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return

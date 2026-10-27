@@ -25,7 +25,7 @@ const sessionHTML = head + `
 
 <main class="session" data-sid="{{.SID}}">
   <div class="session-head {{if .Online}}online{{else}}offline{{end}}" id="s-head">
-    <a class="back" href="/" data-debug="back"><span class="emo">← </span>调度台</a>
+    <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}会话列表{{else}}调度台{{end}}</a>
     <h1 data-debug="session">
       {{if .Name}}<span class="emo">⛵ </span>{{.Name}}{{else}}<span class="emo">⛵ </span>会话 <code>{{.ShortSID}}</code>{{end}}
       {{if .Dir}}<i class="s-dir" title="{{.Dir}}"><span class="emo">📍</span>{{.Short}}</i>{{end}}
@@ -51,7 +51,7 @@ const sessionHTML = head + `
     </div>
   </div>
 
-  <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say" method="post">
+  <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
     <div class="say-note" id="say-note" hidden></div>
     <div class="say-row">
       <textarea name="msg" rows="1" maxlength="4000"
@@ -61,7 +61,7 @@ const sessionHTML = head + `
     </div>
   </form>
   {{else}}
-  <p class="tl-empty">心跳与官方发现口都没有这个会话。它可能从未报到，或 id 抄错了。<br><a href="/">回调度台看船队</a></p>
+  <p class="tl-empty">心跳、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">按目录翻全部会话</a> · <a href="/">回调度台</a></p>
   {{end}}
 </main>
 
@@ -85,6 +85,8 @@ const sessionHTML = head + `
 {{define "tlEventJS"}}
 (function () {
   var SID = "{{.SID}}";
+  var DIR = {{printf "%q" .Dir}};
+  function dirQS() { return DIR ? '&dir=' + encodeURIComponent(DIR) : ''; }
   var cursor = {{.Cursor}};
   var oldest = {{.From}};
   var hasMore = {{if and .HasLog (gt .From 0)}}true{{else}}false{{end}};
@@ -177,7 +179,7 @@ const sessionHTML = head + `
   function poll() {
     if (active) return;
     active = true;
-    fetch('/api/sessions/' + encodeURIComponent(SID) + '/stream?from=' + cursor, { headers: { 'Accept': 'application/json' } })
+    fetch('/api/sessions/' + encodeURIComponent(SID) + '/stream?from=' + cursor + dirQS(), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })
       .then(function (d) {
         if (d.events && d.events.length) {
@@ -203,7 +205,7 @@ const sessionHTML = head + `
     loadingOlder = true;
     var btn = document.getElementById('tl-more');
     if (btn) btn.disabled = true;
-    return fetch('/api/sessions/' + encodeURIComponent(SID) + '/history?before=' + oldest)
+    return fetch('/api/sessions/' + encodeURIComponent(SID) + '/history?before=' + oldest + dirQS())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.events) return;

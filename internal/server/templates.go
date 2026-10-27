@@ -63,6 +63,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       <div class="fleet-pop">
         <div class="fleet-pop-head"><span>港内船位</span><span id="fleet-sub"></span></div>
         <div id="agents" class="agents">{{template "chips" .Agents}}</div>
+        <a class="fleet-dir-link" href="/sessions" data-debug="browse by dir"><span class="emo">📂 </span>按目录翻全部会话（含离港历史）</a>
       </div>
     </details>
     {{if .Auth}}<a class="logout-btn" href="/logout" title="收港登出" data-debug="x" aria-label="登出">⇥</a>{{end}}

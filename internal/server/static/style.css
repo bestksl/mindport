@@ -1590,8 +1590,131 @@ html[data-stealth="1"] .login-sub { font-size: 0; }
 html[data-stealth="1"] .login-sub::before { content: "// " attr(data-debug); font-size: 10.5px; }
 html[data-stealth="1"] .login-sub > * { display: none; }
 
+/* 按目录翻会话：入口链接、提示、状态/量词全部换皮 */
+html[data-stealth="1"] .fleet-dir-link { font-size: 0; border-top-color: #000; color: #000; }
+html[data-stealth="1"] .fleet-dir-link::before { content: attr(data-debug); font-size: 11px; }
+html[data-stealth="1"] .dir-bar input,
+html[data-stealth="1"] .dir-chip,
+html[data-stealth="1"] .dir-row { border: 1px solid #000 !important; }
+html[data-stealth="1"] .dir-row { text-decoration: none; }
+html[data-stealth="1"] .dir-chip i { font-style: normal; }
+html[data-stealth="1"] .dir-state .dot { border-radius: 0 !important; }
+html[data-stealth="1"] .dir-hint,
+html[data-stealth="1"] .dir-err { font-size: 0; }
+html[data-stealth="1"] .dir-hint { display: block; margin: 6px 0; }
+html[data-stealth="1"] .dir-hint::before { content: "// " attr(data-debug); font-size: 10.5px; }
+html[data-stealth="1"] .dir-hint code { font-size: 10.5px; }
+html[data-stealth="1"] .dir-err::before { content: "!! " attr(data-debug); font-size: 11px; }
+html[data-stealth="1"] .dir-page span[data-debug] { font-size: 0; }
+html[data-stealth="1"] .dir-page span[data-debug]::before { content: attr(data-debug); font-size: 10.5px; }
+
 /* debug 态手机宽也铺满，按钮不放大 */
 @media (max-width: 720px) {
   html[data-stealth="1"] button { min-height: 0; }
   html[data-stealth="1"] .topbar { flex-wrap: nowrap; }
+}
+
+/* ===== 按目录翻会话（ADR-0008 扫盘模式） ===== */
+.fleet-dir-link {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fleet-dir-link:hover { color: var(--amber); }
+
+.dir-page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 18px 16px 60px;
+}
+.dir-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.dir-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dir-bar input:focus { outline: none; border-color: var(--amber-line); }
+.dir-bar button { white-space: nowrap; }
+.dir-err {
+  margin-bottom: 12px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--block-line);
+  background: var(--block-soft);
+  color: var(--block);
+  font-size: 13px;
+}
+.dir-known h2 { font-size: 14px; color: var(--muted); margin: 18px 0 10px; font-weight: 600; }
+.dir-hint { color: var(--muted); font-size: 12.5px; line-height: 1.7; margin-top: 14px; }
+.dir-hint code { font-size: 11.5px; }
+.dir-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dir-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+  max-width: 100%;
+}
+.dir-chip:hover { border-color: var(--amber-line); }
+.dir-chip b { font-weight: 600; }
+.dir-chip i {
+  color: var(--muted); font-style: normal; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 280px; direction: rtl; text-align: left;
+}
+.dir-list-head {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 6px 2px 12px;
+}
+.dir-list-head h2 { font-size: 17px; margin: 0; font-weight: 700; }
+.dir-list-head .dir-full { color: var(--muted); font-size: 11.5px; font-weight: 400; }
+.dir-list-head > span { margin-left: auto; color: var(--muted); font-size: 12px; }
+.dir-list { display: flex; flex-direction: column; gap: 8px; }
+.dir-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+}
+.dir-row:hover { border-color: var(--amber-line); background: var(--amber-soft); }
+.dir-state { flex: none; width: 10px; display: flex; justify-content: center; }
+.dir-state .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dir-row.is-online .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok-line); }
+.dir-row.is-busy .dot { background: var(--busy); box-shadow: 0 0 6px rgba(111,179,217,.7); animation: pulseDot 1.4s infinite; }
+.dir-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dir-title {
+  font-size: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dir-title code { font-size: 12px; color: var(--muted); }
+.dir-meta { font-size: 12px; color: var(--muted); }
+.dir-go { color: var(--muted); flex: none; }
+.dir-row:hover .dir-go { color: var(--amber); }
+
+@media (max-width: 720px) {
+  .dir-page { padding: 14px 10px 80px; }
+  .dir-chip i { max-width: 170px; }
+  .dir-list-head .dir-full { display: none; }
 }

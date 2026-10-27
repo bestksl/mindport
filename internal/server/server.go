@@ -139,6 +139,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 
 	// 会话船台（ADR-0008）：实时 transcript 时间线 + 双向回话
+	mux.HandleFunc("GET /sessions", s.handleSessionList) // ?dir=<绝对路径> 扫盘列全部会话
 	mux.HandleFunc("GET /login", s.handleLogin)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /logout", s.handleLogout)
@@ -687,6 +688,7 @@ var boardTmpl = template.Must(template.New("board").Funcs(funcMap).Parse(boardHT
 var taskTmpl = template.Must(template.New("task").Funcs(funcMap).Parse(taskHTML))
 var loginTmpl = template.Must(template.New("login").Funcs(funcMap).Parse(loginHTML))
 var sessionTmpl = template.Must(template.New("session").Funcs(funcMap).Parse(sessionHTML))
+var dirTmpl = template.Must(template.New("dir").Funcs(funcMap).Parse(dirListHTML))
 
 // onlyResults 判定一条 user 事件是否只是工具回报（没有真人发言），
 // 时间线上把它弱化成紧凑的「🧰 工具回报」行。
