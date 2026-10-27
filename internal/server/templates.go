@@ -56,6 +56,9 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
         </button>
       </div>
     </details>
+    <a class="sessions-btn" href="/sessions" title="按目录翻全部会话（含离港历史）">
+      <span class="emo">📂</span><span class="sessions-label" data-debug="logs">会话</span>
+    </a>
     <details class="fleet pop" id="fleet">
       <summary class="fleet-btn">
         <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="agents">船队</span><b id="fleet-count">…</b><i class="caret"></i>

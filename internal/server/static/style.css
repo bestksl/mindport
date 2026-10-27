@@ -456,6 +456,25 @@ a { color: inherit; }
 .sw { display: inline-flex; border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
 .sw i { display: block; width: 12px; height: 22px; }
 
+/* 顶栏明面对话入口：按目录翻全部会话 */
+.sessions-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--px-shadow);
+  padding: 6px 11px;
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+.sessions-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
+.sessions-btn:hover { border-color: var(--amber-line); }
+
 /* 船队：默认收起的浮层 */
 .fleet { position: relative; }
 .fleet-btn {
@@ -1514,6 +1533,9 @@ html[data-stealth="1"] .brand > * { display: none !important; }
 
 html[data-stealth="1"] .fleet-label { font-size: 0; }
 html[data-stealth="1"] .fleet-label::before { content: attr(data-debug); font-size: 12px; }
+html[data-stealth="1"] .sessions-btn { border-color: #000; box-shadow: none; }
+html[data-stealth="1"] .sessions-label { font-size: 0; }
+html[data-stealth="1"] .sessions-label::before { content: attr(data-debug); font-size: 12px; }
 
 html[data-stealth="1"] .capture-hint { text-align: left; font-size: 0; margin: 3px 0 0; }
 html[data-stealth="1"] .capture-hint::before { content: "// " attr(data-debug); font-size: 10.5px; }
