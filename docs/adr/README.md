@@ -10,3 +10,4 @@
 | [0006](0006-capture-as-draft.md) | 入港即立箱：取消独立闪念/inbox | Accepted | 2026-10-26 |
 | [0007](0007-agent-integration.md) | Claude Code 远程/编程化能力的接入边界（架构评估） | Proposed | 2026-10-26 |
 | [0008](0008-session-transcript-bridge.md) | 会话船台：transcript 全量桥接与双向回话 | Accepted | 2026-10-26 |
+| [0009](0009-fleet-is-session.md) | 船队即会话：三态复用、结局标记、任务挂船队 | Accepted | 2026-10-28 |
