@@ -56,13 +56,13 @@ const dirListHTML = head + `
 </main>
 
 {{define "dirRow"}}
-<a class="dir-row {{.Class}}" data-sid="{{.SID}}"
+<a class="dir-row {{.Class}}{{if .MarkText}} has-mark{{end}}" data-sid="{{.SID}}"
    href="/sessions/{{.SID}}?dir={{.Dir | urlquery}}" title="{{.Dir}}">
   <span class="dir-state"><i class="dot"></i></span>
   <span class="dir-main">
     <span class="dir-title">{{if .Title}}{{.Title}}{{else}}<code>{{slice .SID 0 8}}</code><span data-debug="(untitled)">（无题首句）</span>{{end}}</span>
     <span class="dir-meta">
-      <span class="row-state"><em class="st-busy" data-debug="busy">船在忙</em><em class="st-waiting" data-debug="waiting">候令中</em><em class="st-idle" data-debug="idle">在线待派</em><b>·</b></span>
+      <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
       {{if .ShowProj}}<i class="dir-proj"><span class="emo">📁 </span>{{.Proj}}</i><b>·</b>{{end}}
       {{if not .HideCount}}<span class="row-events">{{.Events}}</span> <span data-debug="msgs">条消息</span><b>·</b>{{end}}<span data-debug="updated">更新</span> {{.LastTS.Format "01-02 15:04"}}
     </span>
@@ -79,14 +79,26 @@ const dirListHTML = head + `
   var apiURL = '/api/sessions' + (dirQS ? '?dir=' + encodeURIComponent(dirQS) : '');
   var timer = null;
 
+  function markText(m) { return m === 'good' ? '✅ 圆满结束' : '⏹ 中途停止'; }
   function patchRow(r) {
     var el = listEl.querySelector('[data-sid="' + r.sid + '"]');
     if (!el) return;
-    el.classList.remove('is-busy', 'is-waiting', 'is-online', 'is-off');
-    if (r.online && r.status === 'busy') el.classList.add('is-busy');
-    else if (r.online && r.status === 'waiting') el.classList.add('is-waiting');
-    else if (r.online) el.classList.add('is-online');
-    else el.classList.add('is-off');
+    el.classList.remove('is-working', 'is-waiting', 'is-idle', 'is-off');
+    if (!r.online) el.classList.add('is-off');
+    else if (r.status === 'busy') el.classList.add('is-working');
+    else if (r.status === 'waiting') el.classList.add('is-waiting');
+    else el.classList.add('is-idle');
+    // 结局标记覆盖状态文案；标记可能在页面加载后才产生，就地补一个 em
+    var state = el.querySelector('.row-state');
+    var mk = state && state.querySelector('.st-mark');
+    if (r.mark) {
+      el.classList.add('has-mark');
+      if (!mk && state) { mk = document.createElement('em'); state.insertBefore(mk, state.firstChild); }
+      if (mk) { mk.className = 'st-mark st-mark-' + r.mark; mk.textContent = markText(r.mark); }
+    } else {
+      el.classList.remove('has-mark');
+      if (mk) mk.remove();
+    }
     var ev = el.querySelector('.row-events');
     if (ev && r.events) ev.textContent = r.events;
   }

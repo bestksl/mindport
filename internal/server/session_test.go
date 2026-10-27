@@ -122,7 +122,7 @@ func TestSessionHistoryAnd404(t *testing.T) {
 	// 心跳里没有的会话：页面友好提示
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/nope-0000", nil))
-	if !strings.Contains(rec.Body.String(), "港里没查到这艘船") {
+	if !strings.Contains(rec.Body.String(), "没查到这支船队") {
 		t.Fatalf("未知会话应显示友好态")
 	}
 	// API 直接 404

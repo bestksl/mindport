@@ -22,11 +22,12 @@ const resumeTimeout = 30 * time.Second
 
 // sessInfo 是定位一个会话所需的全部信息（官方快照 + 磁盘心跳合并）。
 type sessInfo struct {
-	dir    string
-	name   string
-	online bool
-	status string // busy | waiting | idle | ""（离线）
-	state  string
+	dir        string
+	name       string
+	online     bool
+	status     string // busy | waiting | idle | ""（离线）
+	state      string
+	waitingFor string
 }
 
 // resolveSession 在官方发现口快照与磁盘心跳里找会话；dirHint（URL ?dir=）
@@ -39,7 +40,7 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 		if live, ok := s.poller.snapshot()[sid]; ok {
 			info = sessInfo{
 				dir: live.CWD, name: live.Name, online: true,
-				status: live.Status, state: live.State,
+				status: live.Status, state: live.State, waitingFor: live.WaitingFor,
 			}
 			found = true
 		}
@@ -123,6 +124,14 @@ type sessionPage struct {
 	Status   string
 	State    string
 
+	StateKey    string // working | waiting | idle | offline
+	StateText   string
+	WaitingFor  string
+	HasMark     bool
+	Mark        store.SessionMark
+	MarkText    string
+	BoundTasks  []store.Record // 挂在这支船队上的集装箱
+
 	Found    bool // 心跳/快照/目录提示里有此会话
 	HasLog   bool // transcript 文件已落盘
 	Auth     bool // 顶栏据此显示登出口
@@ -153,8 +162,15 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	d.Online = info.online
 	d.Status = info.status
 	d.State = info.state
+	d.WaitingFor = info.waitingFor
 	d.Busy = info.status == "busy" || info.status == "waiting"
+	fs := fleetStateOf(info.online, info.status)
+	d.StateKey, d.StateText = fs.Key, fs.Text
+	if mk, ok := s.V.SessionMark(sid); ok {
+		d.HasMark, d.Mark, d.MarkText = true, mk, markText(mk.Outcome)
+	}
 	d.Pending, _ = s.V.MailPending(sid)
+	d.BoundTasks, _ = s.V.TasksBySession(sid)
 	// 历史会话没有心跳简介：用 transcript 首条真人发言当船台标题
 	if found && d.Name == "" && info.dir != "" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -179,14 +195,16 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 // ---------- 增量 / 上翻 JSON ----------
 
 type streamResp struct {
-	Events  []transcript.Event `json:"events"`
-	Cursor  int64              `json:"cursor"`
-	Size    int64              `json:"size"`
-	Online  bool               `json:"online"`
-	Busy    bool               `json:"busy"`
-	Status  string             `json:"status"`
-	State   string             `json:"state"`
-	Pending int                `json:"pending"`
+	Events     []transcript.Event `json:"events"`
+	Cursor     int64              `json:"cursor"`
+	Size       int64              `json:"size"`
+	Online     bool               `json:"online"`
+	Busy       bool               `json:"busy"`
+	Status     string             `json:"status"`
+	State      string             `json:"state"`
+	WaitingFor string             `json:"waiting_for,omitempty"`
+	Mark       string             `json:"mark,omitempty"` // good | stop（人给的结局，覆盖状态文案）
+	Pending    int                `json:"pending"`
 }
 
 func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
@@ -201,11 +219,15 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := streamResp{
-		Online: info.online,
-		Busy:   info.status == "busy" || info.status == "waiting",
-		Status: info.status,
-		State:  info.state,
-		Events: []transcript.Event{},
+		Online:     info.online,
+		Busy:       info.status == "busy" || info.status == "waiting",
+		Status:     info.status,
+		State:      info.state,
+		WaitingFor: info.waitingFor,
+		Events:     []transcript.Event{},
+	}
+	if mk, ok := s.V.SessionMark(sid); ok {
+		resp.Mark = mk.Outcome
 	}
 	resp.Pending, _ = s.V.MailPending(sid)
 	home, _ := os.UserHomeDir()
@@ -280,6 +302,8 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
 	}
+	// 又开口说话 = 结局翻篇：旧的「圆满结束/中途停止」标记自动撤掉。
+	_ = s.V.UnmarkSession(sid)
 
 	// 正忙（busy/waiting）：官方拒绝并发 resume，直接进信箱，下轮提交时钩子注入。
 	if info.online && info.status != "idle" {
@@ -291,7 +315,7 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 		s.queueMail(w, sid, msg)
 		return
 	}
-	writeJSON(w, sayResp{Delivered: "resume", Detail: "已唤醒该会话，船在后台接着跑"})
+	writeJSON(w, sayResp{Delivered: "resume", Detail: "已唤醒会话，正在后台接着跑"})
 }
 
 func (s *Server) queueMail(w http.ResponseWriter, sid, msg string) {
@@ -300,7 +324,7 @@ func (s *Server) queueMail(w http.ResponseWriter, sid, msg string) {
 		return
 	}
 	n, _ := s.V.MailPending(sid)
-	writeJSON(w, sayResp{Delivered: "mail", Pending: n, Detail: "留言已进信箱，船下一轮开工时自动收到"})
+	writeJSON(w, sayResp{Delivered: "mail", Pending: n, Detail: "留言已排队，船队下一轮开工时自动收到"})
 }
 
 // claudeExe 找官方 CLI：优先复用 poller 已定位的路径，再走 PATH 与常见安装位。

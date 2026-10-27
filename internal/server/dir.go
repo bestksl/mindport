@@ -22,11 +22,14 @@ const (
 type dirRow struct {
 	transcript.SessionMeta
 	Proj      string // 项目目录 basename（聚合视图跨目录时显示）
-	Class     string // 行状态 class：is-busy/is-waiting/is-online/is-off
+	Class     string // 行状态 class：is-working/is-waiting/is-idle/is-off
+	StateText string // 工作中 / 待你输入 / 已停止
+	MarkText  string // ✅ 圆满结束 / ⏹ 中途停止（有标记时覆盖状态文案）
 	ShowProj  bool   // 聚合视图跨目录：行内显示项目名
 	HideCount bool   // 聚合只扫文件头：隐藏消息计数
 	Online    bool
 	Status    string // busy | waiting | idle | ""（离线）
+	Mark      string // good | stop | ""
 	Name      string // 官方发现口里的会话简介（若有）
 }
 
@@ -65,6 +68,7 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 	if s.poller != nil {
 		live = s.poller.snapshot()
 	}
+	marks := s.V.SessionMarks()
 	rows := make([]dirRow, 0, len(metas))
 	for _, m := range metas {
 		row := dirRow{SessionMeta: m, Proj: filepath.Base(m.Dir), ShowProj: dir == "", HideCount: dir == ""}
@@ -73,15 +77,12 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 			row.Status = ls.Status
 			row.Name = ls.Name
 		}
-		switch {
-		case row.Status == "busy":
-			row.Class = "is-busy"
-		case row.Status == "waiting":
-			row.Class = "is-waiting"
-		case row.Online:
-			row.Class = "is-online"
-		default:
-			row.Class = "is-off"
+		fs := fleetStateOf(row.Online, row.Status)
+		row.Class = "is-" + fs.Key
+		row.StateText = fs.Text
+		if mk, ok := marks[m.SID]; ok {
+			row.Mark = mk.Outcome
+			row.MarkText = markText(mk.Outcome)
 		}
 		rows = append(rows, row)
 	}
@@ -141,7 +142,7 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 	render(w, http.StatusOK, dirTmpl, d)
 }
 
-// 列表轻量轮询：只回状态/计数，前端 8s 静默刷新状态点，不重载整页。
+// 列表轻量轮询：只回状态/计数/结局标记，前端 8s 静默刷状态点，不重载整页。
 type sessionRowJSON struct {
 	SID    string `json:"sid"`
 	Dir    string `json:"dir"`
@@ -149,6 +150,7 @@ type sessionRowJSON struct {
 	Events int    `json:"events"`
 	Online bool   `json:"online"`
 	Status string `json:"status"`
+	Mark   string `json:"mark"`
 }
 
 func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +172,7 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 	for _, r2 := range rows {
 		out = append(out, sessionRowJSON{
 			SID: r2.SID, Dir: r2.Dir, Title: r2.Title,
-			Events: r2.Events, Online: r2.Online, Status: r2.Status,
+			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark,
 		})
 	}
 	writeJSON(w, map[string]any{"rows": out})

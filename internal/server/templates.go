@@ -12,7 +12,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 <link rel="icon" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
 <link rel="stylesheet" href="/static/style.css">
-<title>思港 MindPort · 调度台</title>
+<title>思港 MindPort</title>
 </head>
 <body>
 
@@ -20,7 +20,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 <header class="topbar">
   <a class="brand" href="/" data-debug="mindportd">
     <span class="brand-mark" title="">{{template "pxLighthouse" .}}</span>
-    <span class="brand-text">思港 <i>MindPort</i><em>调度长官台</em></span>
+    <span class="brand-text">思港 <i>MindPort</i><em>想法停泊的港口</em></span>
   </a>
   <div class="top-sea">{{template "topSea" .}}</div>
   <div class="top-right">
@@ -56,20 +56,11 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
         </button>
       </div>
     </details>
-    <a class="sessions-btn" href="/sessions" title="按目录翻全部会话（含离港历史）">
-      <span class="emo">📂</span><span class="sessions-label" data-debug="logs">会话</span>
+    <a class="fleet-btn" id="fleet" href="/sessions" data-debug="fleet"
+       title="船队＝全部会话：一支船队就是一个 Claude 会话">
+      <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="fleet label">船队</span><b id="fleet-count"></b>
     </a>
-    <details class="fleet pop" id="fleet">
-      <summary class="fleet-btn">
-        <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="agents">船队</span><b id="fleet-count">…</b><i class="caret"></i>
-      </summary>
-      <div class="fleet-pop">
-        <div class="fleet-pop-head"><span>港内船位</span><span id="fleet-sub"></span></div>
-        <div id="agents" class="agents">{{template "chips" .Agents}}</div>
-        <a class="fleet-dir-link" href="/sessions" data-debug="browse by dir"><span class="emo">📂 </span>按目录翻全部会话（含离港历史）</a>
-      </div>
-    </details>
-    {{if .Auth}}<a class="logout-btn" href="/logout" title="收港登出" data-debug="x" aria-label="登出">⇥</a>{{end}}
+    {{if .Auth}}<a class="logout-btn" href="/logout" title="登出" data-debug="x" aria-label="登出">⇥</a>{{end}}
   </div>
 </header>
 {{end}}
@@ -152,16 +143,6 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
     <rect x="3" y="14" width="16" height="1" class="px-hull-dark"/>
   </g></g></g>
 </svg>
-{{end}}
-
-{{define "chips"}}
-{{if not .}}<span class="chip muted" id="empty-agents">港里暂无报到的船</span>{{end}}
-{{range .}}
-{{if .SessionID}}<a class="chip {{if .Online}}online{{else}}offline{{end}} chip-link" data-actor="{{.Actor}}" href="/sessions/{{.SessionID}}" title="点开看会话实时航迹与回话&#10;{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">{{else}}<span class="chip {{if .Online}}online{{else}}offline{{end}}" data-actor="{{.Actor}}" title="{{if .Name}}会话：{{.Name}}&#10;{{end}}{{if .Dir}}目录：{{.Dir}}{{end}}{{if .Seen.IsZero}}{{else}}&#10;上次报到：{{.Seen.Format "01-02 15:04"}}{{end}}">{{end}}
-  <i class="dot"></i><b>{{actorName .Actor}}</b>{{if .Dir}}<i class="proj" title="项目目录：{{.Dir}}">📍{{baseName .Dir}}</i>{{end}}{{if .Name}}<i class="sname">「{{.Name}}」</i>{{end}}
-  <em>{{if .Online}}{{if .Task}}在忙 {{.Task}}{{else if .Note}}{{.Note}}{{else if eq .RunState "blocked"}}受阻{{else if eq .RunState "working"}}工作中{{else}}在线待派{{end}}<i class="seen">· {{ago .Seen}}</i>{{else if .Seen.IsZero}}从未报到{{else}}上次报到 {{ago .Seen}}{{end}}</em>
-{{if .SessionID}}</a>{{else}}</span>{{end}}
-{{end}}
 {{end}}
 
 {{/* 单艘船的派船目标：任意会话 / 每个具体会话（带简介，在线与离线都列）/ 新项目新开 */}}
@@ -279,60 +260,24 @@ document.addEventListener('submit', function (e) {
   }
   sel.value = sel.value.replace(/\|NEW$/, '|' + dir);
 }, true);
-// 船队在线状态：20s 轮询 /api/agents，本地刷新顶栏灯与卡片状态行，不触发整页 reload
+// 船队灯：20s 轮询 /api/sessions 刷在线船队数；/api/agents 只用来给看板卡片
+// 显示「谁正在做哪票货」。本地刷新，不触发整页 reload。
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
-  function baseName(p) { return p ? p.replace(/\/+$/, '').split('/').pop() : ''; }
-  function ago(t) {
-    var d = (Date.now() - new Date(t).getTime()) / 1000;
-    if (d < 60) return '刚刚';
-    if (d < 3600) return Math.floor(d / 60) + ' 分钟前';
-    if (d < 86400) return Math.floor(d / 3600) + ' 小时前';
-    return Math.floor(d / 86400) + ' 天前';
-  }
-  function chips(agents) {
-    if (!agents.length) return '<span class="chip muted">港里暂无报到的船</span>';
-    return agents.map(function (p) {
-      var state, title;
-      var seenZero = !p.seen || new Date(p.seen).getFullYear() < 2000;
-      if (p.online) {
-        var doing = p.task ? ('在忙 ' + p.task) :
-          (p.note || (p.run_state === 'blocked' ? '受阻' :
-            (p.run_state === 'working' ? '工作中' : '在线待派')));
-        state = doing + '<i class="seen">· ' + ago(p.seen) + '</i>';
-        title = '上次报到：' + new Date(p.seen).toLocaleString();
-      } else if (seenZero) {
-        state = '从未报到';
-        title = '从未报到';
-      } else {
-        state = '上次报到 ' + ago(p.seen);
-        title = '上次报到：' + new Date(p.seen).toLocaleString();
-      }
-      var proj = p.dir ? '<i class="proj" title="项目目录：' + p.dir + '">📍' + baseName(p.dir) + '</i>' : '';
-      var sname = p.name ? '<i class="sname">「' + p.name + '」</i>' : '';
-      var tip = (p.name ? '会话：' + p.name + '\n' : '') + (p.dir ? '目录：' + p.dir + '\n' : '') + title;
-      var cls = 'chip ' + (p.online ? 'online' : 'offline');
-      var head = p.session_id
-        ? '<a class="' + cls + ' chip-link" data-actor="' + p.actor + '" href="/sessions/' + p.session_id +
-          '" title="点开看会话实时航迹与回话&#10;' + tip.replace(/"/g, '&quot;') + '">'
-        : '<span class="' + cls + '" data-actor="' + p.actor + '" title="' + tip.replace(/"/g, '&quot;') + '">';
-      var tail = p.session_id ? '</a>' : '</span>';
-      return head + '<i class="dot"></i><b>' + actorName(p.actor) + '</b>' + proj + sname + '<em>' + state + '</em>' + tail;
-    }).join('');
-  }
-  function tick() {
-    fetch('/api/agents').then(function (r) { return r.json(); }).then(function (agents) {
-      var box = document.getElementById('agents');
-      if (box) box.innerHTML = chips(agents);
-      var live = agents.filter(function (p) { return p.online; }).length;
+  function tickFleet() {
+    fetch('/api/sessions').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = d.rows || [];
+      var live = rows.filter(function (r) { return r.online; }).length;
       var fleet = document.getElementById('fleet');
-      if (fleet) {
-        fleet.classList.toggle('has-live', live > 0);
-        var cnt = document.getElementById('fleet-count');
-        var sub = document.getElementById('fleet-sub');
-        if (cnt) cnt.textContent = live;
-        if (sub) sub.textContent = live + ' 在线 · 共 ' + agents.length + ' 个会话';
-      }
+      if (!fleet) return;
+      fleet.classList.toggle('has-live', live > 0);
+      fleet.title = live + ' 支船队工作中 · 点开看全部会话';
+      var cnt = document.getElementById('fleet-count');
+      if (cnt) cnt.textContent = live ? String(live) : '';
+    }).catch(function () {});
+  }
+  function tickAgents() {
+    fetch('/api/agents').then(function (r) { return r.json(); }).then(function (agents) {
       var byTask = {};
       agents.forEach(function (p) { if (p.online && p.task) byTask[p.task] = p; });
       document.querySelectorAll('[data-task]').forEach(function (card) {
@@ -345,6 +290,7 @@ document.addEventListener('submit', function (e) {
       });
     }).catch(function () {});
   }
+  function tick() { tickFleet(); tickAgents(); }
   tick();
   setInterval(tick, 20000);
 })();
@@ -360,7 +306,7 @@ const boardHTML = head + `
     <input name="title" placeholder="想到什么先扔下来…入港即立箱（草稿，随后补验收/派船）" autocomplete="off" autofocus required>
     <button type="submit" class="primary" data-debug="add">入港</button>
   </form>
-  <p class="capture-hint" data-debug="dispatcher rule: assign → execute → report">调度长派船 · 船出港干活 · 归港必带结果 · 目标导向不谈紧急</p>
+  <p class="capture-hint" data-debug="ideas only">想到就先扔进来 · 集装箱可以挂到船队上跟着走 · 做完一起看结果 · 只问重要不谈紧急</p>
 </section>
 
 {{if .Drafts}}
@@ -405,6 +351,7 @@ const boardHTML = head + `
         <span class="imp">● {{impZH .Meta.Importance}}</span>
         {{if eq .Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
         {{if .Meta.Assignee}}<span class="assignee">🚢 {{actorName .Meta.AssigneeValue}}{{if .Meta.AssignCwd}} · 📍{{baseName .Meta.AssignCwd}}{{end}}</span>{{end}}
+        {{if .Meta.Session}}<a class="card-fleet" href="/sessions/{{.Meta.Session}}{{if .Meta.SessionDir}}?dir={{.Meta.SessionDir | urlquery}}{{end}}" title="挂在这支船队（会话）上">🧷 {{slice .Meta.Session 0 8}}</a>{{end}}
       </div>
       <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
@@ -430,7 +377,7 @@ const taskHTML = head + `
 
 <article class="detail">
   <div class="detail-head {{impClass .R.Meta.Importance}}">
-    <a class="back" href="/">← 调度台</a>
+    <a class="back" href="/">← 回港口</a>
     <h1><span class="id">{{.R.Meta.ID}}</span> {{.R.Meta.Title}}</h1>
     <div class="meta-line">
       <span class="status status-{{.R.Meta.Status}}" data-debug="{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
@@ -486,10 +433,10 @@ const taskHTML = head + `
       </select>
       <button data-confirm="改派 {{.R.Meta.ID}}？原船位将不能再接令" data-debug="reassign">改派</button>
     </form>
-    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 接令。派船时可点名具体项目会话，防止别的项目里的会话接错票。调度台不能代领。</p>
+    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 接令。派船时可点名具体项目会话，防止别的项目里的会话接错票。网页不能代领。</p>
 
     {{else if eq .R.Meta.Status "in_progress"}}
-    <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已接令出港。接令/归港/受阻只在船自己的 CLI 完成；调度台在这里看进展、验货、批注。</p>
+    <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已接令出港。接令/归港/受阻只在船自己的 CLI 完成；你在这里看进展、验货、批注。</p>
 
     {{else if eq .R.Meta.Status "blocked"}}
     <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}}（📍{{baseName .R.Meta.AssignCwd}}）{{end}}上报受阻（见日志）。可批注指示，或把货改派给别的船/船位：</p>
@@ -504,6 +451,29 @@ const taskHTML = head + `
     <p class="banner done">🏁 已归港。对照验收标准验货，有问题在此批注，船下一票货会看到。</p>
     {{end}}
   </div>
+
+  <section class="fleet-bind">
+    <h2 data-debug="bind fleet">🧷 挂在哪支船队 <small>把这个想法挂到一支具体会话上，跟着它走</small></h2>
+    {{if .BoundSID}}
+    <div class="bound-line">
+      <a class="bound-fleet" href="/sessions/{{.BoundSID}}{{if .BoundDir}}?dir={{.BoundDir | urlquery}}{{end}}">
+        <i class="dot"></i><b>{{.BoundTitle}}</b><em>{{.BoundStateText}}</em>
+      </a>
+      <form method="post" action="/tasks/{{.R.Meta.ID}}/unbind" class="unbind-form">
+        <button class="mini" data-confirm="把 {{.R.Meta.ID}} 从这支船队取下？">取下</button>
+      </form>
+    </div>
+    {{else if .FleetOpts}}
+    <form method="post" action="/tasks/{{.R.Meta.ID}}/bind" class="bind-row">
+      <select name="fleet" aria-label="挂到哪支船队">
+        {{range .FleetOpts}}<option value="{{.SID}}|{{.Dir}}">{{if .Title}}{{.Title}}{{else}}{{.Short}}{{end}} · {{.StateText}}{{if .Proj}} · 📁{{.Proj}}{{end}}</option>{{end}}
+      </select>
+      <button class="mini" data-debug="bind">🧷 挂上这支船队</button>
+    </form>
+    {{else}}
+    <p class="hint">本机还扫不到船队（Claude 会话）。在项目目录里开一个 Claude，或先去船队页贴目录扫一下。</p>
+    {{end}}
+  </section>
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
   <details class="edit" id="edit" {{if eq .R.Meta.Status "draft"}}open{{end}}>

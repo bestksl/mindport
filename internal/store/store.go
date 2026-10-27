@@ -32,6 +32,9 @@ type Meta struct {
 	Goal        string     `yaml:"goal,omitempty" json:"goal,omitempty"`
 	Assignee    *string    `yaml:"assignee,omitempty" json:"assignee,omitempty"`
 	AssignCwd   string     `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定船位：只有该项目目录的会话能接令；空=任意会话
+	// 挂船队：一个想法（任务）挂到一支具体船队（Claude 会话）上，与派船状态机正交。
+	Session    string `yaml:"session,omitempty" json:"session,omitempty"`
+	SessionDir string `yaml:"session_dir,omitempty" json:"session_dir,omitempty"`
 	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Created     time.Time  `yaml:"created" json:"created"`
 	Updated     *time.Time `yaml:"updated,omitempty" json:"updated,omitempty"`

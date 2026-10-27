@@ -45,8 +45,8 @@ func TestSessionListByDir(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(emptyBody, `name="dir"`) {
 		t.Fatalf("空态应 200 且带目录输入框，code=%d", rec.Code)
 	}
-	if !strings.Contains(emptyBody, `class="sessions-btn"`) {
-		t.Fatalf("顶栏应有明面的会话入口按钮")
+	if !strings.Contains(emptyBody, `class="fleet-btn"`) {
+		t.Fatalf("顶栏应有明面的船队（会话）入口")
 	}
 
 	// 扫盘列表：两艘船都在，标题与带 dir 的回链都在

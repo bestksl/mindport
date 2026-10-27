@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -133,6 +134,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/check", s.handleCheck)
 	mux.HandleFunc("POST /tasks/{id}/edit", s.handleEdit)
 	mux.HandleFunc("POST /tasks/{id}/delete", s.handleDeleteTask)
+	mux.HandleFunc("POST /tasks/{id}/bind", s.handleTaskBind)
+	mux.HandleFunc("POST /tasks/{id}/unbind", s.handleTaskUnbind)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tasks", s.handleAPITasks)
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
@@ -149,6 +152,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions/{sid}/stream", s.handleSessionStream)
 	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleSessionHistory)
 	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
+	mux.HandleFunc("POST /sessions/{sid}/mark", s.handleSessionMark)
+	mux.HandleFunc("POST /sessions/{sid}/unmark", s.handleSessionUnmark)
 
 	// 静态资产不许启发式缓存（go:embed 文件 mtime 为零，没有可靠校验符）：
 	// 每次条件校验，配合 sw.js 的 stale-while-revalidate，升级后刷新即生效。
@@ -211,6 +216,13 @@ type taskView struct {
 	Logs            []string
 	Extra           template.HTML
 	Auth            bool
+
+	// 挂船队（集装箱挂到一支具体会话上）
+	BoundSID       string
+	BoundDir       string
+	BoundTitle     string
+	BoundStateText string
+	FleetOpts      []fleetOption
 }
 
 // ---------- 页面处理器 ----------
@@ -352,6 +364,31 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	if a := rec.Meta.AssigneeValue(); a != "" {
 		v.Agent = pickAgent(agents, a, rec.Meta.ID)
 	}
+	// 集装箱挂船队：已挂则显示船队实时状态；下拉给最近活跃 + 在线船队。
+	if sid := rec.Meta.Session; sid != "" {
+		v.BoundSID = sid
+		v.BoundDir = rec.Meta.SessionDir
+		title := ""
+		if v.BoundDir != "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				title = transcript.Meta(home, v.BoundDir, sid).Title
+			}
+		}
+		v.BoundTitle = boundFleetTitle(sid, v.BoundDir, title)
+		if s.poller != nil {
+			if ls, ok := s.poller.snapshot()[sid]; ok {
+				v.BoundStateText = fleetStateOf(true, ls.Status).Text
+			}
+		}
+		if v.BoundStateText == "" {
+			if mk, ok := s.V.SessionMark(sid); ok {
+				v.BoundStateText = markText(mk.Outcome)
+			} else {
+				v.BoundStateText = fleetStateOf(false, "").Text
+			}
+		}
+	}
+	v.FleetOpts = s.fleetOptions(rec.Meta.Session, rec.Meta.SessionDir, v.BoundTitle)
 	render(w, http.StatusOK, taskTmpl, v)
 }
 

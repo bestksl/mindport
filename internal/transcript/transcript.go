@@ -32,7 +32,7 @@ var ErrNotFound = errors.New("transcript not found")
 
 // Block 是时间线上的一个内容块。
 type Block struct {
-	Kind      string `json:"kind"` // text | thinking | tool | result
+	Kind      string `json:"kind"` // text | thinking | tool | result | interrupt | continue
 	Text      string `json:"text,omitempty"`
 	ToolID    string `json:"tid,omitempty"`     // tool/result：关联 id
 	Name      string `json:"name,omitempty"`    // tool：工具名
@@ -41,10 +41,10 @@ type Block struct {
 	Collapsed bool   `json:"collapsed,omitempty"`
 }
 
-// Event 是一条 user/assistant 消息（幂等键为 ID=transcript uuid）。
+// Event 是一条消息（幂等键为 ID=transcript uuid）。
 type Event struct {
 	ID        string  `json:"id"`
-	Role      string  `json:"role"` // user | assistant
+	Role      string  `json:"role"` // user | assistant | system
 	TS        string  `json:"ts"`   // RFC3339（UTC 原样，前端本地化）
 	Sidechain bool    `json:"side,omitempty"`
 	Blocks    []Block `json:"blocks"`
@@ -208,11 +208,13 @@ func readRange(f *os.File, start, end int64, dropHead bool) (events []Event, ali
 // ---------- jsonl 解析 ----------
 
 type wireRecord struct {
-	Type        string          `json:"type"`
-	UUID        string          `json:"uuid"`
-	Timestamp   string          `json:"timestamp"`
-	IsSidechain bool            `json:"isSidechain"`
-	Message     json.RawMessage `json:"message"`
+	Type                 string          `json:"type"`
+	UUID                 string          `json:"uuid"`
+	Timestamp            string          `json:"timestamp"`
+	IsSidechain          bool            `json:"isSidechain"`
+	InterruptedMessageID string          `json:"interruptedMessageId"` // Ctrl-C：这是一条中断状态记录
+	IsCompactSummary     bool            `json:"isCompactSummary"`     // 压缩续接状态记录
+	Message              json.RawMessage `json:"message"`
 }
 
 type wireMessage struct {
@@ -247,6 +249,21 @@ func parseLine(line []byte) (Event, bool) {
 	ev := Event{ID: rec.UUID, Role: rec.Type, TS: rec.Timestamp, Sidechain: rec.IsSidechain}
 	if ev.ID == "" {
 		ev.ID = fmt.Sprintf("%s-%d", rec.Type, len(line)) // 极端兜底，避免前端去重失效
+	}
+
+	// 状态记录不是真人发言：Ctrl-C 中断与压缩续接都伪装成 user 记录，
+	// 必须在按用户气泡渲染之前截走，变成时间线上的系统分隔行。
+	if rec.Type == "user" {
+		switch {
+		case rec.InterruptedMessageID != "" || isInterruptPlaceholder(msg.Content):
+			ev.Role = "system"
+			ev.Blocks = []Block{{Kind: "interrupt"}}
+			return ev, true
+		case rec.IsCompactSummary:
+			ev.Role = "system"
+			ev.Blocks = []Block{{Kind: "continue"}}
+			return ev, true
+		}
 	}
 
 	// 真人消息的 content 可能直接是字符串
@@ -296,6 +313,32 @@ func parseLine(line []byte) (Event, bool) {
 		}
 	}
 	return ev, len(ev.Blocks) > 0
+}
+
+// isInterruptPlaceholder 识别 Ctrl-C 中断占位句（旧记录可能没有
+// interruptedMessageId 字段，用占位文本兜底）。content 是字符串或 text 块数组。
+func isInterruptPlaceholder(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	check := func(s string) bool { return strings.HasPrefix(strings.TrimSpace(s), "[Request interrupted") }
+	if raw[0] == '"' {
+		var s string
+		return json.Unmarshal(raw, &s) == nil && check(s)
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type == "text" && check(b.Text) {
+			return true
+		}
+	}
+	return false
 }
 
 func resultText(raw json.RawMessage) string {
@@ -369,7 +412,7 @@ func summarize(name string, input json.RawMessage) string {
 		if d == "" {
 			d = firstLine(str("prompt"))
 		}
-		return "子船 " + clip(d, maxSummary-8)
+		return "子代理 " + clip(d, maxSummary-8)
 	case "WebFetch", "WebSearch":
 		return clip(str("url")+str("query"), maxSummary-4)
 	default:

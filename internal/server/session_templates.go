@@ -9,7 +9,7 @@ const loginHTML = head + `
       <span class="brand-mark">{{template "pxLighthouse" .}}</span>
       <span class="brand-text">思港 <i>MindPort</i></span>
     </div>
-    <p class="login-sub" data-debug="token required">调度内港，请出示入港证（本机执行 <code>port web-token</code> 取得）</p>
+    <p class="login-sub" data-debug="token required">请出示入港证（本机执行 <code>port web-token</code> 取得）</p>
     {{if .Error}}<div class="login-err">⚠️ {{.Error}}</div>{{end}}
     <input type="password" name="key" placeholder="web token" autocomplete="current-password" autofocus required>
     <input type="hidden" name="next" value="{{.Next}}">
@@ -24,68 +24,84 @@ const sessionHTML = head + `
 {{template "topbar" .}}
 
 <main class="session" data-sid="{{.SID}}">
-  <div class="session-head {{if .Online}}online{{else}}offline{{end}}" id="s-head">
-    <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}会话列表{{else}}调度台{{end}}</a>
+  <div class="session-head st-{{.StateKey}}{{if .HasMark}} marked mark-{{.Mark.Outcome}}{{end}}" id="s-head">
+    <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}船队列表{{else}}回港口{{end}}</a>
     <h1 data-debug="session">
-      {{if .Name}}<span class="emo">⛵ </span>{{.Name}}{{else}}<span class="emo">⛵ </span>会话 <code>{{.ShortSID}}</code>{{end}}
+      {{if .Name}}<span class="emo">⛵ </span>{{.Name}}{{else}}<span class="emo">⛵ </span>船队 <code>{{.ShortSID}}</code>{{end}}
       {{if .Dir}}<i class="s-dir" title="{{.Dir}}"><span class="emo">📍</span>{{.Short}}</i>{{end}}
     </h1>
     <div class="s-status" id="s-status">
-      {{if not .Found}}<span class="badge" data-debug="state: unknown">港里没查到这艘船</span>
-      {{else if .Online}}
-        {{if .Busy}}<span class="badge busy" data-debug="state: busy"><i class="dot"></i>船在忙</span>{{else}}<span class="badge idle" data-debug="state: idle"><i class="dot"></i>在线待派</span>{{end}}
-      {{else}}<span class="badge offline" data-debug="state: offline">已离港·可回看可唤醒</span>{{end}}
+      {{if not .Found}}<span class="badge" id="s-badge" data-debug="state: unknown">没查到这支船队</span>
+      {{else if .HasMark}}<span class="badge mark mark-{{.Mark.Outcome}}" id="s-badge" data-debug="mark: {{.Mark.Outcome}}"><i class="dot"></i>{{.MarkText}}</span>
+      {{else}}<span class="badge {{.StateKey}}" id="s-badge" data-debug="state: {{.StateKey}}"{{if .WaitingFor}} title="{{.WaitingFor}}"{{end}}><i class="dot"></i>{{.StateText}}{{if and (eq .StateKey "waiting") .WaitingFor}} · {{.WaitingFor}}{{end}}</span>{{end}}
       <code class="s-sid" title="会话完整 id">{{.ShortSID}}</code>
+      {{if .Found}}<span class="s-markbtns" id="s-markbtns">
+        <button type="button" class="markbtn good" data-outcome="good" data-debug="mark good"{{if .HasMark}} hidden{{end}}>✅ 圆满结束</button>
+        <button type="button" class="markbtn stop" data-outcome="stop" data-debug="mark stop"{{if .HasMark}} hidden{{end}}>⏹ 中途停止</button>
+        <button type="button" class="markbtn cancel" id="s-mark-cancel" data-debug="mark cancel"{{if not .HasMark}} hidden{{end}}>撤结局</button>
+      </span>{{end}}
     </div>
-    <div class="s-pending" id="s-pending" {{if not .Pending}}hidden{{end}}><span class="emo">📬 </span>信箱里有 <b id="s-pending-n">{{.Pending}}</b> 条留言，等船下一轮开工自动送达</div>
+    <div class="s-pending" id="s-pending" {{if not .Pending}}hidden{{end}}><span class="emo">📬 </span>有 <b id="s-pending-n">{{.Pending}}</b> 条留言排队中，船队下一轮开工自动收到</div>
+    {{if .BoundTasks}}
+    <div class="s-cargo"><span class="emo">🧷 </span><span>这支船队上挂着 {{len .BoundTasks}} 个集装箱：</span>
+      {{range .BoundTasks}}<a class="cargo-tag" href="/tasks/{{.Meta.ID}}">{{.Meta.ID}} {{.Meta.Title}}</a>{{end}}
+    </div>
+    {{end}}
   </div>
 
   {{if .Found}}
   <div class="tl-wrap" id="tl-wrap">
     <div class="tl-edge" id="tl-top">
       {{if .HasLog}}{{if gt .From 0}}<button type="button" id="tl-more">↑ 翻更早的记录</button>{{else}}<span>· 已是会话开端 ·</span>{{end}}{{end}}
+      <button type="button" id="think-toggle" class="think-toggle" aria-pressed="true">思考：显</button>
     </div>
     <div class="tl" id="tl">
       {{if .HasLog}}{{range .Events}}{{template "tlEvent" .}}{{end}}
-      {{else}}<p class="tl-empty">船刚报到，会话记录还没落盘，稍候自动出现…</p>{{end}}
+      {{else}}<p class="tl-empty">会话刚开，记录还没落盘，稍候自动出现…</p>{{end}}
     </div>
   </div>
+
+  <div class="tl-typing" id="tl-typing" hidden><span class="dots"><i></i><i></i><i></i></span><span>船队正在思考…</span></div>
 
   <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
     <div class="say-note" id="say-note" hidden></div>
     <div class="say-row">
-      <textarea name="msg" rows="1" maxlength="4000"
-        placeholder="{{if .Busy}}船正忙：留言进信箱，它下一轮开工自动收到{{else}}给船补一句话，继续派活…（Enter 发送）{{end}}"
+      <textarea name="msg" rows="1" maxlength="8000" enterkeyhint="send" autocomplete="off"
+        placeholder="{{if .Busy}}船队正忙：留言会排队，它下一轮自动收到{{else}}说点什么…（Enter 发送，Shift+Enter 换行）{{end}}"
         id="say-input"></textarea>
-      <button type="submit" class="primary" id="say-btn" data-debug="send">📨 传话</button>
+      <button type="submit" class="primary" id="say-btn" data-debug="send">📨 发送</button>
     </div>
   </form>
   {{else}}
-  <p class="tl-empty">心跳、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">按目录翻全部会话</a> · <a href="/">回调度台</a></p>
+  <p class="tl-empty">心跳、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">回船队列表</a> · <a href="/">回港口</a></p>
   {{end}}
 </main>
 
 {{define "tlEvent"}}
+{{if eq .Role "system"}}
+<div class="tl-ev tl-system" data-id="{{.ID}}"><div class="tl-body">{{range .Blocks}}{{template "tlBlock" .}}{{end}}</div></div>
+{{else}}
 <div class="tl-ev tl-{{.Role}}{{if .Sidechain}} side{{end}}{{if onlyResults .}} only-result{{end}}" data-id="{{.ID}}">
   <div class="tl-meta">
-    {{if eq .Role "assistant"}}<span class="tl-who" data-debug="{{if .Sidechain}}subship{{else}}ship{{end}}"><span class="emo">⛵ </span>{{if .Sidechain}}子船{{else}}船{{end}}</span>
+    {{if eq .Role "assistant"}}<span class="tl-who" data-debug="{{if .Sidechain}}subship{{else}}ship{{end}}"><span class="emo">⛵ </span>{{if .Sidechain}}子代理{{else}}Claude{{end}}</span>
     {{else if onlyResults .}}<span class="tl-who" data-debug="tool-result"><span class="emo">🧰 </span>工具回报</span>
-    {{else}}<span class="tl-who" data-debug="dispatcher"><span class="emo">🧭 </span>长官</span>{{end}}
+    {{else}}<span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你</span>{{end}}
     <time class="tl-ts" datetime="{{.TS}}">{{.TS}}</time>
   </div>
   <div class="tl-body">{{range .Blocks}}{{template "tlBlock" .}}{{end}}</div>
 </div>
 {{end}}
+{{end}}
 
 {{define "tlBlock"}}
-{{if eq .Kind "text"}}<div class="tl-text">{{.Text}}</div>{{end}}{{if eq .Kind "thinking"}}<details class="tl-think"><summary data-debug="thinking"><span class="emo">🤔 </span>思考过程</summary><pre>{{.Text}}</pre></details>{{end}}{{if eq .Kind "tool"}}<div class="tl-tool" data-tid="{{.ToolID}}"><details><summary><span class="emo">{{toolEmoji .Name}} </span><b>{{.Name}}</b>{{if .Summary}} <span class="tl-sum">{{.Summary}}</span>{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}{{if eq .Kind "result"}}<div class="tl-result {{if .IsError}}r-err{{else}}r-ok{{end}}" data-tid="{{.ToolID}}"><details><summary data-debug="{{if .IsError}}tool error{{else}}tool result{{end}}"><span class="emo">{{if .IsError}}⚠️{{else}}✅{{end}} </span>{{if .IsError}}工具回报失败{{else}}工具回报{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}
+{{if eq .Kind "text"}}<div class="tl-text">{{.Text}}</div>{{end}}{{if eq .Kind "thinking"}}<details class="tl-think" open><summary data-debug="thinking"><span class="emo">🤔 </span>思考</summary><pre>{{.Text}}</pre></details>{{end}}{{if eq .Kind "tool"}}<div class="tl-tool" data-tid="{{.ToolID}}"><details><summary><span class="emo">{{toolEmoji .Name}} </span><b>{{.Name}}</b>{{if .Summary}} <span class="tl-sum">{{.Summary}}</span>{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}{{if eq .Kind "result"}}<div class="tl-result {{if .IsError}}r-err{{else}}r-ok{{end}}" data-tid="{{.ToolID}}"><details><summary data-debug="{{if .IsError}}tool error{{else}}tool result{{end}}"><span class="emo">{{if .IsError}}⚠️{{else}}✅{{end}} </span>{{if .IsError}}工具回报失败{{else}}工具回报{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}{{if eq .Kind "interrupt"}}<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 你按了 Ctrl-C，上一段输出就停在这里</div>{{end}}{{if eq .Kind "continue"}}<div class="tl-sys continue" data-debug="compacted"><span class="emo">🧵 </span>会话曾被压缩，从这里续接</div>{{end}}
 {{end}}
 
 <script>
 {{define "tlEventJS"}}
 (function () {
   var SID = "{{.SID}}";
-  var DIR = {{printf "%q" .Dir}};
+  var DIR = {{.Dir}}; // html/template 在 JS 上下文自动输出带引号的转义字面量
   function dirQS() { return DIR ? '&dir=' + encodeURIComponent(DIR) : ''; }
   var cursor = {{.Cursor}};
   var oldest = {{.From}};
@@ -94,7 +110,9 @@ const sessionHTML = head + `
   var wrapEl = document.getElementById('tl-wrap');
   if (!listEl || !wrapEl) return;
   var seen = {};
+  var thinkShown = true; // 思考默认像 CLI 一样直接可见，头部可一键隐掉
   document.querySelectorAll('#tl .tl-ev').forEach(function (el) { seen[el.getAttribute('data-id')] = 1; });
+  document.querySelectorAll('#tl .tl-think').forEach(function (d) { d.setAttribute('data-synced', '1'); });
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -111,21 +129,27 @@ const sessionHTML = head + `
   function toolEmoji(n) { return TOOL_EMOJI[n] || '🔧'; }
   function blockHTML(b) {
     if (b.kind === 'text') return '<div class="tl-text">' + esc(b.text) + '</div>';
-    if (b.kind === 'thinking') return '<details class="tl-think"><summary data-debug="thinking"><span class="emo">🤔 </span>思考过程</summary><pre>' + esc(b.text) + '</pre></details>';
+    if (b.kind === 'thinking') return '<details class="tl-think" open><summary data-debug="thinking"><span class="emo">🤔 </span>思考</summary><pre>' + esc(b.text) + '</pre></details>';
     if (b.kind === 'tool') return '<div class="tl-tool" data-tid="' + esc(b.tid) + '"><details><summary><span class="emo">' + toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b>' +
       (b.summary ? ' <span class="tl-sum">' + esc(b.summary) + '</span>' : '') + '</summary><pre>' + esc(b.text) + '</pre></details></div>';
     if (b.kind === 'result') return '<div class="tl-result ' + (b.err ? 'r-err' : 'r-ok') + '" data-tid="' + esc(b.tid) +
       '"><details><summary data-debug="' + (b.err ? 'tool error' : 'tool result') + '"><span class="emo">' + (b.err ? '⚠️' : '✅') + ' </span>' + (b.err ? '工具回报失败' : '工具回报') + '</summary><pre>' + esc(b.text) + '</pre></details></div>';
+    if (b.kind === 'interrupt') return '<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 你按了 Ctrl-C，上一段输出就停在这里</div>';
+    if (b.kind === 'continue') return '<div class="tl-sys continue" data-debug="compacted"><span class="emo">🧵 </span>会话曾被压缩，从这里续接</div>';
     return '';
   }
   function eventHTML(ev) {
+    if (ev.role === 'system') {
+      return '<div class="tl-ev tl-system" data-id="' + esc(ev.id) + '"><div class="tl-body">' +
+        ev.blocks.map(blockHTML).join('') + '</div></div>';
+    }
     var who;
     if (ev.role === 'assistant') {
-      who = '<span class="tl-who" data-debug="' + (ev.side ? 'subship' : 'ship') + '"><span class="emo">⛵ </span>' + (ev.side ? '子船' : '船') + '</span>';
+      who = '<span class="tl-who" data-debug="' + (ev.side ? 'subship' : 'ship') + '"><span class="emo">⛵ </span>' + (ev.side ? '子代理' : 'Claude') + '</span>';
     } else if (onlyResult(ev)) {
       who = '<span class="tl-who" data-debug="tool-result"><span class="emo">🧰 </span>工具回报</span>';
     } else {
-      who = '<span class="tl-who" data-debug="dispatcher"><span class="emo">🧭 </span>长官</span>';
+      who = '<span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你</span>';
     }
     return '<div class="tl-ev tl-' + ev.role + (ev.side ? ' side' : '') + (onlyResult(ev) ? ' only-result' : '') +
       '" data-id="' + esc(ev.id) + '">' +
@@ -150,31 +174,74 @@ const sessionHTML = head + `
     if (empty) empty.remove();
     var html = '';
     evs.forEach(function (ev) { if (!seen[ev.id]) { seen[ev.id] = 1; html += eventHTML(ev); } });
-    if (html) listEl.insertAdjacentHTML('beforeend', html);
+    if (html) {
+      listEl.insertAdjacentHTML('beforeend', html);
+      // 新到的思考块按当前总开关决定开合，之后用户可单独展开
+      listEl.querySelectorAll('.tl-think:not([data-synced])').forEach(function (d) {
+        d.open = thinkShown; d.setAttribute('data-synced', '1');
+      });
+    }
     fmtTimes();
   }
   fmtTimes();
   stick();
 
+  var MARK_TEXT = { good: '✅ 圆满结束', stop: '⏹ 中途停止' };
+  var lastState = null;
+  function stateKey(d) {
+    if (!d.online) return 'offline';
+    if (d.status === 'busy') return 'working';
+    if (d.status === 'waiting') return 'waiting';
+    return 'idle'; // 进程在线但这一轮已停
+  }
+  function stateText(k) {
+    return k === 'working' ? '工作中' : k === 'waiting' ? '待你输入' : '已停止';
+  }
+  function syncMarkBtns(mark) {
+    var box = document.getElementById('s-markbtns');
+    if (!box) return;
+    box.querySelectorAll('.markbtn[data-outcome]').forEach(function (b) { b.hidden = !!mark; });
+    var c = document.getElementById('s-mark-cancel');
+    if (c) c.hidden = !mark;
+  }
   function setStatus(d) {
-    var head = document.getElementById('s-head'), st = document.getElementById('s-status'),
+    lastState = d;
+    var head = document.getElementById('s-head'),
         pend = document.getElementById('s-pending'), pn = document.getElementById('s-pending-n'),
+        typing = document.getElementById('tl-typing'),
         inp = document.getElementById('say-input');
     if (!head) return;
+    var key = stateKey(d);
+    head.classList.remove('online', 'offline', 'st-working', 'st-waiting', 'st-idle', 'st-offline',
+      'marked', 'mark-good', 'mark-stop');
+    head.classList.add('st-' + key);
     head.classList.toggle('online', !!d.online);
     head.classList.toggle('offline', !d.online);
-    var html = d.online
-      ? (d.busy ? '<span class="badge busy" data-debug="state: busy"><i class="dot"></i>船在忙</span>'
-                : '<span class="badge idle" data-debug="state: idle"><i class="dot"></i>在线待派</span>')
-      : '<span class="badge offline" data-debug="state: offline">已离港·可回看可唤醒</span>';
-    if (st) st.innerHTML = html + '<code class="s-sid">' + esc(SID.slice(0, 8)) + '</code>';
+    if (d.mark) head.classList.add('marked', 'mark-' + d.mark);
+
+    var badge = document.getElementById('s-badge');
+    if (badge) {
+      var cls, txt, title = '';
+      if (d.mark) { cls = 'badge mark mark-' + d.mark; txt = MARK_TEXT[d.mark]; }
+      else {
+        cls = 'badge ' + key;
+        txt = stateText(key);
+        if (key === 'waiting' && d.waiting_for) { title = d.waiting_for; txt += ' · ' + d.waiting_for; }
+      }
+      badge.outerHTML = '<span class="' + cls + '" id="s-badge"' + (title ? ' title="' + esc(title) + '"' : '') +
+        ' data-debug="state: ' + (d.mark ? 'mark-' + d.mark : key) + '"><i class="dot"></i>' + esc(txt) + '</span>';
+    }
+    syncMarkBtns(d.mark);
+    if (typing) typing.hidden = !(d.online && d.status === 'busy' && !d.mark);
     if (inp && document.documentElement.dataset.stealth !== '1') {
-      inp.placeholder = d.busy ? '船正忙：留言进信箱，它下一轮开工自动收到' : '给船补一句话，继续派活…（Enter 发送）';
+      inp.placeholder = d.status === 'busy'
+        ? '船队正忙：留言会排队，它下一轮自动收到'
+        : '说点什么…（Enter 发送，Shift+Enter 换行）';
     }
     if (pend) { if (d.pending > 0) { pn.textContent = d.pending; pend.hidden = false; } else pend.hidden = true; }
   }
 
-  // 增量轮询：1.5s 一轮，页面隐藏时暂停（回来立即补一轮）
+  // 增量轮询：1s 一轮（对齐 CLI 的跟手感），页面隐藏时暂停（回来立即补一轮）
   var timer = null, active = false;
   function poll() {
     if (active) return;
@@ -188,10 +255,11 @@ const sessionHTML = head + `
           if (stickNow) stick();
         }
         if (d.cursor) cursor = d.cursor;
-        setStatus({ online: d.online, busy: d.busy, pending: d.pending });
+        setStatus({ online: d.online, status: d.status, mark: d.mark,
+          waiting_for: d.waiting_for, pending: d.pending });
       }).catch(function () {}).finally(function () { active = false; });
   }
-  function startTimer() { if (!timer) timer = setInterval(poll, 1500); }
+  function startTimer() { if (!timer) timer = setInterval(poll, 1000); }
   function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopTimer(); else { poll(); startTimer(); }
@@ -213,6 +281,9 @@ const sessionHTML = head + `
         d.events.forEach(function (ev) { if (!seen[ev.id]) { seen[ev.id] = 1; html += eventHTML(ev); } });
         if (html) {
           listEl.insertAdjacentHTML('afterbegin', html);
+          listEl.querySelectorAll('.tl-think:not([data-synced])').forEach(function (d) {
+            d.open = thinkShown; d.setAttribute('data-synced', '1');
+          });
           wrapEl.scrollTop += wrapEl.scrollHeight - prevH;
           fmtTimes();
         }
@@ -259,20 +330,73 @@ const sessionHTML = head + `
   if (form) form.addEventListener('submit', function (e) {
     e.preventDefault();
     var msg = input.value.trim();
-    if (!msg) return;
+    if (!msg) {
+      // 语音/输入法偶发焦点丢失：别让用户对着无反馈发呆
+      input.focus();
+      flash('先说点什么再发', 'note-err');
+      return;
+    }
     btn.disabled = true;
-    fetch(form.action, { method: 'POST', body: new FormData(form) })
+    // 显式带上校验过的字符串（而不是 new FormData 重新读表单），
+    // 保证「发出去的」和「校验过的」是同一个值。
+    var body = new URLSearchParams();
+    body.set('msg', msg);
+    fetch(form.action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    })
       .then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
       .then(function (d) {
         if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
         input.value = '';
         input.style.height = 'auto';
-        if (d.delivered === 'resume') flash('⛵ ' + d.detail, 'note-ok');
-        else flash('📬 ' + d.detail, 'note-mail');
+        if (d.delivered === 'resume') {
+          flash('⛵ ' + d.detail, 'note-ok');
+          // poller 30s 才刷新一轮快照：先乐观切到「工作中」，下一轮 poll 自动校正
+          if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
+        } else flash('📬 ' + d.detail, 'note-mail');
         setTimeout(poll, 400);
       })
       .catch(function (e) { if (e) flash('⚠️ 网络岔了，没递出去', 'note-err'); })
       .finally(function () { btn.disabled = false; });
+  });
+
+  // 思考总开关：像 CLI 一样默认直接可见，嫌长可一键隐掉（新到块跟随）
+  var thinkBtn = document.getElementById('think-toggle');
+  if (thinkBtn) thinkBtn.addEventListener('click', function () {
+    thinkShown = !thinkShown;
+    listEl.querySelectorAll('.tl-think').forEach(function (d) { d.open = thinkShown; });
+    thinkBtn.textContent = '思考：' + (thinkShown ? '显' : '隐');
+    thinkBtn.setAttribute('aria-pressed', thinkShown ? 'true' : 'false');
+  });
+
+  // 结局标记：✅ 圆满结束 / ⏹ 中途停止；再开口说话时服务端自动撤掉
+  function markAction(path, outcome) {
+    var body = new URLSearchParams();
+    if (outcome) { body.set('outcome', outcome); body.set('dir', DIR); }
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); });
+  }
+  document.querySelectorAll('.markbtn[data-outcome]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var outcome = b.getAttribute('data-outcome');
+      markAction('/sessions/' + encodeURIComponent(SID) + '/mark', outcome).then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        if (lastState) setStatus(Object.assign({}, lastState, { mark: outcome }));
+      }).catch(function () { flash('⚠️ 标记没递出去', 'note-err'); });
+    });
+  });
+  var cancelMark = document.getElementById('s-mark-cancel');
+  if (cancelMark) cancelMark.addEventListener('click', function () {
+    markAction('/sessions/' + encodeURIComponent(SID) + '/unmark', '').then(function (d) {
+      if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+      if (lastState) setStatus(Object.assign({}, lastState, { mark: '' }));
+      poll();
+    }).catch(function () { flash('⚠️ 没撤成', 'note-err'); });
   });
 })();
 {{end}}

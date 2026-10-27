@@ -161,11 +161,18 @@ func Meta(home, dir, sid string) SessionMeta {
 
 // metaLine 只解目录摘要需要的字段，避开块级解析开销。
 type metaLine struct {
-	Type        string          `json:"type"`
-	Timestamp   string          `json:"timestamp"`
-	CWD         string          `json:"cwd"`
-	IsSidechain bool            `json:"isSidechain"`
-	Message     json.RawMessage `json:"message"`
+	Type                 string          `json:"type"`
+	Timestamp            string          `json:"timestamp"`
+	CWD                  string          `json:"cwd"`
+	IsSidechain          bool            `json:"isSidechain"`
+	InterruptedMessageID string          `json:"interruptedMessageId"`
+	IsCompactSummary     bool            `json:"isCompactSummary"`
+	Message              json.RawMessage `json:"message"`
+}
+
+// isSystemMarker：中断/压缩续接是状态记录，不算一条消息，也不能当标题。
+func (l metaLine) isSystemMarker() bool {
+	return l.InterruptedMessageID != "" || l.IsCompactSummary
 }
 
 // scanMeta 顺序扫一个文件：事件计数、首末时间、第一条真人发言当标题。
@@ -191,7 +198,9 @@ func scanMeta(path string) SessionMeta {
 		if rec.Type != "user" && rec.Type != "assistant" || len(rec.Message) == 0 {
 			continue
 		}
-		m.Events++
+		if !rec.isSystemMarker() {
+			m.Events++ // 中断/压缩是状态分隔，不计入消息条数
+		}
 		ts := ParseTS(rec.Timestamp)
 		if m.FirstTS.IsZero() {
 			m.FirstTS = ts
@@ -201,7 +210,7 @@ func scanMeta(path string) SessionMeta {
 		if rec.CWD != "" {
 			m.Dir = rec.CWD
 		}
-		if m.Title == "" && rec.Type == "user" && !rec.IsSidechain {
+		if m.Title == "" && rec.Type == "user" && !rec.IsSidechain && !rec.isSystemMarker() {
 			if t := firstHumanText(rec.Message); titleWorthy(t) {
 				m.Title = clip(t, 60)
 			}
@@ -244,7 +253,7 @@ func scanMetaCheap(path string) SessionMeta {
 					m.FirstTS = ts
 				}
 			}
-			if head && m.Title == "" && rec.Type == "user" && !rec.IsSidechain {
+			if head && m.Title == "" && rec.Type == "user" && !rec.IsSidechain && !rec.isSystemMarker() {
 				if t := firstHumanText(rec.Message); titleWorthy(t) {
 					m.Title = clip(t, 60)
 				}
@@ -271,6 +280,8 @@ func titleWorthy(t string) bool {
 	case t == "":
 		return false
 	case strings.HasPrefix(t, "This session is being continued"):
+		return false
+	case strings.HasPrefix(t, "[Request interrupted"):
 		return false
 	case strings.HasPrefix(t, "[Image:"):
 		return false

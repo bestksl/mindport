@@ -456,11 +456,12 @@ a { color: inherit; }
 .sw { display: inline-flex; border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
 .sw i { display: block; width: 12px; height: 22px; }
 
-/* 顶栏明面对话入口：按目录翻全部会话 */
-.sessions-btn {
+/* 船队＝全部会话（v0.7 合并）：顶栏明面入口，一支船队就是一个 Claude 会话 */
+.fleet-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  cursor: pointer;
   background: var(--panel);
   border: 2px solid var(--line);
   border-radius: 6px;
@@ -472,30 +473,8 @@ a { color: inherit; }
   color: var(--ink);
   text-decoration: none;
 }
-.sessions-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
-.sessions-btn:hover { border-color: var(--amber-line); }
-
-/* 船队：默认收起的浮层 */
-.fleet { position: relative; }
-.fleet-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  list-style: none;
-  cursor: pointer;
-  background: var(--panel);
-  border: 2px solid var(--line);
-  border-radius: 6px;
-  box-shadow: 2px 2px 0 var(--px-shadow);
-  padding: 6px 11px;
-  min-height: 38px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.fleet-btn::-webkit-details-marker { display: none; }
-.fleet-btn::marker { content: ""; }
 .fleet-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--px-shadow); }
+.fleet-btn:hover { border-color: var(--amber-line); }
 .fleet-dot {
   width: 8px;
   height: 8px;
@@ -503,7 +482,7 @@ a { color: inherit; }
   background: var(--someday);
   flex: none;
 }
-.fleet.has-live .fleet-dot {
+.fleet-btn.has-live .fleet-dot {
   background: var(--ok);
   animation: pulse 2s ease-in-out infinite;
 }
@@ -514,7 +493,7 @@ a { color: inherit; }
   min-width: 1ch;
   font-variant-numeric: tabular-nums;
 }
-.fleet.has-live #fleet-count { color: var(--ok-ink); }
+.fleet-btn.has-live #fleet-count { color: var(--ok-ink); }
 .caret {
   width: 0;
   height: 0;
@@ -524,36 +503,6 @@ a { color: inherit; }
   margin-left: 1px;
   transition: transform .15s ease;
 }
-.fleet[open] .caret { transform: rotate(180deg); }
-.fleet-pop {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  width: max-content;
-  min-width: 252px;
-  max-width: min(86vw, 380px);
-  max-height: min(66vh, 440px);
-  overflow-y: auto;
-  background: var(--panel);
-  border: 2px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 5px 5px 0 var(--px-shadow);
-  padding: 9px;
-  z-index: 60;
-}
-.fleet-pop-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 11px;
-  letter-spacing: .5px;
-  color: var(--muted);
-  margin: 1px 2px 8px;
-}
-
-/* 船队芯片：浮层内纵向排成船位清单 */
-.agents { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.fleet-pop .agents { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; }
 .chip {
   display: inline-flex;
   align-items: center;
@@ -566,7 +515,6 @@ a { color: inherit; }
   white-space: nowrap;
   max-width: 100%;
 }
-.fleet-pop .chip { width: 100%; }
 .chip b { font-weight: 700; font-size: 12.5px; flex: none; }
 .chip em { font-style: normal; color: var(--muted); font-size: 11px; margin-left: auto; flex: none; }
 .chip .seen { font-style: normal; opacity: .65; font-size: 10px; margin-left: 2px; }
@@ -942,6 +890,49 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 }
 .seg input { width: auto; }
 
+/* v0.7：想法（任务）挂船队（会话），与派船状态机正交 */
+.fleet-bind {
+  margin-top: 18px;
+  padding: 12px 16px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+}
+.fleet-bind h2 { margin: 0 0 10px; font-size: 14px; }
+.fleet-bind h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.bound-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bound-fleet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  color: var(--ink);
+  border: 1.5px solid var(--ok-line);
+  background: var(--ok-soft);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+.bound-fleet:hover { border-color: var(--amber-line); }
+.bound-fleet b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bound-fleet em { font-style: normal; color: var(--muted); font-size: 11.5px; flex: none; }
+.bound-fleet .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.unbind-form { margin: 0; }
+.bind-row { display: flex; gap: 8px; align-items: center; }
+.bind-row select { flex: 1; min-width: 0; }
+
+/* 看板卡片上的船队别针 */
+.card-fleet {
+  margin-left: auto;
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--busy);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.card-fleet:hover { color: var(--amber); }
+
 .err {
   margin-top: 12px;
   background: var(--block-soft);
@@ -1104,16 +1095,11 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   .brand-mark .px-lighthouse { width: 24px; height: 24px; }
   .top-right { flex: none; width: auto; gap: 7px; }
 
-  .fleet-pop {
-    right: 0;
-    min-width: 0;
-    width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-  }
-
-  .top-sea { height: 28px; min-width: 36px; margin: 0 2px; }
-  .mini-sea { max-width: 150px; height: 28px; }
-  .mini-port { display: none; }
+  /* 390px 要塞下船队入口：装饰海景手机端撤场 */
+  .top-sea { display: none; }
+  .mini-sea, .mini-port { display: none; }
+  .fleet-btn { padding: 6px 9px; }
+  #fleet-count { font-size: 11px; }
 
   .capture { padding: 10px; }
   .capture-row { flex-wrap: wrap; }
@@ -1127,6 +1113,11 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   .card { padding: 13px 14px; margin-bottom: 9px; }
   button { min-height: 44px; } /* 手机触控目标 */
   button.mini { min-height: 36px; }
+
+  /* 看板卡片里的派船行：select 与按钮上下排，绝不横向溢出 */
+  .card .publish-row { flex-wrap: wrap; }
+  .card .publish-row select { flex: 1 1 100%; }
+  .card .publish-row button { flex: 1 1 100%; }
 
   .detail-head h1 { font-size: 18px; }
   .actions.big form { width: 100%; }
@@ -1276,18 +1267,53 @@ a.chip:hover { border-color: var(--amber-line); }
   background: var(--panel);
 }
 .s-status .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-.session-head.online .badge.busy {
+/* v0.7：船队状态直接复用 CC 原生三态（工作中/待你输入/已停止），离线也是已停止 */
+.badge.working {
   color: var(--busy);
   border-color: var(--busy);
   background: var(--busy-soft);
 }
-.session-head.online .badge.busy .dot { animation: pulseDot 1.6s ease-in-out infinite; }
-.session-head.online .badge.idle {
+.badge.working .dot { animation: pulseDot 1.6s ease-in-out infinite; }
+.badge.waiting {
+  color: var(--amber);
+  border-color: var(--amber-line);
+  background: var(--amber-soft);
+}
+.badge.waiting .dot { animation: pulseDot 1.6s ease-in-out infinite; }
+.badge.idle {
   color: var(--ok-ink);
   border-color: var(--ok-line);
   background: var(--ok-soft);
 }
-.session-head.offline .badge { opacity: .75; }
+.badge.offline { opacity: .65; }
+/* 人给的结局标记，与实时状态正交：✅ 圆满结束 / ⏹ 中途停止 */
+.badge.mark-good {
+  color: var(--ok-ink);
+  border-color: var(--ok-line);
+  background: var(--ok-soft);
+}
+.badge.mark-stop {
+  color: var(--amber);
+  border-color: var(--amber-line);
+  background: var(--amber-soft);
+}
+.session-head.marked .badge .dot { animation: none; }
+/* 结局操作按钮：低调小按钮，标记后收起到「撤结局」 */
+.s-markbtns { display: inline-flex; gap: 6px; }
+.markbtn {
+  font-size: 11px;
+  padding: 1px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+.markbtn:active { transform: translate(1px, 1px); }
+.markbtn.good:hover { border-color: var(--ok-line); color: var(--ok-ink); }
+.markbtn.stop:hover { border-color: var(--amber-line); color: var(--amber); }
+.markbtn.cancel { color: var(--muted); }
+.markbtn[hidden] { display: none; }
 @keyframes pulseDot {
   0%, 100% { box-shadow: 0 0 0 0 var(--pulse-1); }
   70% { box-shadow: 0 0 0 5px var(--pulse-2); }
@@ -1402,6 +1428,86 @@ a.chip:hover { border-color: var(--amber-line); }
 .only-result .tl-meta { display: none; }
 .only-result { margin: 2px 0 2px 10px; }
 
+/* v0.7：思考默认展开（像 CLI 一样看得见它在想什么），限高保密度 */
+.tl-think { border-left: 2px solid var(--line); padding-left: 9px; }
+.tl-think pre { max-height: 240px; }
+
+/* 系统行：Ctrl-C 中断 / 压缩续接——是状态，不是谁发的言 */
+.tl-system { align-items: center; margin: 8px 0; }
+.tl-sys {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 2px 12px;
+}
+.tl-sys.interrupt { color: #e08362; border-color: rgba(224,131,98,.5); background: rgba(224,131,98,.08); }
+.tl-sys.continue { color: var(--busy); }
+
+/* 思考总开关：与「翻更早记录」同款小胶囊（撤掉通用按钮的底色与投影） */
+.think-toggle {
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 14px;
+  font-size: 11.5px;
+  font-weight: 400;
+  padding: 2px 12px;
+  min-height: 0;
+  cursor: pointer;
+}
+.think-toggle:hover { color: var(--ink); border-color: var(--amber-line); }
+
+/* 「船队正在思考…」打字指示 */
+.tl-typing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--busy);
+  padding: 4px 2px 2px;
+}
+.tl-typing .dots { display: inline-flex; gap: 3px; }
+.tl-typing .dots i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
+  animation: typingDot 1.1s ease-in-out infinite;
+}
+.tl-typing .dots i:nth-child(2) { animation-delay: .18s; }
+.tl-typing .dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes typingDot {
+  0%, 60%, 100% { opacity: .25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+.tl-typing[hidden] { display: none; }
+
+/* 船队上挂着的集装箱（船台头部） */
+.s-cargo {
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cargo-tag {
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11.5px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cargo-tag:hover { border-color: var(--amber-line); }
+
 /* 回话坞 */
 .say-dock {
   flex: none;
@@ -1436,8 +1542,21 @@ a.chip:hover { border-color: var(--amber-line); }
 
 @media (max-width: 720px) {
   .session { height: calc(100vh - 58px); height: calc(100dvh - 58px); padding: 0 10px; }
+  .session-head { padding-top: 8px; }
   .session-head h1 { font-size: 14.5px; }
+  .s-status { flex-wrap: wrap; gap: 6px; }
+  .s-markbtns { gap: 5px; }
+  .markbtn { padding: 2px 9px; }
   .tl-text { max-width: 94%; }
+  /* 小屏提密度：事件行距收紧，思考块更克制 */
+  .tl-ev { margin: 8px 0; }
+  .tl-think pre { max-height: 180px; }
+  .tl-sys { font-size: 11px; }
+  .bind-row { flex-wrap: wrap; }
+  .bind-row select { flex-basis: 100%; }
+  .fleet-bind { padding: 11px 12px; }
+  .fleet-bind h2 small { display: block; margin-left: 0; margin-top: 2px; }
+  .cargo-tag { max-width: 160px; }
 }
 
 /* ============================================================
@@ -1533,9 +1652,7 @@ html[data-stealth="1"] .brand > * { display: none !important; }
 
 html[data-stealth="1"] .fleet-label { font-size: 0; }
 html[data-stealth="1"] .fleet-label::before { content: attr(data-debug); font-size: 12px; }
-html[data-stealth="1"] .sessions-btn { border-color: #000; box-shadow: none; }
-html[data-stealth="1"] .sessions-label { font-size: 0; }
-html[data-stealth="1"] .sessions-label::before { content: attr(data-debug); font-size: 12px; }
+html[data-stealth="1"] .fleet-btn { border-color: #000; box-shadow: none; }
 
 html[data-stealth="1"] .capture-hint { text-align: left; font-size: 0; margin: 3px 0 0; }
 html[data-stealth="1"] .capture-hint::before { content: "// " attr(data-debug); font-size: 10.5px; }
@@ -1559,7 +1676,7 @@ html[data-stealth="1"] button[data-debug]::before { content: attr(data-debug); f
 /* 控件：朴素 debug 表单 */
 html[data-stealth="1"] .card,
 html[data-stealth="1"] .detail-head,
-html[data-stealth="1"] .fleet-pop {
+html[data-stealth="1"] .fleet-btn {
   border: 1px solid #000 !important;
 }
 html[data-stealth="1"] button,
@@ -1730,9 +1847,10 @@ html[data-stealth="1"] .dir-known-fold summary span[data-debug]::before { conten
 .dir-row:hover { border-color: var(--amber-line); background: var(--amber-soft); }
 .dir-state { flex: none; width: 10px; display: flex; justify-content: center; }
 .dir-state .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
-.dir-row.is-online .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok-line); }
-.dir-row.is-busy .dot,
-.dir-row.is-waiting .dot { background: var(--busy); box-shadow: 0 0 6px rgba(111,179,217,.7); animation: pulseDot 1.4s infinite; }
+/* v0.7 四态（直接复用 CC 原生）：工作中 / 待你输入 / 已停止（在线 idle 与离线同文案） */
+.dir-row.is-idle .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok-line); }
+.dir-row.is-working .dot { background: var(--busy); box-shadow: 0 0 6px rgba(111,179,217,.7); animation: pulseDot 1.4s infinite; }
+.dir-row.is-waiting .dot { background: var(--amber); box-shadow: 0 0 6px rgba(240,178,63,.6); animation: pulseDot 1.4s infinite; }
 .dir-row:active { transform: scale(.997); }
 .dir-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .dir-title {
@@ -1745,14 +1863,20 @@ html[data-stealth="1"] .dir-known-fold summary span[data-debug]::before { conten
 .dir-go { color: var(--muted); flex: none; }
 .dir-row:hover .dir-go { color: var(--amber); }
 
-/* 状态徽标：三个 em 常驻 DOM，按行 class 显隐——轮询只切 class 即可 */
+/* 状态徽标：em 常驻 DOM，按行 class 显隐——轮询只切 class 即可 */
 .row-state { display: inline-flex; align-items: center; gap: 4px; }
-.row-state em { display: none; font-style: normal; font-size: 11px; color: var(--busy); }
-.dir-row.is-busy .st-busy,
-.dir-row.is-waiting .st-waiting,
-.dir-row.is-online .st-idle { display: inline; }
-.dir-row.is-online .row-state em { color: var(--ok); }
-.dir-row.is-off .row-state { display: none; }
+.row-state em { display: none; font-style: normal; font-size: 11px; color: var(--muted); }
+.dir-row.is-working .st-working { display: inline; color: var(--busy); }
+.dir-row.is-waiting .st-waiting { display: inline; color: var(--amber); }
+.dir-row.is-idle .st-stopped,
+.dir-row.is-off .st-stopped { display: inline; }
+/* 结局标记覆盖实时状态文案 */
+.dir-row.has-mark .st-working,
+.dir-row.has-mark .st-waiting,
+.dir-row.has-mark .st-stopped { display: none; }
+.dir-row.has-mark .st-mark { display: inline; }
+.dir-row.has-mark .st-mark-good { color: var(--ok-ink); }
+.dir-row.has-mark .st-mark-stop { color: var(--amber); }
 .dir-proj { font-style: normal; color: var(--amber); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 
 /* 空态最近浏览 chips：localStorage 注入，无内容时不占位 */
