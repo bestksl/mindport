@@ -14,7 +14,7 @@ const dirListHTML = head + `
     <button type="submit" class="primary" data-debug="open"><span class="emo">📂 </span>翻会话</button>
   </form>
 
-  {{if .Error}}<div class="dir-err" data-debug="error"><span class="emo">⚠️ </span>{{.Error}}</div>
+  {{if .Error}}<div class="dir-err" data-debug="error"><span class="dir-err-txt"><span class="emo">⚠️ </span>{{.Error}}</span><button type="button" class="dir-err-x" data-err-close aria-label="关掉报错" title="关掉报错，回到全部最近会话">✕</button></div>
   <p class="dir-back-recent"><a href="/sessions">← 看全部最近会话</a></p>{{end}}
 
   {{if .NoDir}}
@@ -85,6 +85,20 @@ const dirListHTML = head + `
 {{end}}
 {{end}}
 
+<script>
+(function () {
+  // 报错条可一键关掉：视觉移除 + 把地址里的 ?dir= 清掉（replaceState），
+  // 这样 SSE/手动刷新不会把错误条再带回来；输入框内容保留方便改路径。
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('[data-err-close]')) return;
+    var err = document.querySelector('.dir-err');
+    if (err) err.remove();
+    var back = document.querySelector('.dir-back-recent');
+    if (back) back.remove();
+    try { history.replaceState(null, '', '/sessions'); } catch (x) {}
+  });
+})();
+</script>
 <script>
 (function () {
   // 状态轻量轮询：只切行 class，徽标由 CSS 显隐，不打断滚动

@@ -24,6 +24,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
   </a>
   <div class="top-sea">{{template "topSea" .}}</div>
   <div class="top-right">
+    <button id="phone-btn" class="phone-btn" type="button" aria-label="手机预览" title="手机预览（390 宽调试）">📱</button>
     <button id="stealth-btn" class="stealth-btn" type="button" aria-label="dev">
       <span class="s-go">&lt;/&gt;</span><span class="s-back">✕</span>
     </button>
@@ -101,6 +102,47 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
   }
   tick();
   setInterval(tick, 20000);
+})();
+// 顶栏 📱：桌面调试用——同页套一个 390 宽 iframe（媒体查询按 iframe 宽度生效，
+// 等于真机布局）；✕ 退出、↻ 重载。同源 iframe 共享 localStorage（主题等一致）。
+(function () {
+  var btn = document.getElementById('phone-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    if (document.getElementById('mp-phone-overlay')) return;
+    var ov = document.createElement('div');
+    ov.id = 'mp-phone-overlay';
+    ov.className = 'mp-phone-overlay';
+    var bar = document.createElement('div');
+    bar.className = 'mp-phone-bar';
+    var ttl = document.createElement('span');
+    ttl.className = 'mp-phone-ttl';
+    ttl.textContent = '📱 手机预览 · 390';
+    var reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'mp-phone-x';
+    reload.textContent = '↻';
+    reload.title = '重新加载';
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'mp-phone-x';
+    close.textContent = '✕';
+    close.title = '退出手机预览';
+    var wrap = document.createElement('div');
+    wrap.className = 'mp-phone-frame';
+    var fr = document.createElement('iframe');
+    fr.src = location.pathname + location.search;
+    fr.title = '手机预览';
+    wrap.appendChild(fr);
+    bar.appendChild(ttl);
+    bar.appendChild(reload);
+    bar.appendChild(close);
+    ov.appendChild(bar);
+    ov.appendChild(wrap);
+    document.body.appendChild(ov);
+    reload.addEventListener('click', function () { fr.src = fr.src; });
+    close.addEventListener('click', function () { ov.remove(); });
+  });
 })();
 </script>
 {{end}}
@@ -202,7 +244,35 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 {{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线会话）{{else}}（当前未报到）{{end}}</option>{{end}}
 {{range $s := $ship.Sessions}}{{if and $s.Dir (or (ne $ship.Name $cur) (ne $s.Dir $cwd))}}<option value="{{$ship.Name}}|{{$s.Dir}}">{{$ship.Short}} · {{if $s.Name}}「{{$s.Name}}」{{end}}📍{{baseName $s.Dir}}{{if $s.Online}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else if eq $s.RunState "blocked"}} · 受阻{{else if eq $s.RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago $s.Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
 <option value="{{$ship.Name}}|NEW" data-new="1">🆕 {{$ship.Short}} · 在新项目里新开会话接令…</option>
-{{end}}{{end}}`
+{{end}}{{end}}
+
+{{/* 看板上一张任务卡：dot = dict("T" 任务记录, "Board" 看板根数据) */}}
+{{define "taskcard"}}
+{{$t := .T}}
+<article class="card status-{{$t.Meta.Status}} {{impClass $t.Meta.Importance}}" data-task="{{$t.Meta.ID}}">
+  <div class="card-head">
+    <span class="id">{{$t.Meta.ID}}</span>
+    <span class="imp">● {{impZH $t.Meta.Importance}}</span>
+    {{if eq $t.Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
+    {{if $t.Meta.Assignee}}<span class="assignee">🚢 {{actorName $t.Meta.AssigneeValue}}{{if $t.Meta.AssignCwd}} · 📍{{baseName $t.Meta.AssignCwd}}{{end}}</span>{{end}}
+    {{if $t.Meta.Session}}<a class="card-fleet" href="/sessions/{{$t.Meta.Session}}{{if $t.Meta.SessionDir}}?dir={{$t.Meta.SessionDir | urlquery}}{{end}}" title="挂在这支船队（会话）上">🧷 {{slice $t.Meta.Session 0 8}}</a>{{end}}
+  </div>
+  <a class="titlelink" href="/tasks/{{$t.Meta.ID}}">{{$t.Meta.Title}}</a>
+  {{if $t.Meta.Goal}}<div class="goal">🎯 {{$t.Meta.Goal}}</div>{{end}}
+  <div class="agent-line">{{with index .Board.ByTask $t.Meta.ID}}<i class="dot"></i>{{actorName .Actor}} 正在做{{if .Note}}：{{.Note}}{{end}}{{end}}</div>
+  {{if eq $t.Meta.Status "anchored"}}
+  <form method="post" action="/tasks/{{$t.Meta.ID}}/assign" class="publish-row">
+    <select name="assignee" aria-label="派给哪艘船">
+      {{template "shipoptions" .Board.Ships}}
+    </select>
+    <button class="mini" data-confirm="派船命令：{{$t.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">派船</button>
+  </form>
+  <form method="post" action="/tasks/{{$t.Meta.ID}}/delete" class="del-form card-del">
+    <button class="danger mini" data-confirm="删除任务 {{$t.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复">🗑 删掉</button>
+  </form>
+  {{end}}
+</article>
+{{end}}`
 
 const sseBoot = `
 <script>
@@ -383,32 +453,21 @@ const boardHTML = head + `
 <section class="board four">
   {{range .Cols}}
   <div class="col col-{{.Key}}">
+    {{if eq .Key "done"}}
+    <details class="done-fold">
+      <summary class="done-fold-head" data-debug="{{.Key}}">
+        <span class="done-fold-title">{{.Title}} <small>{{len .Tasks}}</small></span>
+        <i class="fold-ic" aria-hidden="true">▸</i>
+      </summary>
+      <div class="done-fold-body">
+        {{if not .Tasks}}<p class="empty">—</p>{{end}}
+        {{range .Tasks}}{{template "taskcard" (dict "T" . "Board" $)}}{{end}}
+      </div>
+    </details>
+    {{else}}
     <h2 data-debug="{{.Key}}">{{.Title}} <small>{{len .Tasks}}</small></h2>
     {{if not .Tasks}}<p class="empty">—</p>{{end}}
-    {{range .Tasks}}
-    <article class="card status-{{.Meta.Status}} {{impClass .Meta.Importance}}" data-task="{{.Meta.ID}}">
-      <div class="card-head">
-        <span class="id">{{.Meta.ID}}</span>
-        <span class="imp">● {{impZH .Meta.Importance}}</span>
-        {{if eq .Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
-        {{if .Meta.Assignee}}<span class="assignee">🚢 {{actorName .Meta.AssigneeValue}}{{if .Meta.AssignCwd}} · 📍{{baseName .Meta.AssignCwd}}{{end}}</span>{{end}}
-        {{if .Meta.Session}}<a class="card-fleet" href="/sessions/{{.Meta.Session}}{{if .Meta.SessionDir}}?dir={{.Meta.SessionDir | urlquery}}{{end}}" title="挂在这支船队（会话）上">🧷 {{slice .Meta.Session 0 8}}</a>{{end}}
-      </div>
-      <a class="titlelink" href="/tasks/{{.Meta.ID}}">{{.Meta.Title}}</a>
-      {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
-      <div class="agent-line">{{with index $.ByTask .Meta.ID}}<i class="dot"></i>{{actorName .Actor}} 正在做{{if .Note}}：{{.Note}}{{end}}{{end}}</div>
-      {{if eq .Meta.Status "anchored"}}
-      <form method="post" action="/tasks/{{.Meta.ID}}/assign" class="publish-row">
-        <select name="assignee" aria-label="派给哪艘船">
-          {{template "shipoptions" $.Ships}}
-        </select>
-        <button class="mini" data-confirm="派船命令：{{.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">派船</button>
-      </form>
-      <form method="post" action="/tasks/{{.Meta.ID}}/delete" class="del-form card-del">
-        <button class="danger mini" data-confirm="删除任务 {{.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复">🗑 删掉</button>
-      </form>
-      {{end}}
-    </article>
+    {{range .Tasks}}{{template "taskcard" (dict "T" . "Board" $)}}{{end}}
     {{end}}
   </div>
   {{end}}
@@ -439,6 +498,17 @@ const boardSegJS = `
     });
     if (persist) { try { localStorage.setItem('mindport-board-seg', k); } catch (e) {} }
   }
+  // 「已归港」折叠态记忆：默认收起，展开选择存本机（SSE 整页 reload 后保持）
+  (function () {
+    var fold = document.querySelector('.done-fold');
+    if (!fold) return;
+    var open = null;
+    try { open = localStorage.getItem('mindport-done-open'); } catch (e) {}
+    if (open === '1') fold.open = true;
+    fold.addEventListener('toggle', function () {
+      try { localStorage.setItem('mindport-done-open', fold.open ? '1' : '0'); } catch (e) {}
+    });
+  })();
   var saved = null;
   try { saved = localStorage.getItem('mindport-board-seg'); } catch (e) {}
   var cur = keys().indexOf(saved) >= 0 && count(saved) > 0 ? saved

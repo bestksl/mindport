@@ -714,6 +714,16 @@ var funcMap = template.FuncMap{
 	"actorName":   shortActor,
 	"onlyResults": onlyResults,
 	"toolEmoji":   toolEmoji,
+	"dict":        dictTmpl,
+}
+
+// dictTmpl 让模板能把多个值打包成 map 传给 {{define}}（键必须是字符串）。
+func dictTmpl(v ...any) map[string]any {
+	m := make(map[string]any, len(v)/2)
+	for i := 0; i+1 < len(v); i += 2 {
+		m[v[i].(string)] = v[i+1]
+	}
+	return m
 }
 
 // toolEmoji 给常见工具一个像素港风小图标；未知工具用扳手。
