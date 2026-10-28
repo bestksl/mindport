@@ -77,14 +77,19 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
     <span class="tab-tx" data-debug="board">调度台</span>
   </a>
   <a class="tab tab-fleet" href="/sessions" data-tab="fleet">
-    <span class="tab-ic">🧭<i class="tab-badge" id="tab-fleet-badge" hidden></i></span>
+    <span class="tab-ic">⛵<i class="tab-badge" id="tab-fleet-badge" hidden></i></span>
     <span class="tab-tx" data-debug="fleet">船队</span>
+  </a>
+  <a class="tab tab-routes" href="/routes" data-tab="routes">
+    <span class="tab-ic">🧭<i class="tab-badge" id="tab-route-badge" hidden></i></span>
+    <span class="tab-tx" data-debug="routes">航线</span>
   </a>
 </nav>
 <script>
 (function () {
   var p = location.pathname;
   var which = (p === '/' || p.indexOf('/tasks/') === 0) ? 'board'
+    : p.indexOf('/routes') === 0 ? 'routes'
     : (p.indexOf('/sessions') === 0) ? 'fleet' : '';
   if (which) {
     var a = document.querySelector('.tab-' + which);
@@ -98,6 +103,14 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       if (b) { b.textContent = n ? String(n) : ''; b.hidden = !n; }
       // 顶栏船队灯（sseBoot）复用同一份轮询，不重复请求
       window.dispatchEvent(new CustomEvent('mp-sessions', { detail: { rows: rows, live: n } }));
+    }).catch(function () {});
+    // 航线角标：在役航线下未完成的需求数
+    fetch('/api/routes/summary').then(function (r) { return r.json(); }).then(function (d) {
+      var b = document.getElementById('tab-route-badge');
+      if (!b) return;
+      var n = d.open_needs || 0;
+      b.textContent = n ? String(n) : '';
+      b.hidden = !n;
     }).catch(function () {});
   }
   tick();
@@ -632,14 +645,33 @@ const taskHTML = head + `
     {{end}}
     <details class="launch-box" {{if not .BoundSID}}open{{end}}>
       <summary>🆕 新开一支船队跑这个想法 <small>在项目目录里起一个新的 Claude 会话，自动挂上本任务</small></summary>
-      <form method="post" action="/tasks/{{.R.Meta.ID}}/launch" class="launch-form">
+      <form action="/tasks/{{.R.Meta.ID}}/launch" class="launch-form" data-fleet-new>
         <label>船队开在哪个项目目录（绝对路径）</label>
         <input name="dir" list="launch-dir-list" required spellcheck="false" autocomplete="off"
                value="{{.LaunchDirDefault}}" placeholder="/Users/jmzx/Documents/GitHub/xxx" enterkeyhint="go">
         <datalist id="launch-dir-list">{{range .LaunchDirs}}<option value="{{.Dir}}">{{end}}</datalist>
+        <div class="launch-name-row">
+          <span class="launch-name-cell">
+            <label>船名（留空用「{{.LaunchName}}」）</label>
+            <input name="name" maxlength="40" spellcheck="false" autocomplete="off" placeholder="{{.LaunchName}}">
+          </span>
+          {{if .LaunchRoutes}}
+          <span class="launch-name-cell">
+            <label>挂在哪条航线</label>
+            <select name="route" aria-label="挂在哪条航线">
+              <option value="">不挂航线</option>
+              {{$cur := .R.Meta.Route}}
+              {{range .LaunchRoutes}}<option value="{{.Meta.ID}}" {{if eq .Meta.ID $cur}}selected{{end}}>{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
+            </select>
+          </span>
+          {{end}}
+        </div>
         <label>给新船队的第一句话（它一开工就看到，可改）</label>
         <textarea name="msg" rows="5" maxlength="8000">{{.LaunchPrompt}}</textarea>
-        <button class="primary mini" data-confirm="在所选目录新开一个 Claude 后台会话，并把 {{.R.Meta.ID}} 挂到它上面？">🆕 新开船队并挂上</button>
+        <div class="fn-foot">
+          <span class="fn-err" data-fn-err role="alert" hidden></span>
+          <button class="primary mini" type="submit"><span class="emo">⛵ </span>新开船队并挂上</button>
+        </div>
       </form>
     </details>
   </section>
@@ -705,6 +737,7 @@ const taskHTML = head + `
     </ul>
   </section>
 </article>
+<script src="/static/fleet-new.js?v=21"></script>
 {{template "tabbar" .}}
 ` + sseBoot + `
 </body></html>`

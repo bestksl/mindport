@@ -162,6 +162,18 @@ func (v *Vault) PullMail(sid string) ([]Mail, error) {
 	return pending, nil
 }
 
+// DropMail 删掉某会话的全部留言（拆船时清舱；文件不存在不算错）。
+func (v *Vault) DropMail(sid string) error {
+	p, err := mailPath(v.mailDir(), sid)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // MailPending 数某会话尚未被钩子拉走的留言（网页提示「N 条排队中」）。
 func (v *Vault) MailPending(sid string) (int, error) {
 	p, err := mailPath(v.mailDir(), sid)

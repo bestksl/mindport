@@ -42,12 +42,14 @@ type Server struct {
 	V         *store.Vault
 	broker    *broker
 	poller    *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
+	bridge    *fleetBridge // 网页船队的常驻 stream-json 桥（即时注入+逐字直播）
 	authToken string       // 非空即强制鉴权（ADR-0008）；serve 命令经 EnableAuth 设置
 }
 
 // New 构造 Server 并启动 vault 文件监听（监听失败不影响主流程）。
 func New(v *store.Vault) *Server {
 	s := &Server{V: v, broker: newBroker()}
+	s.bridge = newFleetBridge(s)
 	go s.watchVault()
 	if p := newAgentPoller("claude@studio", v); p != nil {
 		s.poller = p
@@ -141,6 +143,20 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/tasks", s.handleAPITasks)
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
+	mux.HandleFunc("GET /api/live", s.handleLive)
+
+	// 航线（v0.8）：既定目标 + 描述，下面挂临时任务与船队。
+	mux.HandleFunc("GET /api/routes/summary", s.handleRoutesSummary)
+	mux.HandleFunc("GET /routes", s.handleRouteList)
+	mux.HandleFunc("POST /routes", s.handleRouteCreate)
+	mux.HandleFunc("GET /routes/{rid}", s.handleRouteDetail)
+	mux.HandleFunc("POST /routes/{rid}/edit", s.handleRouteEdit)
+	mux.HandleFunc("POST /routes/{rid}/archive", s.handleRouteArchive)
+	mux.HandleFunc("POST /routes/{rid}/needs", s.handleRouteNeed)
+	mux.HandleFunc("POST /tasks/{id}/route", s.handleTaskSetRoute)
+
+	// 船队：一键新开（目录+船名+首句话），中断/拆船。
+	mux.HandleFunc("POST /fleets/new", s.handleFleetNew)
 
 	// 会话船台（ADR-0008）：实时 transcript 时间线 + 双向回话
 	mux.HandleFunc("GET /sessions", s.handleSessionList)         // ?dir=<绝对路径> 扫盘列全部会话
@@ -153,6 +169,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions/{sid}/stream", s.handleSessionStream)
 	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleSessionHistory)
 	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
+	mux.HandleFunc("POST /sessions/{sid}/stop", s.handleFleetStop)
+	mux.HandleFunc("POST /sessions/{sid}/delete", s.handleFleetDelete)
 	mux.HandleFunc("POST /sessions/{sid}/mark", s.handleSessionMark)
 	mux.HandleFunc("POST /sessions/{sid}/unmark", s.handleSessionUnmark)
 
@@ -226,10 +244,12 @@ type taskView struct {
 	BoundStateText string
 	FleetOpts      []fleetOption
 
-	// 新开船队（在项目目录里 claude --bg 起一支新会话并挂上本任务）
+	// 新开船队（在项目目录里起一支桥船队并挂上本任务）
 	LaunchDirs       []knownDir
 	LaunchDirDefault string
 	LaunchPrompt     string
+	LaunchRoutes     []store.Record // 在役航线（launch 表单可挂）
+	LaunchName       string         // 默认船名（短码-需求）
 }
 
 // ---------- 页面处理器 ----------
@@ -406,6 +426,14 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		v.LaunchDirDefault = v.LaunchDirs[0].Dir
 	}
 	v.LaunchPrompt = launchPrompt(rec)
+	v.LaunchName = s.fleetDefaultName(rec)
+	if routes, err := s.V.ListRoutes(); err == nil {
+		for _, rt := range routes {
+			if rt.Meta.Status != store.RouteArchived {
+				v.LaunchRoutes = append(v.LaunchRoutes, rt)
+			}
+		}
+	}
 	render(w, http.StatusOK, taskTmpl, v)
 }
 
@@ -715,6 +743,7 @@ var funcMap = template.FuncMap{
 	"onlyResults": onlyResults,
 	"toolEmoji":   toolEmoji,
 	"dict":        dictTmpl,
+	"routeDesc":   routeDesc,
 }
 
 // dictTmpl 让模板能把多个值打包成 map 传给 {{define}}（键必须是字符串）。
@@ -754,6 +783,8 @@ var taskTmpl = template.Must(template.New("task").Funcs(funcMap).Parse(taskHTML)
 var loginTmpl = template.Must(template.New("login").Funcs(funcMap).Parse(loginHTML))
 var sessionTmpl = template.Must(template.New("session").Funcs(funcMap).Parse(sessionHTML))
 var dirTmpl = template.Must(template.New("dir").Funcs(funcMap).Parse(dirListHTML))
+var routeListTmpl = template.Must(template.New("routeList").Funcs(funcMap).Parse(routeListHTML))
+var routeTmpl = template.Must(template.New("route").Funcs(funcMap).Parse(routeHTML))
 
 // onlyResults 判定一条 user 事件是否只是工具回报（没有真人发言），
 // 时间线上把它弱化成紧凑的「🧰 工具回报」行。

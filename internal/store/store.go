@@ -24,17 +24,22 @@ import (
 
 // Meta 是 frontmatter 契约区。agent 只读写这里，不碰正文。
 type Meta struct {
-	Type        string     `yaml:"type" json:"type"` // thought | task | note
-	ID          string     `yaml:"id,omitempty" json:"id,omitempty"`
-	Title       string     `yaml:"title" json:"title"`
-	Status      string     `yaml:"status,omitempty" json:"status,omitempty"`
-	Importance  string     `yaml:"importance,omitempty" json:"importance,omitempty"` // critical|high|normal|someday
-	Goal        string     `yaml:"goal,omitempty" json:"goal,omitempty"`
-	Assignee    *string    `yaml:"assignee,omitempty" json:"assignee,omitempty"`
-	AssignCwd   string     `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定船位：只有该项目目录的会话能接令；空=任意会话
+	Type       string  `yaml:"type" json:"type"` // thought | task | note
+	ID         string  `yaml:"id,omitempty" json:"id,omitempty"`
+	Title      string  `yaml:"title" json:"title"`
+	Status     string  `yaml:"status,omitempty" json:"status,omitempty"`
+	Importance string  `yaml:"importance,omitempty" json:"importance,omitempty"` // critical|high|normal|someday
+	Goal       string  `yaml:"goal,omitempty" json:"goal,omitempty"`
+	Assignee   *string `yaml:"assignee,omitempty" json:"assignee,omitempty"`
+	AssignCwd  string  `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定船位：只有该项目目录的会话能接令；空=任意会话
 	// 挂船队：一个想法（任务）挂到一支具体船队（Claude 会话）上，与派船状态机正交。
 	Session    string `yaml:"session,omitempty" json:"session,omitempty"`
 	SessionDir string `yaml:"session_dir,omitempty" json:"session_dir,omitempty"`
+	// Route 是任务所属航线（R 编号）；空串=不属于任何航线。航线下的小任务
+	// 完成即收起，只在航线页内回看。
+	Route string `yaml:"route,omitempty" json:"route,omitempty"`
+	// Code 是航线的短码（≤4 字），船队统一命名「短码-需求」时使用；只对 type=route 有意义。
+	Code        string     `yaml:"code,omitempty" json:"code,omitempty"`
 	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Created     time.Time  `yaml:"created" json:"created"`
 	Updated     *time.Time `yaml:"updated,omitempty" json:"updated,omitempty"`
@@ -126,7 +131,7 @@ type Vault struct {
 // Open 打开（必要时初始化）vault 的标准目录结构。
 func Open(root string) (*Vault, error) {
 	for _, d := range []string{
-		"tasks", "notes", "archive", "attachments",
+		"tasks", "routes", "notes", "archive", "attachments",
 		".port/locks", ".port/state",
 	} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {

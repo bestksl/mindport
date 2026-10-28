@@ -24,6 +24,7 @@ const sessionHTML = head + `
 {{template "topbar" .}}
 
 <main class="session" data-sid="{{.SID}}">
+  <div class="conn-banner" id="conn-banner" role="status" hidden><span class="conn-dot"></span>实时连接断了，正在自动重连…</div>
   <div class="session-head st-{{.StateKey}}{{if .HasMark}} marked mark-{{.Mark.Outcome}}{{end}}" id="s-head">
     <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}船队列表{{else}}回港口{{end}}</a>
     <h1 data-debug="session">
@@ -39,6 +40,10 @@ const sessionHTML = head + `
         <button type="button" class="markbtn good" data-outcome="good" data-debug="mark good"{{if .HasMark}} hidden{{end}}>✅ 圆满结束</button>
         <button type="button" class="markbtn stop" data-outcome="stop" data-debug="mark stop"{{if .HasMark}} hidden{{end}}>⏹ 中途停止</button>
         <button type="button" class="markbtn cancel" id="s-mark-cancel" data-debug="mark cancel"{{if not .HasMark}} hidden{{end}}>撤结局</button>
+      </span>
+      <span class="s-actbtns" id="s-actbtns">
+        <button type="button" class="actbtn" id="btn-stop" hidden title="中断当前这一轮（等同终端 Esc）；排队中的话照跑">⏹ 中断这轮</button>
+        <button type="button" class="actbtn danger" id="btn-scuttle" title="把船队从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 拆船</button>
       </span>{{end}}
     </div>
     <div class="s-pending" id="s-pending" {{if not .Pending}}hidden{{end}}><span class="emo">📬 </span>有 <b id="s-pending-n">{{.Pending}}</b> 条留言排队中，船队下一轮开工自动收到</div>
@@ -86,6 +91,13 @@ const sessionHTML = head + `
   </div>
 
   <div class="tl-typing" id="tl-typing" hidden><span class="dots"><i></i><i></i><i></i></span><span>船队正在思考…</span></div>
+  <div class="tl-live" id="tl-live" hidden></div>
+  <div class="tl-queue" id="tl-queue" hidden>
+    <div class="q-head"><span><span class="emo">📬 </span>已排队 <b id="q-n">0</b> 句，这轮跑完按顺序自动说</span>
+      <button type="button" class="mini danger" id="q-cancel" title="中断当前轮并清空排队（Ctrl-X 语义）">⏹ 中断并清空</button>
+    </div>
+    <div class="q-list" id="q-list"></div>
+  </div>
 
   <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
     <div class="say-note" id="say-note" hidden></div>
@@ -217,10 +229,80 @@ const sessionHTML = head + `
     if (!d.online) return 'offline';
     if (d.status === 'busy') return 'working';
     if (d.status === 'waiting') return 'waiting';
-    return 'idle'; // 进程在线但这一轮已停
+    if (d.status === 'restarting') return 'restarting';
+    return 'idle'; // 进程在线、轮次已停，随时能再说话
   }
   function stateText(k) {
-    return k === 'working' ? '工作中' : k === 'waiting' ? '待你输入' : '已停止';
+    return k === 'working' ? '工作中' : k === 'waiting' ? '待你输入'
+      : k === 'restarting' ? '♻️ 重连中' : k === 'idle' ? '待命' : '已停止';
+  }
+
+  // ---- 逐字直播：当前轮还没落进 transcript 的 thinking/text/tool 块 ----
+  function liveBlockHTML(b) {
+    if (b.kind === 'thinking')
+      return '<details class="tl-think tl-live-blk" ' + (thinkShown ? 'open' : '') +
+        '><summary data-debug="thinking"><span class="emo">🤔 </span>思考中…</summary><pre>' + esc(b.text) + '</pre></details>';
+    if (b.kind === 'text')
+      return '<div class="tl-text tl-live-blk">' + esc(b.text) +
+        '<span class="caret-blink">▍</span></div>';
+    if (b.kind === 'tool')
+      return '<div class="tl-tool tl-live-blk"><details><summary><span class="emo">' +
+        toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b> 进行中…</summary></details></div>';
+    return '';
+  }
+  function renderLive(blocks) {
+    var el = document.getElementById('tl-live');
+    if (!el) return;
+    if (!blocks || !blocks.length) { el.hidden = true; el.innerHTML = ''; return; }
+    var stickNow = nearBottom();
+    el.innerHTML = blocks.map(liveBlockHTML).join('');
+    el.hidden = false;
+    if (stickNow) stick();
+  }
+
+  // ---- 忙时排队：CLI 自动排队续跑，这里让人看见队里有几句、可一键全撤 ----
+  function renderQueue(queued) {
+    var box = document.getElementById('tl-queue');
+    if (!box) return;
+    var n = queued ? queued.length : 0;
+    box.hidden = n === 0;
+    if (!n) return;
+    document.getElementById('q-n').textContent = String(n);
+    document.getElementById('q-list').innerHTML = queued.map(function (q) {
+      return '<div class="q-item"><span class="emo">🧭 </span>' + esc(q) + '</div>';
+    }).join('');
+  }
+
+  // ---- 乐观气泡：话一送出就先挂上「你」的气泡，权威 transcript 行到了再顶替 ----
+  var pendingMine = [];
+  var pendingSeq = 0;
+  function appendPendingUser(msg) {
+    var seq = ++pendingSeq;
+    var el = document.createElement('div');
+    el.className = 'tl-ev tl-user tl-pending';
+    el.setAttribute('data-pseq', String(seq));
+    el.innerHTML = '<div class="tl-meta"><span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你' +
+      '<i class="pend-tag">已送达</i></span></div><div class="tl-body"><div class="tl-text">' +
+      esc(msg) + '</div></div>';
+    listEl.appendChild(el);
+    stick();
+    return { seq: seq, text: msg };
+  }
+  function reconcilePending(evs) {
+    if (!pendingMine.length || !evs || !evs.length) return;
+    evs.forEach(function (ev) {
+      if (ev.role !== 'user') return;
+      var txt = (ev.blocks || []).filter(function (b) { return b.kind === 'text'; })
+        .map(function (b) { return b.text; }).join('');
+      for (var i = 0; i < pendingMine.length; i++) {
+        if (pendingMine[i].text === txt) {
+          var el = listEl.querySelector('[data-pseq="' + pendingMine[i].seq + '"]');
+          if (el) el.remove();
+          pendingMine.splice(i, 1);
+          break;
+        }
+      }
+    });
   }
   function syncMarkBtns(mark) {
     var box = document.getElementById('s-markbtns');
@@ -238,7 +320,7 @@ const sessionHTML = head + `
     if (!head) return;
     var key = stateKey(d);
     head.classList.remove('online', 'offline', 'st-working', 'st-waiting', 'st-idle', 'st-offline',
-      'marked', 'mark-good', 'mark-stop');
+      'st-restarting', 'marked', 'mark-good', 'mark-stop');
     head.classList.add('st-' + key);
     head.classList.toggle('online', !!d.online);
     head.classList.toggle('offline', !d.online);
@@ -257,39 +339,88 @@ const sessionHTML = head + `
         ' data-debug="state: ' + (d.mark ? 'mark-' + d.mark : key) + '"><i class="dot"></i>' + esc(txt) + '</span>';
     }
     syncMarkBtns(d.mark);
-    if (typing) typing.hidden = !(d.online && d.status === 'busy' && !d.mark);
+    var busy = d.online && d.status === 'busy' && !d.mark;
+    var restarting = d.online && d.status === 'restarting' && !d.mark;
+    renderLive(busy ? d.streaming : null);
+    // 重连中排队话照样亮着：它们会由新桥原样重投，让人确认话没丢
+    renderQueue((busy || restarting) ? d.queued : null);
+    if (typing) typing.hidden = !(busy && !(d.streaming && d.streaming.length));
+    var stopBtn = document.getElementById('btn-stop');
+    if (stopBtn) stopBtn.hidden = !(d.bridge && busy);
     if (inp && document.documentElement.dataset.stealth !== '1') {
-      inp.placeholder = d.status === 'busy'
-        ? '船队正忙：留言会排队，它下一轮自动收到'
+      inp.placeholder = busy
+        ? '船队正忙：话会排队，这轮跑完马上接着说'
+        : restarting ? '♻️ 新桥接续中，马上就能继续说…'
         : '说点什么…（Enter 发送，Shift+Enter 换行）';
     }
     if (pend) { if (d.pending > 0) { pn.textContent = d.pending; pend.hidden = false; } else pend.hidden = true; }
   }
 
-  // 增量轮询：1s 一轮（对齐 CLI 的跟手感），页面隐藏时暂停（回来立即补一轮）
-  var timer = null, active = false;
+  // 增量轮询：SSE 事件即时踢一脚，1s 轮询兜底；页面隐藏时暂停
+  var timer = null, active = false, requeue = false, kickTimer = null;
+  var failStreak = 0;
+  function setBanner(show) {
+    var b = document.getElementById('conn-banner');
+    if (b) b.hidden = !show;
+  }
   function poll() {
-    if (active) return;
+    if (active) { requeue = true; return; }
     active = true;
     fetch('/api/sessions/' + encodeURIComponent(SID) + '/stream?from=' + cursor + dirQS(), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })
       .then(function (d) {
+        failStreak = 0; setBanner(false);
         if (d.events && d.events.length) {
           var stickNow = nearBottom();
           appendEvents(d.events);
+          reconcilePending(d.events);
           if (stickNow) stick();
         }
         if (d.cursor) cursor = d.cursor;
         setStatus({ online: d.online, status: d.status, mark: d.mark,
-          waiting_for: d.waiting_for, pending: d.pending });
-      }).catch(function () {}).finally(function () { active = false; });
+          waiting_for: d.waiting_for, pending: d.pending,
+          streaming: d.streaming, queued: d.queued, bridge: !!d.bridge });
+      }).catch(function (e) {
+        if (e && e.message === 'auth') return;
+        failStreak++;
+        if (failStreak >= 3) setBanner(true);
+      }).finally(function () {
+        active = false;
+        if (requeue) { requeue = false; setTimeout(poll, 60); }
+      });
   }
+  function kickPoll() { // SSE 事件合并 90ms 内的风暴
+    if (kickTimer) return;
+    kickTimer = setTimeout(function () { kickTimer = null; poll(); }, 90);
+  }
+  try {
+    var es = new EventSource('/api/live');
+    es.onmessage = function (e) {
+      var ev; try { ev = JSON.parse(e.data); } catch (x) { return; }
+      if (ev.sid === SID && (ev.type === 'state' || ev.type === 'partial')) {
+        failStreak = 0; setBanner(false);
+        kickPoll();
+      }
+    };
+  } catch (e) { /* SSE 起不来就纯 1s 轮询 */ }
   function startTimer() { if (!timer) timer = setInterval(poll, 1000); }
   function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopTimer(); else { poll(); startTimer(); }
   });
   startTimer();
+
+  // 手机键盘避让：把 visualViewport 的实时高度写给 CSS（.session 用 var(--vvh)），
+  // 输入坞不再被软键盘盖住
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    function syncVV() {
+      document.documentElement.style.setProperty('--vvh', vv.height + 'px');
+    }
+    vv.addEventListener('resize', syncVV);
+    vv.addEventListener('scroll', syncVV);
+    syncVV();
+  }
 
   // 上翻：128KB 一块，行边界对齐，插入后保持视觉位置
   var loadingOlder = false;
@@ -376,11 +507,17 @@ const sessionHTML = head + `
         if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
         input.value = '';
         input.style.height = 'auto';
-        if (d.delivered === 'resume') {
-          flash('⛵ ' + d.detail, 'note-ok');
-          // poller 30s 才刷新一轮快照：先乐观切到「工作中」，下一轮 poll 自动校正
-          if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
-        } else flash('📬 ' + d.detail, 'note-mail');
+        if (d.delivered === 'mail') {
+          flash('📬 ' + d.detail, 'note-mail');
+        } else {
+          // 即时桥：先挂乐观气泡，权威 transcript 行到了自动顶替
+          pendingMine.push(appendPendingUser(msg));
+          flash('⛵ ' + (d.detail || '已送达，船队立刻接着跑'), 'note-ok');
+          // 重连中发的话：服务端会等新桥就位再注入，本地维持 restarting 态
+          if (lastState && lastState.status !== 'restarting')
+            setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
+        }
+        kickPoll();
         setTimeout(poll, 400);
       })
       .catch(function (e) { if (e) flash('⚠️ 网络岔了，没递出去', 'note-err'); })
@@ -422,6 +559,46 @@ const sessionHTML = head + `
       if (lastState) setStatus(Object.assign({}, lastState, { mark: '' }));
       poll();
     }).catch(function () { flash('⚠️ 没撤成', 'note-err'); });
+  });
+
+  // ---- 即时桥动作：中断这轮（Esc）/ 中断并清空排队（Ctrl-X）/ 拆船 ----
+  function actionURL(act) {
+    return '/sessions/' + encodeURIComponent(SID) + '/' + act + (DIR ? '?dir=' + encodeURIComponent(DIR) : '');
+  }
+  function postAction(act, params) {
+    return fetch(actionURL(act), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params || {})
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); });
+  }
+  var stopBtn = document.getElementById('btn-stop');
+  if (stopBtn) stopBtn.addEventListener('click', function () {
+    stopBtn.disabled = true;
+    postAction('stop', { cancel_all: '0' }).then(function (d) {
+      if (d.error) flash('⚠️ ' + d.error, 'note-err');
+      else flash('✋ 中断令已送达', 'note-ok');
+      kickPoll();
+    }).catch(function (e) { if (e) flash('⚠️ 中断令没送达', 'note-err'); })
+      .finally(function () { stopBtn.disabled = false; });
+  });
+  var qCancel = document.getElementById('q-cancel');
+  if (qCancel) qCancel.addEventListener('click', function () {
+    postAction('stop', { cancel_all: '1' }).then(function (d) {
+      if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+      flash('✋ 已中断，排队的话全部撤回', 'note-ok');
+      kickPoll();
+    }).catch(function () { flash('⚠️ 没撤成', 'note-err'); });
+  });
+  var scuttle = document.getElementById('btn-scuttle');
+  if (scuttle) scuttle.addEventListener('click', function () {
+    var name = document.querySelector('.session h1') ? document.querySelector('.session h1').textContent.trim() : '这支船队';
+    if (!window.confirm('拆船？「' + name + '」会从思港消失（CC 的历史文件保留，不在列表删除），不可撤销。')) return;
+    scuttle.disabled = true;
+    postAction('delete', {}).then(function (d) {
+      if (d.error) { flash('⚠️ ' + d.error, 'note-err'); scuttle.disabled = false; return; }
+      location.href = '/sessions';
+    }).catch(function () { flash('⚠️ 拆船令没送达', 'note-err'); scuttle.disabled = false; });
   });
 })();
 {{end}}

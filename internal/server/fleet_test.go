@@ -206,8 +206,13 @@ func TestTaskLaunchValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := post(url.Values{"dir": {tc.dir}, "msg": {"hi"}})
-			if rec.Code != 303 || !strings.HasPrefix(rec.Header().Get("Location"), "/?error=") {
-				t.Fatalf("应带错重定向回港口，得到 %d loc=%q", rec.Code, rec.Header().Get("Location"))
+			// v0.8 起 launch 走 fetch：失败就地返 JSON 错误，不再踢回首页丢表单。
+			if rec.Code != 400 {
+				t.Fatalf("应返 400 就地报错，得到 %d loc=%q", rec.Code, rec.Header().Get("Location"))
+			}
+			var body map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body["error"] == "" {
+				t.Fatalf("应带 error 文案，body=%s", rec.Body.String())
 			}
 		})
 	}

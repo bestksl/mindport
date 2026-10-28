@@ -46,10 +46,35 @@ type dirListPage struct {
 	Path      string
 	Short     string
 	Rows      []dirRow
+	Groups    map[string][]dirRow // working|waiting|idle|done|offline 单栏分组
 	KnownDirs []knownDir
-	RecentDir []string // 本机最近浏览（前端 localStorage 注入，服务端只给心跳目录）
-	NoDir     bool     // 没传 dir：展示输入框 + 已知目录 + 最近会话聚合
+	Routes    []store.Record // 新建船队时可挂的在役航线
+	RecentDir []string       // 本机最近浏览（前端 localStorage 注入，服务端只给心跳目录）
+	NoDir     bool           // 没传 dir：展示输入框 + 已知目录 + 最近会话聚合
 	Error     string
+}
+
+// groupFleetRows 把会话行按「在航 / 待输入 / 待命 / 归港 / 历史」分五组，
+// 单栏表达全部在用会话；归港（圆满结束）默认折叠。
+func groupFleetRows(rows []dirRow) map[string][]dirRow {
+	g := map[string][]dirRow{}
+	for _, r := range rows {
+		key := "offline"
+		switch {
+		case r.Mark == store.MarkGood:
+			key = "done"
+		case r.Anon:
+			key = "waiting"
+		case r.Online && (r.Status == "busy" || r.Status == "restarting"):
+			key = "working"
+		case r.Online && r.Status == "waiting":
+			key = "waiting"
+		case r.Online:
+			key = "idle"
+		}
+		g[key] = append(g[key], r)
+	}
+	return g
 }
 
 // sessionRows 是 HTML 与 JSON 两个出口共用的行构造：dir 为空聚合最近会话，
@@ -148,7 +173,7 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 		}
 		return extras[i].Title < extras[j].Title
 	})
-	return append(extras, rows...), nil
+	return s.enrichRows(append(extras, rows...), home), nil
 }
 
 // expandTilde 把 ~/foo 展开成 home/foo；其余原样返回。
@@ -163,10 +188,18 @@ func expandTilde(p, home string) string {
 }
 
 func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
+	routes, _ := s.V.ListRoutes()
+	activeRoutes := routes[:0]
+	for _, rt := range routes {
+		if rt.Meta.Status != store.RouteArchived {
+			activeRoutes = append(activeRoutes, rt)
+		}
+	}
 	d := dirListPage{
 		Agents:    s.listPresence(),
 		Auth:      s.authOn(),
 		KnownDirs: s.knownDirs(),
+		Routes:    activeRoutes,
 		NoDir:     true,
 	}
 	home, _ := os.UserHomeDir()
@@ -176,6 +209,7 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 		// 空态也给内容：全部项目最近会话，一进来就能点
 		if rows, err := s.sessionRows(home, ""); err == nil {
 			d.Rows = rows
+			d.Groups = groupFleetRows(rows)
 		}
 		render(w, http.StatusOK, dirTmpl, d)
 		return
@@ -201,6 +235,7 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Rows = rows
+	d.Groups = groupFleetRows(rows)
 	render(w, http.StatusOK, dirTmpl, d)
 }
 
@@ -209,11 +244,14 @@ type sessionRowJSON struct {
 	SID    string `json:"sid"`
 	Dir    string `json:"dir"`
 	Title  string `json:"title"`
+	Name   string `json:"name"` // 船名（-n「短码-需求」，名册优先）
+	Proj   string `json:"proj"`
 	Events int    `json:"events"`
 	Online bool   `json:"online"`
 	Status string `json:"status"`
 	Mark   string `json:"mark"`
 	Anon   bool   `json:"anon"`
+	Stamp  int64  `json:"stamp"` // LastTS unnix，组内排序用
 }
 
 func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
@@ -233,9 +271,13 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]sessionRowJSON, 0, len(rows))
 	for _, r2 := range rows {
+		stamp := int64(0)
+		if !r2.LastTS.IsZero() {
+			stamp = r2.LastTS.Unix()
+		}
 		out = append(out, sessionRowJSON{
-			SID: r2.SID, Dir: r2.Dir, Title: r2.Title,
-			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark, Anon: r2.Anon,
+			SID: r2.SID, Dir: r2.Dir, Title: r2.Title, Name: r2.Name, Proj: r2.Proj,
+			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark, Anon: r2.Anon, Stamp: stamp,
 		})
 	}
 	writeJSON(w, map[string]any{"rows": out})

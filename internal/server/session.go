@@ -44,7 +44,7 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 			info = sessInfo{
 				dir: live.CWD, name: live.Name, online: true,
 				status: live.Status, state: live.State, waitingFor: live.WaitingFor,
-				anon:   live.Anon,
+				anon: live.Anon,
 			}
 			found = true
 		}
@@ -63,6 +63,30 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 		if !info.online {
 			// 快照缺席：listPresence 已据此置灰
 			info.online = p.Online
+		}
+	}
+	// 网页桥进程是活会话的一等证据：状态以桥为准（实时 working/idle，
+	// 不吃 30s 发现口快照），目录从桥取——新桥 transcript 还没落盘也找得到。
+	if s.bridge != nil {
+		if st, alive := s.bridge.stateOf(sid); alive {
+			info.online = true
+			switch st {
+			case bridgeIdle, bridgeCold:
+				info.status = "idle" // cold=空船进程待命，不是工作中
+			case bridgeWaiting:
+				info.status = "waiting"
+			case bridgeRestarting:
+				info.status = "restarting" // 中断/掉线后 --resume 接续中
+			default:
+				info.status = "busy"
+			}
+			if info.dir == "" {
+				info.dir = s.bridge.dirOf(sid)
+			}
+			if info.name == "" {
+				info.name = s.bridge.nameOf(sid)
+			}
+			found = true
 		}
 	}
 	// 心跳/发现口都没有：相信 URL 带来的目录提示，但必须自证——
@@ -128,20 +152,20 @@ type sessionPage struct {
 	Status   string
 	State    string
 
-	StateKey    string // working | waiting | idle | offline
-	StateText   string
-	WaitingFor  string
-	HasMark     bool
-	Mark        store.SessionMark
-	MarkText    string
-	BoundTasks  []store.Record // 挂在这支船队上的集装箱
+	StateKey   string // working | waiting | idle | offline
+	StateText  string
+	WaitingFor string
+	HasMark    bool
+	Mark       store.SessionMark
+	MarkText   string
+	BoundTasks []store.Record // 挂在这支船队上的集装箱
 
-	Found    bool // 心跳/快照/目录提示里有此会话
-	HasLog   bool // transcript 文件已落盘
-	Anon     bool // 进程在跑但还没说话：只显示空态，船台不可交互
+	Found    bool   // 心跳/快照/目录提示里有此会话
+	HasLog   bool   // transcript 文件已落盘
+	Anon     bool   // 进程在跑但还没说话：只显示空态，船台不可交互
 	AnonPID  string // Anon 时展示进程 pid（sid 是 proc-<pid> 临时键）
-	Auth     bool // 顶栏据此显示登出口
-	FromList bool // 从 /sessions?dir= 列表点进来：返回键回目录列表
+	Auth     bool   // 顶栏据此显示登出口
+	FromList bool   // 从 /sessions?dir= 列表点进来：返回键回目录列表
 
 	Events  []transcript.Event
 	Cursor  int64
@@ -156,6 +180,10 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	d := sessionPage{Agents: s.listPresence(), SID: sid, ShortSID: shortSid(sid), Auth: s.authOn()}
 	if !sidOK(sid) {
 		render(w, http.StatusNotFound, sessionTmpl, d)
+		return
+	}
+	if s.isHiddenFleet(sid) {
+		http.NotFound(w, r)
 		return
 	}
 	dirHint := r.URL.Query().Get("dir")
@@ -220,11 +248,14 @@ type streamResp struct {
 	WaitingFor string             `json:"waiting_for,omitempty"`
 	Mark       string             `json:"mark,omitempty"` // good | stop（人给的结局，覆盖状态文案）
 	Pending    int                `json:"pending"`
+	Queued     []string           `json:"queued,omitempty"`    // 桥忙时排队中的消息
+	Streaming  []partialBlock     `json:"streaming,omitempty"` // 当前轮逐字块（未落 transcript）
+	Bridge     bool               `json:"bridge,omitempty"`    // 这支船队由网页桥驱动
 }
 
 func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
-	if !sidOK(sid) {
+	if !sidOK(sid) || s.isHiddenFleet(sid) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
 	}
@@ -249,6 +280,11 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		resp.Mark = mk.Outcome
 	}
 	resp.Pending, _ = s.V.MailPending(sid)
+	if _, blocks, queued, alive := s.bridge.snapshot(sid); alive {
+		resp.Bridge = true
+		resp.Streaming = blocks
+		resp.Queued = queued
+	}
 	home, _ := os.UserHomeDir()
 	p := transcript.Path(home, info.dir, sid)
 	from := int64(atoiDefault(r.URL.Query().Get("from"), 0))
@@ -272,7 +308,7 @@ type historyResp struct {
 
 func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
-	if !sidOK(sid) {
+	if !sidOK(sid) || s.isHiddenFleet(sid) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
 		return
 	}
@@ -308,42 +344,8 @@ type sayResp struct {
 	Detail    string `json:"detail,omitempty"`
 }
 
-func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
-	sid := r.PathValue("sid")
-	if !sidOK(sid) {
-		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
-		return
-	}
-	_ = r.ParseForm()
-	msg := strings.TrimSpace(r.PostFormValue("msg"))
-	if msg == "" {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要说的话不能为空"})
-		return
-	}
-	info, found := s.resolveSession(sid, r.URL.Query().Get("dir"))
-	if !found || info.dir == "" {
-		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
-		return
-	}
-	if info.anon {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这支船队还没说过话；请在它自己的终端里开口，或从任务上新开一支"})
-		return
-	}
-	// 又开口说话 = 结局翻篇：旧的「圆满结束/中途停止」标记自动撤掉。
-	_ = s.V.UnmarkSession(sid)
-
-	// 正忙（busy/waiting）：官方拒绝并发 resume，直接进信箱，下轮提交时钩子注入。
-	if info.online && info.status != "idle" {
-		s.queueMail(w, sid, msg)
-		return
-	}
-	// 空闲或离线：同会话后台续跑；与官方并发限制撞车（竞态）时兜底进信箱，不丢指令。
-	if err := s.resumeSession(info, sid, msg); err != nil {
-		s.queueMail(w, sid, msg)
-		return
-	}
-	writeJSON(w, sayResp{Delivered: "resume", Detail: "已唤醒会话，正在后台接着跑"})
-}
+// handleSessionSay 见 bridge_actions.go：常驻桥即时注入（忙时自动排队），
+// 信箱只在桥起不来时兜底。
 
 func (s *Server) queueMail(w http.ResponseWriter, sid, msg string) {
 	if _, err := s.V.AppendMail(sid, msg); err != nil {

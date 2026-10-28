@@ -4,6 +4,7 @@
 //   - waiting → 待你输入（等权限确认/等补充信息）
 //   - idle    → 已停止（进程还在，随时能再说话）
 //   - 离线    → 已停止（进程不在，可回看可唤醒）
+//
 // 结局标记（人给的）覆盖状态文案：圆满结束 / 中途停止。
 package server
 
@@ -41,6 +42,8 @@ func fleetStateOf(online bool, status string) fleetState {
 		return fleetState{Key: stateWorking, Text: "工作中"}
 	case "waiting":
 		return fleetState{Key: stateWaiting, Text: "待你输入"}
+	case "restarting":
+		return fleetState{Key: "restarting", Text: "重连中"}
 	default:
 		return fleetState{Key: stateIdle, Text: "已停止"}
 	}
@@ -206,23 +209,44 @@ func launchPrompt(rec *store.Record) string {
 	return b.String()
 }
 
-// handleTaskLaunch 在指定项目目录新开一支后台船队（claude --bg），
-// 把任务挂上去，然后跳去新船队的船台看它开工。
+// fleetDefaultName 给任务派生默认船名：挂航线用「短码-需求」，否则用任务标题。
+func (s *Server) fleetDefaultName(rec *store.Record) string {
+	title := strings.TrimSpace(rec.Meta.Title)
+	if rec.Meta.Route != "" {
+		if rt, err := s.V.GetRoute(rec.Meta.Route); err == nil {
+			return rt.Meta.Code + "-" + clipRunes(title, maxFleetNameRunes-utf8RuneLen(rt.Meta.Code)-1)
+		}
+	}
+	return clipRunes(title, maxFleetNameRunes)
+}
+
+func utf8RuneLen(s string) int { return len([]rune(s)) }
+
+func clipRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+// handleTaskLaunch 在指定项目目录新开一支桥船队，把任务挂上去。
+// 前端用 fetch 提交：成功返 JSON 跳转船台，失败错误就地显示（不再踢回首页）。
 func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_ = r.ParseForm()
 	dir := filepath.Clean(strings.TrimSpace(r.PostFormValue("dir")))
 	if !filepath.IsAbs(dir) {
-		redirectErr(w, r, "要给项目目录的绝对路径，船队才知道在哪儿开工")
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给项目目录的绝对路径，船队才知道在哪儿开工"})
 		return
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		redirectErr(w, r, "本机找不到这个目录："+dir)
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "本机找不到这个目录：" + dir})
 		return
 	}
 	rec, err := s.V.GetTask(id)
 	if err != nil {
-		redirectErr(w, r, err.Error())
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	msg := strings.TrimSpace(r.PostFormValue("msg"))
@@ -230,29 +254,60 @@ func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 		msg = launchPrompt(rec)
 	}
 	if len([]rune(msg)) > 8000 {
-		redirectErr(w, r, "开场白太长（8000 字以内）")
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "开场白太长（8000 字以内）"})
 		return
 	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if name == "" {
+		name = s.fleetDefaultName(rec)
+	}
+	if len([]rune(name)) > maxFleetNameRunes || strings.ContainsAny(name, "\n\r") {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "船名太长或含换行"})
+		return
+	}
+	// 航线可在 launch 表单里现挂：校验通过后先落到任务上，再随船队登记。
+	routeID := strings.TrimSpace(r.PostFormValue("route"))
+	if routeID != "" {
+		if _, err := s.V.GetRoute(routeID); err != nil {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if routeID != rec.Meta.Route {
+			if err := s.V.SetTaskRoute(id, routeID); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+	} else {
+		routeID = rec.Meta.Route
+	}
 
-	sid, err := s.runBackground(dir, "", msg)
+	sid, _, err := s.bridge.Start(dir, "", name, msg)
 	if err != nil || !looksLikeSID(sid) {
 		detail := "新开船队失败"
 		if err != nil {
 			detail += "：" + err.Error()
 		}
-		redirectErr(w, r, detail)
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": detail})
 		return
 	}
-	home, _ := os.UserHomeDir()
-	waitTranscript(home, dir, sid, 8*time.Second)
+	if err := s.V.SaveFleet(store.FleetInfo{
+		SID: sid, Name: name, Dir: dir, Task: id, Route: routeID,
+	}); err != nil {
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船队已开（" + shortSid(sid) + "）但名册登记失败：" + err.Error()})
+		return
+	}
 	if _, err := s.V.BindSession(id, sid, dir, dispatcher); err != nil {
-		redirectErr(w, r, "船队已开（"+shortSid(sid)+"）但挂载失败："+err.Error())
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船队已开但挂载失败：" + err.Error()})
 		return
 	}
 	// 立即拉一次发现口，新船队秒进列表（不必等 30s 轮询）。
 	if s.poller != nil {
 		go s.poller.poll()
 	}
-	http.Redirect(w, r,
-		"/sessions/"+sid+"?dir="+url.QueryEscape(dir), http.StatusSeeOther)
+	writeJSON(w, map[string]string{
+		"ok":  "1",
+		"sid": sid,
+		"url": "/sessions/" + sid + "?dir=" + url.QueryEscape(dir),
+	})
 }

@@ -1,37 +1,85 @@
 package server
 
-// 按目录翻会话：贴一个项目绝对路径列全部 Claude 会话；不给路径则聚合
-// ~/.claude/projects 下全部项目的最近会话（路径由 transcript cwd 自证）。
+// 船队页（v0.8 单栏套壳）：一栏表达全部在用会话——
+// 🌊 正在航行 / 🟡 待你输入 / ⚓ 待命 / 🏁 归港（折叠）/ 🕒 历史（折叠）。
+// 顶部一张「新建船队」表单，像 CLI 一样随时开一艘空船。
+// 状态靠 /api/live SSE 即时翻灯（8s 轮询兜底），变化即按服务端数据全量重排。
 const dirListHTML = head + `
 {{template "topbar" .}}
 
-<main class="dir-page">
-  <form class="dir-bar" method="get" action="/sessions" id="dir-form">
-    <input type="text" name="dir" value="{{.Path}}" spellcheck="false" list="known-dir-list"
-      placeholder="贴项目目录（~/Documents/GitHub/xxx 也行），留空看全部最近会话"
-      aria-label="项目目录" enterkeyhint="search">
-    <datalist id="known-dir-list">{{range .KnownDirs}}<option value="{{.Dir}}">{{end}}</datalist>
-    <button type="submit" class="primary" data-debug="open"><span class="emo">📂 </span>翻会话</button>
-  </form>
+<main class="fleet-page" id="fleet-page">
+  <details class="fleet-new-box" id="fleet-new-box" open>
+    <summary><span class="emo">⛵ </span>新建船队<i>选项目目录、起个名，第一句话可先说也可先不说</i></summary>
+    <form class="fleet-new-form" id="fleet-new-form" data-fleet-new action="/fleets/new">
+      <div class="fn-grid">
+        <input name="dir" list="known-dir-list" required spellcheck="false" autocomplete="off"
+               placeholder="项目目录（绝对路径）" enterkeyhint="go" aria-label="项目目录">
+        <input name="name" required maxlength="40" spellcheck="false" autocomplete="off"
+               placeholder="船名，如 数学-1加2（航线短码-需求，≤40 字）" aria-label="船名">
+        {{if .Routes}}
+        <select name="route" aria-label="挂到哪条航线（可选）">
+          <option value="">不挂航线</option>
+          {{range .Routes}}<option value="{{.Meta.ID}}">{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
+        </select>
+        {{end}}
+      </div>
+      <datalist id="known-dir-list">{{range .KnownDirs}}<option value="{{.Dir}}">{{end}}</datalist>
+      <textarea name="msg" rows="2" maxlength="8000"
+                placeholder="第一句话（可空——先开一艘空船，进去再说，和终端一样）"></textarea>
+      <div class="fn-foot">
+        <span class="fn-err" id="fn-err" data-fn-err role="alert" hidden></span>
+        <button type="submit" class="primary"><span class="emo">⛵ </span>开船</button>
+      </div>
+    </form>
+  </details>
 
-  {{if .Error}}<div class="dir-err" data-debug="error"><span class="dir-err-txt"><span class="emo">⚠️ </span>{{.Error}}</span><button type="button" class="dir-err-x" data-err-close aria-label="关掉报错" title="关掉报错，回到全部最近会话">✕</button></div>
-  <p class="dir-back-recent"><a href="/sessions">← 看全部最近会话</a></p>{{end}}
+  {{if .Error}}<div class="dir-err" data-debug="error"><span class="dir-err-txt"><span class="emo">⚠️ </span>{{.Error}}</span><button type="button" class="dir-err-x" data-err-close aria-label="关掉报错">✕</button></div>
+  <p class="dir-back-recent"><a href="/sessions">← 看全部船队</a></p>{{end}}
+
+  {{if not .NoDir}}
+  <section class="dir-list-head">
+    <h2><span class="emo">📂 </span><b>{{.Short}}</b><code class="dir-full" title="{{.Path}}">{{.Path}}</code></h2>
+    <span><a class="dir-all-link" href="/sessions"><span class="emo">🕒 </span>全部船队</a></span>
+  </section>
+  {{end}}
+
+  <div class="fleet-col" id="fleet-col" data-dir="{{.Path}}">
+    <section class="fleet-seg" data-seg="working">
+      <h2 class="seg-head"><i class="dot"></i><span class="emo">🌊 </span>正在航行<b class="seg-n"></b></h2>
+      <div class="seg-body">{{range index .Groups "working"}}{{template "dirRow" .}}{{end}}</div>
+      <p class="seg-empty">没有正在航行的船队</p>
+    </section>
+    <section class="fleet-seg" data-seg="waiting">
+      <h2 class="seg-head"><i class="dot"></i><span class="emo">🟡 </span>待你输入<b class="seg-n"></b></h2>
+      <div class="seg-body">{{range index .Groups "waiting"}}{{template "dirRow" .}}{{end}}</div>
+      <p class="seg-empty">没有卡住等你的船队</p>
+    </section>
+    <section class="fleet-seg" data-seg="idle">
+      <h2 class="seg-head"><i class="dot"></i><span class="emo">⚓ </span>待命<b class="seg-n"></b></h2>
+      <div class="seg-body">{{range index .Groups "idle"}}{{template "dirRow" .}}{{end}}</div>
+      <p class="seg-empty">没有待命船队</p>
+    </section>
+    <details class="fleet-seg seg-fold" data-seg="done">
+      <summary class="seg-head"><i class="dot"></i><span class="emo">🏁 </span>归港<b class="seg-n"></b></summary>
+      <div class="seg-body">{{range index .Groups "done"}}{{template "dirRow" .}}{{end}}</div>
+      <p class="seg-empty">还没有圆满结束的船队</p>
+    </details>
+    <details class="fleet-seg seg-fold" data-seg="offline">
+      <summary class="seg-head"><i class="dot"></i><span class="emo">🕒 </span>历史会话<b class="seg-n"></b></summary>
+      <div class="seg-body">{{range index .Groups "offline"}}{{template "dirRow" .}}{{end}}</div>
+      <p class="seg-empty">没有历史会话</p>
+    </details>
+  </div>
 
   {{if .NoDir}}
-  <div id="recent-chips" class="dir-chips" data-label="最近浏览"></div>
-  {{if .Rows}}
-  <section class="dir-list-head">
-    <h2><span class="emo">🕒 </span><span data-debug="recent sessions">最近会话 · 全部项目</span></h2>
-    <span>{{len .Rows}} <span data-debug="sessions">个会话</span></span>
-  </section>
-  <div class="dir-list" id="dir-list">
-    {{range .Rows}}{{template "dirRow" .}}{{end}}
-  </div>
-  {{end}}
-  {{if .KnownDirs}}
   <details class="dir-known-fold">
-    <summary><span data-debug="all berths ({{len .KnownDirs}})">港内已知船位（心跳里出现过的目录，{{len .KnownDirs}}）</span></summary>
-    <div class="dir-chips">
+    <summary>按目录精确翻找（贴绝对路径，或点下面已知目录）</summary>
+    <form class="dir-bar" method="get" action="/sessions" id="dir-form">
+      <input type="text" name="dir" value="{{.Path}}" spellcheck="false" list="known-dir-list"
+        placeholder="贴项目目录（~/Documents/GitHub/xxx 也行）" aria-label="项目目录" enterkeyhint="search">
+      <button type="submit" class="mini"><span class="emo">📂 </span>翻会话</button>
+    </form>
+    <div class="dir-chips" id="known-chips">
       {{range .KnownDirs}}
       <a class="dir-chip" href="/sessions?dir={{.Dir | urlquery}}">
         <span class="emo">📍</span> <b>{{.Short}}</b><i title="{{.Dir}}">{{.Dir}}</i>
@@ -39,22 +87,9 @@ const dirListHTML = head + `
       {{end}}
     </div>
   </details>
-  {{end}}
-  {{else}}
-  <section class="dir-list-head">
-    <h2>
-      <span class="emo">📂 </span><b data-debug="dir">{{.Short}}</b>
-      <code class="dir-full" title="{{.Path}}">{{.Path}}</code>
-    </h2>
-    <span><a class="dir-all-link" href="/sessions" data-debug="all recent"><span class="emo">🕒 </span>全部最近</a></span>
-  </section>
-  <div class="dir-list" id="dir-list">
-    {{range .Rows}}{{template "dirRow" .}}{{end}}
-  </div>
-  {{if not .Rows}}<p class="dir-hint" data-debug="no sessions here">这个目录下还没有会话记录。</p>{{end}}
+  <div id="recent-chips" class="dir-chips" data-label="最近浏览"></div>
   {{end}}
 </main>
-{{template "tabbar" .}}
 
 {{define "dirRow"}}
 {{if .Anon}}
@@ -73,11 +108,11 @@ const dirListHTML = head + `
    href="/sessions/{{.SID}}?dir={{.Dir | urlquery}}" title="{{.Dir}}">
   <span class="dir-state"><i class="dot"></i></span>
   <span class="dir-main">
-    <span class="dir-title">{{if .Title}}{{.Title}}{{else}}<code>{{slice .SID 0 8}}</code><span data-debug="(untitled)">（无题首句）</span>{{end}}</span>
+    <span class="dir-title">{{if .Name}}{{.Name}}{{else if .Title}}{{.Title}}{{else}}<code>{{slice .SID 0 8}}</code><span data-debug="(untitled)">（无题首句）</span>{{end}}</span>
     <span class="dir-meta">
-      <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
+      <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
       {{if .ShowProj}}<i class="dir-proj"><span class="emo">📁 </span>{{.Proj}}</i><b>·</b>{{end}}
-      {{if not .HideCount}}<span class="row-events">{{.Events}}</span> <span data-debug="msgs">条消息</span><b>·</b>{{end}}<span data-debug="updated">更新</span> {{.LastTS.Format "01-02 15:04"}}
+      {{if not .HideCount}}<span class="row-events">{{.Events}}</span> 条消息<b>·</b>{{end}}<span class="row-stamp">更新 {{if .LastTS.IsZero}}刚刚{{else}}{{.LastTS.Format "01-02 15:04"}}{{end}}</span>
     </span>
   </span>
   <span class="dir-go emo">→</span>
@@ -85,10 +120,10 @@ const dirListHTML = head + `
 {{end}}
 {{end}}
 
+<script src="/static/fleet-new.js?v=21"></script>
 <script>
 (function () {
-  // 报错条可一键关掉：视觉移除 + 把地址里的 ?dir= 清掉（replaceState），
-  // 这样 SSE/手动刷新不会把错误条再带回来；输入框内容保留方便改路径。
+  // 报错条可一键关掉：视觉移除 + 清地址栏 ?dir=，避免刷新把错误带回来。
   document.addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('[data-err-close]')) return;
     var err = document.querySelector('.dir-err');
@@ -97,67 +132,119 @@ const dirListHTML = head + `
     if (back) back.remove();
     try { history.replaceState(null, '', '/sessions'); } catch (x) {}
   });
-})();
-</script>
-<script>
-(function () {
-  // 状态轻量轮询：只切行 class，徽标由 CSS 显隐，不打断滚动
-  var listEl = document.getElementById('dir-list');
-  var dirQS = new URLSearchParams(location.search).get('dir') || '';
-  var apiURL = '/api/sessions' + (dirQS ? '?dir=' + encodeURIComponent(dirQS) : '');
-  var timer = null;
 
-  function markText(m) { return m === 'good' ? '✅ 圆满结束' : '⏹ 中途停止'; }
-  function patchRow(r) {
-    var el = listEl.querySelector('[data-sid="' + r.sid + '"]');
-    if (!el) return;
-    el.classList.remove('is-working', 'is-waiting', 'is-idle', 'is-offline');
-    if (!r.online) el.classList.add('is-offline');
-    else if (r.status === 'busy') el.classList.add('is-working');
-    else if (r.status === 'waiting') el.classList.add('is-waiting');
-    else el.classList.add('is-idle');
-    // 结局标记覆盖状态文案；标记可能在页面加载后才产生，就地补一个 em
-    var state = el.querySelector('.row-state');
-    var mk = state && state.querySelector('.st-mark');
-    if (r.mark) {
-      el.classList.add('has-mark');
-      if (!mk && state) { mk = document.createElement('em'); state.insertBefore(mk, state.firstChild); }
-      if (mk) { mk.className = 'st-mark st-mark-' + r.mark; mk.textContent = markText(r.mark); }
-    } else {
-      el.classList.remove('has-mark');
-      if (mk) mk.remove();
-    }
-    var ev = el.querySelector('.row-events');
-    if (ev && r.events) ev.textContent = r.events;
+  // ---------- 单栏全量重排 ----------
+  var col = document.getElementById('fleet-col');
+  var dirQS = new URLSearchParams(location.search).get('dir') || (col && col.dataset.dir) || '';
+  var apiURL = '/api/sessions' + (dirQS ? '?dir=' + encodeURIComponent(dirQS) : '');
+  var SEGS = ['working', 'waiting', 'idle', 'done', 'offline'];
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
+  function markText(m) { return m === 'good' ? '✅ 圆满结束' : m === 'stop' ? '⏹ 中途停止' : ''; }
+  function groupOf(r) {
+    if (r.mark === 'good') return 'done';
+    if (r.anon) return 'waiting';
+    if (r.online && (r.status === 'busy' || r.status === 'restarting')) return 'working';
+    if (r.online && r.status === 'waiting') return 'waiting';
+    if (r.online) return 'idle';
+    return 'offline';
+  }
+  function fmtStamp(t) {
+    if (!t) return '';
+    var d = new Date(t * 1000);
+    return String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' +
+      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function rowHTML(r) {
+    if (r.anon) {
+      return '<div class="dir-row dir-row-anon is-waiting" data-sid="' + esc(r.sid) + '" data-anon="1">' +
+        '<span class="dir-state"><i class="dot"></i></span><span class="dir-main">' +
+        '<span class="dir-title">新开的会话（还没说话）</span><span class="dir-meta">' +
+        '<em class="st-waiting">待你输入</em><b>·</b><i class="dir-proj"><span class="emo">📁 </span>' + esc(r.proj) + '</i><b>·</b><span class="anon-note">还没说话，点不开</span>' +
+        '</span></span></div>';
+    }
+    var title = r.name || r.title || '';
+    var titleHTML = title ? esc(title)
+      : '<code>' + esc(r.sid.slice(0, 8)) + '</code><span>（无题首句）</span>';
+    var mk = markText(r.mark);
+    var cls = 'is-' + groupOf(r) + (r.online && r.status === 'restarting' ? ' is-restarting' : '') + (mk ? ' has-mark' : '');
+    var meta = '<span class="row-state">' +
+      (mk ? '<em class="st-mark st-mark-' + esc(r.mark) + '">' + mk + '</em>' : '') +
+      '<em class="st-working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting">待你输入</em><em class="st-stopped">已停止</em><b>·</b></span>';
+    if (r.proj) meta += '<i class="dir-proj"><span class="emo">📁 </span>' + esc(r.proj) + '</i><b>·</b>';
+    if (r.events) meta += '<span class="row-events">' + r.events + '</span> 条消息<b>·</b>';
+    var st = fmtStamp(r.stamp);
+    meta += '<span class="row-stamp">更新 ' + (st || '刚刚') + '</span>';
+    return '<a class="dir-row ' + cls + '" data-sid="' + esc(r.sid) + '" href="/sessions/' +
+      encodeURIComponent(r.sid) + '?dir=' + encodeURIComponent(r.dir || '') + '" title="' + esc(r.dir || '') + '">' +
+      '<span class="dir-state"><i class="dot"></i></span><span class="dir-main">' +
+      '<span class="dir-title">' + titleHTML + '</span><span class="dir-meta">' + meta +
+      '</span></span><span class="dir-go emo">→</span></a>';
+  }
+
+  var folded = { done: true, offline: true }; // 记住用户开合
+  function render(rows) {
+    var groups = { working: [], waiting: [], idle: [], done: [], offline: [] };
+    rows.forEach(function (r) { groups[groupOf(r)].push(r); });
+    SEGS.forEach(function (key) {
+      var seg = col.querySelector('[data-seg="' + key + '"]');
+      if (!seg) return;
+      var body = seg.querySelector('.seg-body');
+      var empty = seg.querySelector('.seg-empty');
+      var n = seg.querySelector('.seg-n');
+      // 组内：在线按更新时间倒序；历史组同序
+      groups[key].sort(function (a, b) { return (b.stamp || 0) - (a.stamp || 0); });
+      body.innerHTML = groups[key].map(rowHTML).join('');
+      if (n) n.textContent = groups[key].length ? String(groups[key].length) : '';
+      if (empty) empty.hidden = groups[key].length > 0;
+      if (key === 'done' || key === 'offline') {
+        seg.hidden = groups[key].length === 0;
+        seg.open = !folded[key] && groups[key].length > 0;
+      }
+    });
+  }
+
+  // ---------- 数据：8s 轮询兜底 + SSE 即时触发（合并 200ms 内的风暴）----------
+  var timer = null, active = false, queued = false, kickAt = 0;
   function tick() {
+    if (active) { queued = true; return; }
+    active = true;
     fetch(apiURL, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        if (!d || !d.rows) return;
-        d.rows.forEach(patchRow);
-        // 空会话（proc-<pid>）被关掉：响应里已缺席，就地移除行
-        var live = {};
-        d.rows.forEach(function (r) { live[r.sid] = true; });
-        listEl.querySelectorAll('[data-anon="1"]').forEach(function (el) {
-          if (!live[el.getAttribute('data-sid')]) el.remove();
-        });
-        // 空会话一开口就有了真 sid：响应里有、页面没有 → 静默重载一次
-        var missing = d.rows.some(function (r) {
-          return !r.anon && r.sid.indexOf('proc-') !== 0 && !listEl.querySelector('[data-sid="' + r.sid + '"]');
-        });
-        if (missing && !document.hidden) location.reload();
-      })
-      .catch(function () {});
+      .then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
+      .then(function (d) { if (d && d.rows) render(d.rows); })
+      .catch(function () {})
+      .finally(function () {
+        active = false;
+        if (queued) { queued = false; setTimeout(tick, 60); }
+      });
   }
   function schedule() { timer = setTimeout(function () { tick(); schedule(); }, 8000); }
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { clearTimeout(timer); timer = null; }
     else if (!timer) { tick(); schedule(); }
   });
+  try {
+    var es = new EventSource('/api/live');
+    es.onmessage = function (e) {
+      var ev;
+      try { ev = JSON.parse(e.data); } catch (x) { return; }
+      // fleet=任何船队翻灯/新生死；本页相关 state 也立刻拉
+      if (ev.type === 'fleet' || (ev.type === 'state' && ev.sid)) {
+        var now = Date.now();
+        if (now < kickAt) return;
+        kickAt = now + 200;
+        setTimeout(tick, 30);
+      }
+    };
+  } catch (e) { /* SSE 起不来就靠 8s 轮询 */ }
+  tick();
   schedule();
 
-  // 最近浏览目录：列表页落 localStorage，空态页注入快捷 chips
+  // ---------- 最近浏览目录：localStorage 落/取 ----------
   try {
     var KEY = 'mindport-recent-dirs';
     if (dirQS) {
@@ -178,6 +265,10 @@ const dirListHTML = head + `
       });
     }
   } catch (e) {}
+
+  // 新建表单首次开船成功后，折叠组自动展开待命组（落点在那里）
+  document.addEventListener('mp-fleet-born', function () { tick(); });
 })();
 </script>
+{{template "tabbar" .}}
 </body></html>`
