@@ -194,3 +194,25 @@ func TestSessionSayResumeFailureFallsBack(t *testing.T) {
 		t.Fatalf("空消息应 400，得到 %d", rec.Code)
 	}
 }
+
+// 2.1.310 的 --bg 回执是真人横幅（即便要求 JSON）：短 id 必须抓得住。
+func TestBackgroundAckParse(t *testing.T) {
+	banner := []byte(`backgrounded · c8e5a536
+  claude agents             list sessions
+  claude attach c8e5a536    open in this terminal
+  claude stop c8e5a536      stop this session
+`)
+	m := bgAckRe.FindSubmatch(banner)
+	if m == nil || string(m[1]) != "c8e5a536" {
+		t.Fatalf("没抓到短 id：%v", m)
+	}
+	// 未来版本若回 JSON，UUID 提取也要中
+	j := []byte(`{"sessionId":"c8e5a536-d16d-4546-a6f4-124c420e2b55","state":"backgrounded"}`)
+	if sid := extractSessionID(j); sid != "c8e5a536-d16d-4546-a6f4-124c420e2b55" {
+		t.Fatalf("JSON 回执 UUID 提取失败：%q", sid)
+	}
+	// 抓不到不允许瞎猜
+	if bgAckRe.MatchString("Workspace not trusted. Run `claude` in /x once.") {
+		t.Fatalf("错误横幅里不应匹配出短 id")
+	}
+}

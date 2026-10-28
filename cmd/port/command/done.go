@@ -32,7 +32,7 @@ var doneCmd = &cobra.Command{
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "🏁 %s 归港: %s\n", r.Meta.ID, r.Meta.Title)
 		if doneForce {
-			fmt.Fprintln(cmd.OutOrStdout(), "   ⚠️ 强制归港已记录理由，调度长官会看到")
+			fmt.Fprintln(cmd.OutOrStdout(), "   ⚠️ 强制归港已记录理由，网页端会看到")
 		}
 		return nil
 	},

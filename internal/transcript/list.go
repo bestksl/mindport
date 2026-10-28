@@ -159,6 +159,14 @@ func Meta(home, dir, sid string) SessionMeta {
 	return m
 }
 
+// MetaPath 按 transcript 文件绝对路径取摘要（目录编码不可逆、只拿得到
+// 编码目录时用这个）；Dir 以记录内 cwd 自证，SID 取自文件名。
+func MetaPath(path string) SessionMeta {
+	m := scanMeta(path)
+	m.SID = strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	return m
+}
+
 // metaLine 只解目录摘要需要的字段，避开块级解析开销。
 type metaLine struct {
 	Type                 string          `json:"type"`

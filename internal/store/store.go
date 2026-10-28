@@ -63,10 +63,10 @@ type Record struct {
 }
 
 // 任务状态（ADR-0003；v0.3 draft；v0.4 调度模型）。
-// 人是调度长官：需求是集装箱，任务先以 draft 打磨，可停在 anchored 锚地
+// 人在网页端把想法立成集装箱：任务先以 draft 打磨，可停在 anchored 锚地
 // 等待派船；派船（ready，指名 assignee）后只有被指派的船能接令。
 const (
-	StatusDraft      = "draft"       // 备货中：长官打磨描述与验收标准
+	StatusDraft      = "draft"       // 备货中：打磨描述与验收标准
 	StatusAnchored   = "anchored"    // 锚地：已就绪但未派船，船看不到
 	StatusReady      = "ready"       // 已派船待接令：assignee 必填且唯一可接令
 	StatusInProgress = "in_progress" // 出港中
@@ -94,8 +94,8 @@ var (
 	ErrNotAssignee = errors.New("任务未指派给你")
 	// ErrWrongBerth 表示任务指定了船位（项目会话目录），当前目录的会话无权接令。
 	ErrWrongBerth = errors.New("这票货派给了别的船位")
-	// ErrNotDraft 表示只有草稿能删除，任务已放行不能直接删。
-	ErrNotDraft = errors.New("只有草稿能删除")
+	// ErrNotDraft 表示只有未出港的任务（草稿/锚地）能删除，已派船的不能直接抹。
+	ErrNotDraft = errors.New("只有未出港的任务（草稿/锚地）能删除")
 	// ErrResultRequired 表示归港缺少交付结果（除非带理由强制归港）。
 	ErrResultRequired = errors.New("归港必须交付结果")
 )
@@ -405,7 +405,7 @@ func requireAssignee(r *Record, by string) error {
 	return nil
 }
 
-// requireBerth 校验当前会话目录就是调度长官指定的船位。
+// requireBerth 校验当前会话目录就是派船时指定的船位。
 // 任务没指定船位（AssignCwd 为空）时任意会话可接；远程船 ssh 进对的目录即可。
 func requireBerth(r *Record, cwd string) error {
 	if r.Meta.AssignCwd == "" || r.Meta.AssignCwd == cwd {
@@ -655,7 +655,8 @@ func (v *Vault) GetTask(id string) (*Record, error) {
 	return r, err
 }
 
-// DeleteTask 删除草稿任务文件（仅 draft 可删；放行后的货有流转历史，不能直接抹掉）。
+// DeleteTask 删除还没出港的任务文件（draft 备货中 / anchored 锚地待派可删；
+// ready 及以后有派船与流转历史，不能直接抹掉，要撤请批注/改派/归港）。
 func (v *Vault) DeleteTask(id string) error {
 	return v.withLock(func() error {
 		path, err := v.findTaskPath(id)
@@ -666,8 +667,8 @@ func (v *Vault) DeleteTask(id string) error {
 		if err != nil {
 			return err
 		}
-		if rec.Meta.Status != StatusDraft {
-			return fmt.Errorf("%w: %s 当前为 %s", ErrNotDraft, id, rec.Meta.Status)
+		if rec.Meta.Status != StatusDraft && rec.Meta.Status != StatusAnchored {
+			return fmt.Errorf("%w: %s 当前为 %s，已派船出港的货不能直接删", ErrNotDraft, id, rec.Meta.Status)
 		}
 		return os.Remove(path)
 	})

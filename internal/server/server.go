@@ -30,8 +30,8 @@ import (
 //go:embed static/*
 var staticFS embed.FS
 
-// dispatcher 是调度台（网页端）所有动作的署名：人是调度长官，不是执行者。
-// 接令/归港/受阻只属于船，只能从船自己的 CLI 发出。
+// dispatcher 是人在网页端所有动作的署名：想法入港的人，不是执行者。
+// 接令/归港/受阻只属于干活的会话（船），只能从它自己的 CLI 发出。
 const dispatcher = "jmzx@studio"
 
 // roster 是港里的船队花名册；在线状态由心跳补充，没报到的船也能被派活。
@@ -136,6 +136,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/delete", s.handleDeleteTask)
 	mux.HandleFunc("POST /tasks/{id}/bind", s.handleTaskBind)
 	mux.HandleFunc("POST /tasks/{id}/unbind", s.handleTaskUnbind)
+	mux.HandleFunc("POST /tasks/{id}/launch", s.handleTaskLaunch)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("GET /api/tasks", s.handleAPITasks)
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
@@ -223,6 +224,11 @@ type taskView struct {
 	BoundTitle     string
 	BoundStateText string
 	FleetOpts      []fleetOption
+
+	// 新开船队（在项目目录里 claude --bg 起一支新会话并挂上本任务）
+	LaunchDirs       []knownDir
+	LaunchDirDefault string
+	LaunchPrompt     string
 }
 
 // ---------- 页面处理器 ----------
@@ -389,6 +395,16 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v.FleetOpts = s.fleetOptions(rec.Meta.Session, rec.Meta.SessionDir, v.BoundTitle)
+	v.LaunchDirs = s.knownDirs()
+	switch {
+	case rec.Meta.AssignCwd != "":
+		v.LaunchDirDefault = rec.Meta.AssignCwd
+	case rec.Meta.SessionDir != "":
+		v.LaunchDirDefault = rec.Meta.SessionDir
+	case len(v.LaunchDirs) > 0:
+		v.LaunchDirDefault = v.LaunchDirs[0].Dir
+	}
+	v.LaunchPrompt = launchPrompt(rec)
 	render(w, http.StatusOK, taskTmpl, v)
 }
 
@@ -518,7 +534,7 @@ func (s *Server) presenceIndex() ([]store.Presence, map[string]store.Presence) {
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
-	// 网页端只能批注（署名调度长官）；进展汇报由船用 port log 写入。
+	// 网页端只能批注（署网页端动作名）；进展汇报由干活的会话用 port log 写入。
 	if _, err := s.V.Log(id, r.PostFormValue("line"), dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -531,7 +547,7 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	n := atoiDefault(r.PostFormValue("n"), 0)
 	checked := r.PostFormValue("checked") == "1"
-	// 勾选 = 调度长官验货留痕（船在 CLI 自勾是汇报，同一套痕迹）。
+	// 勾选 = 网页端验货留痕（干活的会话在 CLI 自勾是汇报，同一套痕迹）。
 	if _, _, _, err := s.V.CheckItem(id, n, checked, dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return

@@ -31,6 +31,7 @@ type dirRow struct {
 	Status    string // busy | waiting | idle | ""（离线）
 	Mark      string // good | stop | ""
 	Name      string // 官方发现口里的会话简介（若有）
+	Anon      bool   // 进程在跑但还没说话：无 transcript、sid 是 proc-<pid>
 }
 
 type knownDir struct {
@@ -61,9 +62,11 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 	} else {
 		metas, err = transcript.ListSessions(home, dir)
 	}
-	if err != nil {
+	if err != nil && err != transcript.ErrNotFound {
 		return nil, err
 	}
+	// ErrNotFound 也继续：目录里可能正有一支还没说过话的匿名 TUI（extras 补上），
+	// 不能因为没有 transcript 文件就把实时船队整个 404 掉。
 	var live map[string]cliSession
 	if s.poller != nil {
 		live = s.poller.snapshot()
@@ -86,7 +89,66 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
+
+	// 在线但扫盘没覆盖到的实时会话也要算船队：桌面 app 会话（--agent）、
+	// 刚开还没说话的 TUI（匿名 proc-<pid>）、掉出最近窗口仍在线的老会话。
+	have := map[string]bool{}
+	for _, r := range rows {
+		have[r.SID] = true
+	}
+	var extras []dirRow
+	for sid, ls := range live {
+		if have[sid] {
+			continue
+		}
+		// 目录视图只收本目录的船队：非匿名会话以 transcript 记录里自证的
+		// cwd 为准（桌面 app 的进程 cwd 不一定是项目目录），匿名行只能信进程 cwd。
+		if dir != "" {
+			eff := ls.CWD
+			if !ls.Anon {
+				if m := transcript.Meta(home, ls.CWD, sid); m.Dir != "" {
+					eff = m.Dir
+				}
+			}
+			if eff != dir {
+				continue
+			}
+		}
+		row := dirRow{
+			Online: true, Status: ls.Status, Name: ls.Name,
+			Proj: filepath.Base(ls.CWD), ShowProj: dir == "", HideCount: true,
+		}
+		if ls.Anon {
+			row.Anon = true
+			row.SID = sid
+			row.Dir = ls.CWD
+			row.Title = "新开的会话（还没说话）"
+			row.LastTS = ls.StartedAtTime() // 展示用：进程启动时刻
+		} else {
+			row.SessionMeta = transcript.Meta(home, ls.CWD, sid)
+			if ls.CWD != "" && row.Dir == "" {
+				row.Dir = ls.CWD
+			}
+			if ls.Name != "" {
+				row.Title = ls.Name // 发现口简介优先于首句标题
+			}
+		}
+		fs := fleetStateOf(true, ls.Status)
+		row.Class = "is-" + fs.Key
+		row.StateText = fs.Text
+		if mk, ok := marks[sid]; ok {
+			row.Mark = mk.Outcome
+			row.MarkText = markText(mk.Outcome)
+		}
+		extras = append(extras, row)
+	}
+	sort.SliceStable(extras, func(i, j int) bool {
+		if extras[i].Anon != extras[j].Anon {
+			return !extras[i].Anon
+		}
+		return extras[i].Title < extras[j].Title
+	})
+	return append(extras, rows...), nil
 }
 
 // expandTilde 把 ~/foo 展开成 home/foo；其余原样返回。
@@ -133,7 +195,7 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.sessionRows(home, d.Path)
-	if err != nil {
+	if err != nil || len(rows) == 0 {
 		d.Error = "这个目录下还没有 Claude 会话记录（~/.claude/projects 里查无此目录）"
 		render(w, http.StatusNotFound, dirTmpl, d)
 		return
@@ -151,6 +213,7 @@ type sessionRowJSON struct {
 	Online bool   `json:"online"`
 	Status string `json:"status"`
 	Mark   string `json:"mark"`
+	Anon   bool   `json:"anon"`
 }
 
 func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +227,7 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows, err := s.sessionRows(home, dir)
-	if err != nil {
+	if err != nil || (dir != "" && len(rows) == 0) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "查无会话"})
 		return
 	}
@@ -172,7 +235,7 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 	for _, r2 := range rows {
 		out = append(out, sessionRowJSON{
 			SID: r2.SID, Dir: r2.Dir, Title: r2.Title,
-			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark,
+			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark, Anon: r2.Anon,
 		})
 	}
 	writeJSON(w, map[string]any{"rows": out})

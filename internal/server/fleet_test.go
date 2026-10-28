@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -174,5 +175,61 @@ func TestTaskBindFleet(t *testing.T) {
 	r, _ = s.V.GetTask(id)
 	if r.Meta.Session != "" || r.Meta.SessionDir != "" {
 		t.Fatalf("取下后字段应空: %+v", r.Meta)
+	}
+}
+
+// 新开船队表单校验：相对路径 / 不存在的目录必须在调 CLI 之前拦下，
+// 且任务不能被挂到任何船队上。
+func TestTaskLaunchValidation(t *testing.T) {
+	s, _ := setupSession(t, testTranscript, nil)
+	h := s.Routes()
+	rec0, err := s.V.NewTask("新开船队校验", "high", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := rec0.Meta.ID
+
+	post := func(form url.Values) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/tasks/"+id+"/launch", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, tc := range []struct {
+		name string
+		dir  string
+	}{
+		{"相对路径", "Documents/GitHub"},
+		{"不存在的绝对路径", filepath.Join(t.TempDir(), "nope")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := post(url.Values{"dir": {tc.dir}, "msg": {"hi"}})
+			if rec.Code != 303 || !strings.HasPrefix(rec.Header().Get("Location"), "/?error=") {
+				t.Fatalf("应带错重定向回港口，得到 %d loc=%q", rec.Code, rec.Header().Get("Location"))
+			}
+		})
+	}
+
+	r, _ := s.V.GetTask(id)
+	if r.Meta.Session != "" || r.Meta.SessionDir != "" {
+		t.Fatalf("校验失败不应产生挂载: %+v", r.Meta)
+	}
+}
+
+// launchPrompt 要把任务号、标题、目标、正文一次带上。
+func TestLaunchPrompt(t *testing.T) {
+	s, _ := setupSession(t, testTranscript, nil)
+	rec, err := s.V.NewTask("新开船的想法", "normal", "把这事办成", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Body = "正文里的关键背景"
+	p := launchPrompt(rec)
+	for _, want := range []string{rec.Meta.ID, rec.Meta.Title, "服务的目标：把这事办成", "正文里的关键背景", "先看清这个想法"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("开场白缺 %q：\n%s", want, p)
+		}
 	}
 }

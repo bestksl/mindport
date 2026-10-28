@@ -34,8 +34,8 @@ const sessionHTML = head + `
       {{if not .Found}}<span class="badge" id="s-badge" data-debug="state: unknown">没查到这支船队</span>
       {{else if .HasMark}}<span class="badge mark mark-{{.Mark.Outcome}}" id="s-badge" data-debug="mark: {{.Mark.Outcome}}"><i class="dot"></i>{{.MarkText}}</span>
       {{else}}<span class="badge {{.StateKey}}" id="s-badge" data-debug="state: {{.StateKey}}"{{if .WaitingFor}} title="{{.WaitingFor}}"{{end}}><i class="dot"></i>{{.StateText}}{{if and (eq .StateKey "waiting") .WaitingFor}} · {{.WaitingFor}}{{end}}</span>{{end}}
-      <code class="s-sid" title="会话完整 id">{{.ShortSID}}</code>
-      {{if .Found}}<span class="s-markbtns" id="s-markbtns">
+      <code class="s-sid" title="{{if .Anon}}进程 pid{{else}}会话完整 id{{end}}">{{if .Anon}}PID {{.AnonPID}}{{else}}{{.ShortSID}}{{end}}</code>
+      {{if and .Found (not .Anon)}}<span class="s-markbtns" id="s-markbtns">
         <button type="button" class="markbtn good" data-outcome="good" data-debug="mark good"{{if .HasMark}} hidden{{end}}>✅ 圆满结束</button>
         <button type="button" class="markbtn stop" data-outcome="stop" data-debug="mark stop"{{if .HasMark}} hidden{{end}}>⏹ 中途停止</button>
         <button type="button" class="markbtn cancel" id="s-mark-cancel" data-debug="mark cancel"{{if not .HasMark}} hidden{{end}}>撤结局</button>
@@ -50,6 +50,30 @@ const sessionHTML = head + `
   </div>
 
   {{if .Found}}
+  {{if .Anon}}
+  <div class="anon-card" data-debug="anon">
+    <div class="anon-emo">🪝</div>
+    <h2>这支船队刚出船台，还没说过话</h2>
+    <p>思港在进程表里看到了一个开着的 Claude 终端（PID {{.AnonPID}}），但它还没有对话记录。第一句话得在它<b>自己的终端</b>里开口——说出口，这里就自动变成正常船台。</p>
+    <p class="anon-dir" title="{{.Dir}}"><span class="emo">📍</span>{{.Dir}}</p>
+    <p class="anon-hint">不想切过去？<a href="/sessions?dir={{.Dir | urlquery}}">回列表</a>看全部船队，或从<a href="/#tasks">任务上</a>新开一支能直接说话的船队。</p>
+  </div>
+  <script>
+  (function () {
+    var SID = {{.SID}}; // proc-<pid>，与 /api/sessions 行的 sid 同键
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch('/api/sessions?dir=' + encodeURIComponent({{.Dir}}), { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var alive = (d.rows || []).some(function (r) { return r.sid === SID; });
+          // 匿名行消失 = 在终端开口、已配成真 sid；跳列表看它以真面目入列
+          if (!alive) location.replace('/sessions?dir=' + encodeURIComponent({{.Dir}}));
+        }).catch(function () {});
+    }, 8000);
+  })();
+  </script>
+  {{else}}
   <div class="tl-wrap" id="tl-wrap">
     <div class="tl-edge" id="tl-top">
       {{if .HasLog}}{{if gt .From 0}}<button type="button" id="tl-more">↑ 翻更早的记录</button>{{else}}<span>· 已是会话开端 ·</span>{{end}}{{end}}
@@ -72,6 +96,7 @@ const sessionHTML = head + `
       <button type="submit" class="primary" id="say-btn" data-debug="send">📨 发送</button>
     </div>
   </form>
+  {{end}}{{/* .Anon 分支结束 */}}
   {{else}}
   <p class="tl-empty">心跳、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">回船队列表</a> · <a href="/">回港口</a></p>
   {{end}}

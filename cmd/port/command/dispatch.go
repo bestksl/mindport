@@ -15,7 +15,7 @@ var (
 
 var dispatchCmd = &cobra.Command{
 	Use:   "dispatch <T 编号> --to 船名 [--berth 项目目录]",
-	Short: "派船/改派：锚地派船、待接令改派、受阻换船（调度长官命令）",
+	Short: "派船/改派：锚地派船、待接令改派、受阻换船",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()

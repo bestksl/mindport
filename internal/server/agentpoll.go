@@ -33,6 +33,18 @@ type cliSession struct {
 	Status     string `json:"status"`    // busy | waiting | idle
 	State      string `json:"state"`     // working | blocked | done | failed | stopped
 	WaitingFor string `json:"waitingFor"`
+
+	// Anon 表示进程在跑但还没说过话（无 transcript、无真 sid），
+	// 由进程表补扫产生，sid 是 proc-<pid> 临时键。
+	Anon bool `json:"-"`
+}
+
+// StartedAtTime 把毫秒 epoch 转成本地时间（进程表补扫时填入）。
+func (s cliSession) StartedAtTime() time.Time {
+	if s.StartedAt == 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(s.StartedAt)
 }
 
 // agentPoller 周期性从官方发现口拉全舰队会话快照：
@@ -103,6 +115,16 @@ func (p *agentPoller) poll() {
 			Actor: p.actor, SessionID: s.SessionID, Dir: s.CWD,
 			PID: s.PID, Name: s.Name, Kind: s.Kind,
 		})
+	}
+	// 发现口在 2.1.x 只报 background 会话：桌面 app 与交互 TUI 从进程表补齐，
+	// 船队计数才对得上用户眼前开着的会话数。
+	if home, herr := os.UserHomeDir(); herr == nil {
+		for _, ps := range scanProcessSessions(home, live) {
+			if _, exists := live[ps.SessionID]; exists {
+				continue
+			}
+			live[ps.SessionID] = ps
+		}
 	}
 	p.mu.Lock()
 	p.live = live

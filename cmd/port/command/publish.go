@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// publish 是调度长官的放行动作：draft → anchored（默认，锚地待派）；
+// publish 是网页端的放行动作：draft → anchored（默认，锚地待派）；
 // 带 --to 时 draft → ready（直接派船）。
 var (
 	publishTo    string

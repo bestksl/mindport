@@ -933,6 +933,62 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 }
 .card-fleet:hover { color: var(--amber); }
 
+/* ---------- 任务上新开船队（launch-box） ---------- */
+.launch-box {
+  margin-top: 12px;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.launch-box > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+.launch-box > summary::-webkit-details-marker { display: none; }
+.launch-box > summary::before { content: '▸ '; color: var(--muted); }
+.launch-box[open] > summary::before { content: '▾ '; }
+.launch-box > summary small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.launch-form { display: grid; gap: 6px; margin-top: 10px; }
+.launch-form label { font-size: 12px; color: var(--muted); }
+.launch-form button { justify-self: start; }
+
+/* 锚地待派任务详情：打磨 + 删除一排 */
+.anchored-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.anchored-tools .btn-edit { margin: 0; }
+.anchored-tools .detail-del { margin-top: 0; }
+
+/* 看板锚地卡片上的删除钮 */
+.card-del { margin-top: 6px; }
+.card-del button.mini { width: 100%; min-height: 30px; font-size: 12px; padding: 3px 10px; }
+
+/* ---------- 进程在跑但还没说话：船队列表匿名行 + 船台空态 ---------- */
+.dir-row-anon { border-style: dashed; opacity: .88; cursor: default; }
+.dir-row-anon:hover { border-color: var(--line); background: var(--panel); }
+.anon-note { color: var(--muted); font-size: 11.5px; }
+.anon-card {
+  margin: 24px auto;
+  max-width: 560px;
+  padding: 28px 26px;
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  text-align: center;
+}
+.anon-emo { font-size: 40px; line-height: 1; margin-bottom: 10px; }
+.anon-card h2 { margin: 0 0 12px; font-size: 17px; }
+.anon-card p { font-size: 14px; line-height: 1.75; margin: 8px 0; }
+.anon-card .anon-dir {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.anon-card .anon-hint { color: var(--muted); font-size: 12.5px; }
+.anon-card a { color: var(--amber); }
+
 .err {
   margin-top: 12px;
   background: var(--block-soft);
@@ -1869,7 +1925,7 @@ html[data-stealth="1"] .dir-known-fold summary span[data-debug]::before { conten
 .dir-row.is-working .st-working { display: inline; color: var(--busy); }
 .dir-row.is-waiting .st-waiting { display: inline; color: var(--amber); }
 .dir-row.is-idle .st-stopped,
-.dir-row.is-off .st-stopped { display: inline; }
+.dir-row.is-offline .st-stopped { display: inline; }
 /* 结局标记覆盖实时状态文案 */
 .dir-row.has-mark .st-working,
 .dir-row.has-mark .st-waiting,
@@ -1914,4 +1970,7 @@ html[data-stealth="1"] .dir-known-fold summary span[data-debug]::before { conten
   .dir-list-head .dir-full { display: none; }
   .dir-row { padding: 13px 12px; gap: 10px; }
   .dir-proj { max-width: 110px; }
+  .launch-form button { justify-self: stretch; }
+  .anchored-tools { gap: 8px; }
+  .anon-card { margin: 16px 8px; padding: 22px 16px; }
 }

@@ -484,7 +484,11 @@ func TestDeleteTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchored, _ := v.NewTask("已放行的货", "", "", false)
+	anchored, _ := v.NewTask("锚地待派的货", "", "", false)
+	dispatched, _ := v.NewTask("已派船的货", "", "", false)
+	if _, err := v.Assign(dispatched.Meta.ID, "test", "claude@studio", ""); err != nil {
+		t.Fatal(err)
+	}
 
 	// 草稿可删：文件抹掉，再查 ErrNotFound
 	if err := v.DeleteTask(draft.Meta.ID); err != nil {
@@ -497,11 +501,19 @@ func TestDeleteTask(t *testing.T) {
 		t.Fatalf("删除后草稿列表应为空，得到 %d 条", len(tasks))
 	}
 
-	// 放行后的货有流转历史，不能直接删
-	if err := v.DeleteTask(anchored.Meta.ID); !errors.Is(err, ErrNotDraft) {
-		t.Fatalf("非草稿删除应 ErrNotDraft，得到 %v", err)
+	// 锚地待派（未出港、无流转历史）同样可删
+	if err := v.DeleteTask(anchored.Meta.ID); err != nil {
+		t.Fatalf("锚地任务应可删除: %v", err)
 	}
-	if _, err := v.GetTask(anchored.Meta.ID); err != nil {
+	if _, err := v.GetTask(anchored.Meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("锚地任务删除后应 ErrNotFound，得到 %v", err)
+	}
+
+	// 已派船出港的货有流转历史，不能直接删
+	if err := v.DeleteTask(dispatched.Meta.ID); !errors.Is(err, ErrNotDraft) {
+		t.Fatalf("已派船任务删除应 ErrNotDraft，得到 %v", err)
+	}
+	if _, err := v.GetTask(dispatched.Meta.ID); err != nil {
 		t.Fatalf("被拒后任务应仍在: %v", err)
 	}
 

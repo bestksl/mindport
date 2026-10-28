@@ -56,6 +56,18 @@ const dirListHTML = head + `
 </main>
 
 {{define "dirRow"}}
+{{if .Anon}}
+<div class="dir-row dir-row-anon is-waiting" data-sid="{{.SID}}" data-anon="1" title="进程开着但还没说话，说第一句后就能点进船台">
+  <span class="dir-state"><i class="dot"></i></span>
+  <span class="dir-main">
+    <span class="dir-title">{{.Title}}</span>
+    <span class="dir-meta">
+      <em class="st-waiting" data-debug="waiting">待你输入</em><b>·</b>
+      <i class="dir-proj"><span class="emo">📁 </span>{{.Proj}}</i><b>·</b><span class="anon-note">还没说话，点不开</span>
+    </span>
+  </span>
+</div>
+{{else}}
 <a class="dir-row {{.Class}}{{if .MarkText}} has-mark{{end}}" data-sid="{{.SID}}"
    href="/sessions/{{.SID}}?dir={{.Dir | urlquery}}" title="{{.Dir}}">
   <span class="dir-state"><i class="dot"></i></span>
@@ -70,6 +82,7 @@ const dirListHTML = head + `
   <span class="dir-go emo">→</span>
 </a>
 {{end}}
+{{end}}
 
 <script>
 (function () {
@@ -83,8 +96,8 @@ const dirListHTML = head + `
   function patchRow(r) {
     var el = listEl.querySelector('[data-sid="' + r.sid + '"]');
     if (!el) return;
-    el.classList.remove('is-working', 'is-waiting', 'is-idle', 'is-off');
-    if (!r.online) el.classList.add('is-off');
+    el.classList.remove('is-working', 'is-waiting', 'is-idle', 'is-offline');
+    if (!r.online) el.classList.add('is-offline');
     else if (r.status === 'busy') el.classList.add('is-working');
     else if (r.status === 'waiting') el.classList.add('is-waiting');
     else el.classList.add('is-idle');
@@ -105,7 +118,21 @@ const dirListHTML = head + `
   function tick() {
     fetch(apiURL, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.rows) d.rows.forEach(patchRow); })
+      .then(function (d) {
+        if (!d || !d.rows) return;
+        d.rows.forEach(patchRow);
+        // 空会话（proc-<pid>）被关掉：响应里已缺席，就地移除行
+        var live = {};
+        d.rows.forEach(function (r) { live[r.sid] = true; });
+        listEl.querySelectorAll('[data-anon="1"]').forEach(function (el) {
+          if (!live[el.getAttribute('data-sid')]) el.remove();
+        });
+        // 空会话一开口就有了真 sid：响应里有、页面没有 → 静默重载一次
+        var missing = d.rows.some(function (r) {
+          return !r.anon && r.sid.indexOf('proc-') !== 0 && !listEl.querySelector('[data-sid="' + r.sid + '"]');
+        });
+        if (missing && !document.hidden) location.reload();
+      })
       .catch(function () {});
   }
   function schedule() { timer = setTimeout(function () { tick(); schedule(); }, 8000); }

@@ -8,7 +8,9 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +124,10 @@ func (s *Server) handleSessionMark(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "结局标记非法"})
 		return
 	}
+	if info, ok := s.resolveSession(sid, r.URL.Query().Get("dir")); ok && info.anon {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "船队还没说过话，先没有结局可标记"})
+		return
+	}
 	dir := strings.TrimSpace(r.PostFormValue("dir"))
 	if dir == "" {
 		if info, ok := s.resolveSession(sid, r.URL.Query().Get("dir")); ok && info.dir != "" {
@@ -160,6 +166,10 @@ func (s *Server) handleTaskBind(w http.ResponseWriter, r *http.Request) {
 		redirectErr(w, r, "要选一支船队（会话）再挂")
 		return
 	}
+	if isAnonSID(sid) {
+		redirectErr(w, r, "这支船队还没说过话，挂不住——等它在自己终端开口，或直接新开一支")
+		return
+	}
 	if _, err := s.V.BindSession(id, sid, dir, dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -174,4 +184,75 @@ func (s *Server) handleTaskUnbind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
+}
+
+// ---------- 新开船队跑任务 ----------
+
+// launchPrompt 是新船队的默认开场白：任务单里最有用的信息一次带上，
+// 新会话一开口就知道要干什么。用户可在表单里改。
+func launchPrompt(rec *store.Record) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "思港挂来一个想法（%s）：%s", rec.Meta.ID, rec.Meta.Title)
+	if rec.Meta.Goal != "" {
+		b.WriteString("\n服务的目标：" + rec.Meta.Goal)
+	}
+	if body := strings.TrimSpace(rec.Body); body != "" {
+		b.WriteString("\n\n" + body)
+	}
+	b.WriteString("\n\n先看清这个想法、给出你的理解和打算，需要我确认的地方先问我。")
+	if r := []rune(b.String()); len(r) > 6000 {
+		return string(r[:6000])
+	}
+	return b.String()
+}
+
+// handleTaskLaunch 在指定项目目录新开一支后台船队（claude --bg），
+// 把任务挂上去，然后跳去新船队的船台看它开工。
+func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	_ = r.ParseForm()
+	dir := filepath.Clean(strings.TrimSpace(r.PostFormValue("dir")))
+	if !filepath.IsAbs(dir) {
+		redirectErr(w, r, "要给项目目录的绝对路径，船队才知道在哪儿开工")
+		return
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		redirectErr(w, r, "本机找不到这个目录："+dir)
+		return
+	}
+	rec, err := s.V.GetTask(id)
+	if err != nil {
+		redirectErr(w, r, err.Error())
+		return
+	}
+	msg := strings.TrimSpace(r.PostFormValue("msg"))
+	if msg == "" {
+		msg = launchPrompt(rec)
+	}
+	if len([]rune(msg)) > 8000 {
+		redirectErr(w, r, "开场白太长（8000 字以内）")
+		return
+	}
+
+	sid, err := s.runBackground(dir, "", msg)
+	if err != nil || !looksLikeSID(sid) {
+		detail := "新开船队失败"
+		if err != nil {
+			detail += "：" + err.Error()
+		}
+		redirectErr(w, r, detail)
+		return
+	}
+	home, _ := os.UserHomeDir()
+	waitTranscript(home, dir, sid, 8*time.Second)
+	if _, err := s.V.BindSession(id, sid, dir, dispatcher); err != nil {
+		redirectErr(w, r, "船队已开（"+shortSid(sid)+"）但挂载失败："+err.Error())
+		return
+	}
+	// 立即拉一次发现口，新船队秒进列表（不必等 30s 轮询）。
+	if s.poller != nil {
+		go s.poller.poll()
+	}
+	http.Redirect(w, r,
+		"/sessions/"+sid+"?dir="+url.QueryEscape(dir), http.StatusSeeOther)
 }

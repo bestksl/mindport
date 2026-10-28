@@ -64,3 +64,27 @@ v0.4~v0.6 把「船队」做成了浮在会话之上的一层聚合视图，又�
 - 不引入船队与任务的多对多关系、层级或权限；一任务最多挂一支船队，可换可摘。
 - 不区分「在线空闲」与「离线」的呈现——对用户都是「已停止」。
 - 不把中断/压缩块从 transcript 改写或删除，只读时转态。
+
+## 修订注记（v0.7 补丁：发现口补扫、新开船队、锚地可删）
+
+上线后实测两处缺口，在不改本 ADR 结论的前提下补齐：
+
+1. **官方发现口不是全集**：CLI 2.1.310 的 `claude agents --json` 只报 background
+   会话；桌面 app 托管会话与交互 TUI（裸 `claude` 主进程）都缺席，船队角标会少算
+   （用户眼前开着 7 支，发现口只报 4 支）。补发现只读本机可见状态，不碰 daemon
+   私有协议（`internal/server/procscan.go`）：
+   - 桌面会话：命令行 `--session-id <uuid> --agent` 直接给身份，transcript 补目录/标题；
+   - TUI：有控制终端的裸 `claude` 进程，按 cwd + 进程启动时间（−90s 容差）配对
+     未被占用的最新 transcript；配不上（开了终端还没说过话）落为**匿名行**
+     `proc-<pid>`，列表虚线不可点、船台只显空态；它一开口，下一轮 30s 轮询自动
+     配成真 sid，前端 8s 静默轮询检测到匿名行消失即跳转转正。
+   - 两个环境坑：`ps lstart` 随 `LC_TIME` 变语言/段数（中文环境输出
+     「日 10/25 17:46:48 2026」），调 ps 必须强制 `LC_TIME=C LANG=C`；
+     目录视图合并 extras 时以 transcript 自证 cwd 为准，防止串目录。
+2. **任务可以直接新开一支船队**：`POST /tasks/{id}/launch` 在指定可信目录跑
+   `claude --bg --output-format json <开场白>`。2.1.310 实测回执是真人横幅
+   「backgrounded · `<短id>`」而非 JSON（即便要求 json），短 id 再轮询
+   `claude agents --json` 反查完整 sessionId（UUID），随后等 transcript 落盘、
+   绑定任务、跳新船台。目录未被信任等 CLI 拒绝时，错误原文带回落回任务页。
+3. **锚地任务可删**：删除放行条件从「仅草稿」放宽到「草稿 + anchored」；
+   已派船出港（ready 之后）仍然不可直接删。

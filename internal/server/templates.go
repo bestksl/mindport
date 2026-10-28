@@ -330,7 +330,7 @@ const boardHTML = head + `
           <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？" data-debug="publish">放行</button>
         </form>
         <form method="post" action="/tasks/{{.Meta.ID}}/delete" class="del-form">
-          <button class="danger mini" data-confirm="删除草稿 {{.Meta.ID}}？仅草稿可删，删除后不可恢复">🗑</button>
+          <button class="danger mini" data-confirm="删除草稿 {{.Meta.ID}}？删除后不可恢复">🗑</button>
         </form>
       </div>
     </article>
@@ -362,6 +362,9 @@ const boardHTML = head + `
           {{template "shipoptions" $.Ships}}
         </select>
         <button class="mini" data-confirm="派船命令：{{.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">派船</button>
+      </form>
+      <form method="post" action="/tasks/{{.Meta.ID}}/delete" class="del-form card-del">
+        <button class="danger mini" data-confirm="删除任务 {{.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复">🗑 删掉</button>
       </form>
       {{end}}
     </article>
@@ -413,7 +416,7 @@ const taskHTML = head + `
     </div>
     <p class="hint">备货中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
-      <button class="danger" data-confirm="删除草稿 {{.R.Meta.ID}}？仅草稿可删，删除后不可恢复" data-debug="del">🗑 删除草稿</button>
+      <button class="danger" data-confirm="删除草稿 {{.R.Meta.ID}}？删除后不可恢复" data-debug="del">🗑 删除草稿</button>
     </form>
 
     {{else if eq .R.Meta.Status "anchored"}}
@@ -424,7 +427,12 @@ const taskHTML = head + `
       <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">🚢 派船</button>
     </form>
     <p class="hint">锚地待派：船在自己的终端上看不到这票货。派船后进入「待接令」，船 port claim 接令出港。</p>
-    <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（派船前都能改）</a>
+    <div class="anchored-tools">
+      <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（派船前都能改）</a>
+      <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
+        <button class="danger mini" data-confirm="删除任务 {{.R.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复" data-debug="del">🗑 删除</button>
+      </form>
+    </div>
 
     {{else if eq .R.Meta.Status "ready"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
@@ -473,6 +481,18 @@ const taskHTML = head + `
     {{else}}
     <p class="hint">本机还扫不到船队（Claude 会话）。在项目目录里开一个 Claude，或先去船队页贴目录扫一下。</p>
     {{end}}
+    <details class="launch-box" {{if not .BoundSID}}open{{end}}>
+      <summary>🆕 新开一支船队跑这个想法 <small>在项目目录里起一个新的 Claude 会话，自动挂上本任务</small></summary>
+      <form method="post" action="/tasks/{{.R.Meta.ID}}/launch" class="launch-form">
+        <label>船队开在哪个项目目录（绝对路径）</label>
+        <input name="dir" list="launch-dir-list" required spellcheck="false" autocomplete="off"
+               value="{{.LaunchDirDefault}}" placeholder="/Users/jmzx/Documents/GitHub/xxx" enterkeyhint="go">
+        <datalist id="launch-dir-list">{{range .LaunchDirs}}<option value="{{.Dir}}">{{end}}</datalist>
+        <label>给新船队的第一句话（它一开工就看到，可改）</label>
+        <textarea name="msg" rows="5" maxlength="8000">{{.LaunchPrompt}}</textarea>
+        <button class="primary mini" data-confirm="在所选目录新开一个 Claude 后台会话，并把 {{.R.Meta.ID}} 挂到它上面？">🆕 新开船队并挂上</button>
+      </form>
+    </details>
   </section>
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}

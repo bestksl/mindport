@@ -173,3 +173,83 @@ func TestSessionRecentAggregateAndAPI(t *testing.T) {
 		t.Fatalf("~/ 应先展开再判存在（期望 404），得到 %d", rec.Code)
 	}
 }
+
+// 进程表补发现的船队在目录视图里不得串目录：只显示属于该目录的行；
+// 从无 transcript 的全新目录里开着的匿名 TUI 也要能显示（不被 404 挡掉）。
+func TestSessionListExtrasDirScoping(t *testing.T) {
+	projA := t.TempDir()
+	projB := t.TempDir()
+	const desktopSID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	live := map[string]cliSession{
+		"proc-777": {
+			SessionID: "proc-777", ID: "proc-777", CWD: projA,
+			Status: "waiting", Kind: "interactive", Anon: true,
+		},
+		desktopSID: {
+			SessionID: desktopSID, ID: shortSid(desktopSID), CWD: projB,
+			Status: "waiting", Kind: "interactive",
+		},
+	}
+	s, _ := setupSession(t, "", live)
+	h := s.Routes()
+
+	// projA 从无 transcript，但有匿名 TUI：200 且只出现 proc-777
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions?dir="+url.QueryEscape(projA), nil))
+	if rec.Code != 200 {
+		t.Fatalf("有匿名 TUI 的空目录应 200，得到 %d: %s", rec.Code, rec.Body.String())
+	}
+	var d struct {
+		Rows []struct {
+			SID  string `json:"sid"`
+			Anon bool   `json:"anon"`
+			Dir  string `json:"dir"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Rows) != 1 || d.Rows[0].SID != "proc-777" || !d.Rows[0].Anon || d.Rows[0].Dir != projA {
+		t.Fatalf("projA 应只有匿名行，得到 %+v", d.Rows)
+	}
+
+	// projB 视图不得混入 projA 的匿名行
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions?dir="+url.QueryEscape(projB), nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), desktopSID) ||
+		strings.Contains(rec.Body.String(), "proc-777") {
+		t.Fatalf("projB 应只含桌面会话：%s", rec.Body.String())
+	}
+
+	// HTML 视图同样：匿名行可渲染、桌面行不串来
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions?dir="+url.QueryEscape(projA), nil))
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, `data-anon="1"`) || strings.Contains(body, desktopSID) {
+		t.Fatalf("projA HTML 应只渲染匿名行，code=%d", rec.Code)
+	}
+
+	// 聚合视图：两条 extras 都在
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions", nil))
+	if rec.Code != 200 ||
+		!strings.Contains(rec.Body.String(), "proc-777") ||
+		!strings.Contains(rec.Body.String(), desktopSID) {
+		t.Fatalf("聚合视图应含全部在线船队：%s", rec.Body.String())
+	}
+
+	// 匿名空态船台可打开，stream/history/say 全部拒绝
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/proc-777?dir="+url.QueryEscape(projA), nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `data-debug="anon"`) {
+		t.Fatalf("匿名船台应 200 渲染空态，code=%d", rec.Code)
+	}
+	sayReq := httptest.NewRequest("POST", "/sessions/proc-777/say?dir="+url.QueryEscape(projA),
+		strings.NewReader(url.Values{"msg": {"hi"}}.Encode()))
+	sayReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, sayReq)
+	if rec.Code != 400 {
+		t.Fatalf("匿名船队不可代说话，应 400，得到 %d", rec.Code)
+	}
+}
