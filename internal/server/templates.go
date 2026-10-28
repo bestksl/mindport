@@ -66,6 +66,45 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 {{end}}
 
 {{/* 16×16 像素灯塔：塔灯按摩尔斯节奏硬闪，夜港两束扫光，日港只亮灯 */}}
+{{/* 底部主导航（类 app tab bar）：调度台 / 船队。
+     高亮按路径本地判定，船队角标 20s 轻量轮询 /api/sessions。
+     登录页不调用此模板。 */}}
+{{define "tabbar"}}
+<nav class="tabbar" aria-label="主导航">
+  <a class="tab tab-board" href="/" data-tab="board">
+    <span class="tab-ic">⚓</span>
+    <span class="tab-tx" data-debug="board">调度台</span>
+  </a>
+  <a class="tab tab-fleet" href="/sessions" data-tab="fleet">
+    <span class="tab-ic">🧭<i class="tab-badge" id="tab-fleet-badge" hidden></i></span>
+    <span class="tab-tx" data-debug="fleet">船队</span>
+  </a>
+</nav>
+<script>
+(function () {
+  var p = location.pathname;
+  var which = (p === '/' || p.indexOf('/tasks/') === 0) ? 'board'
+    : (p.indexOf('/sessions') === 0) ? 'fleet' : '';
+  if (which) {
+    var a = document.querySelector('.tab-' + which);
+    if (a) { a.classList.add('active'); a.setAttribute('aria-current', 'page'); }
+  }
+  function tick() {
+    fetch('/api/sessions').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = d.rows || [];
+      var n = rows.filter(function (r) { return r.online; }).length;
+      var b = document.getElementById('tab-fleet-badge');
+      if (b) { b.textContent = n ? String(n) : ''; b.hidden = !n; }
+      // 顶栏船队灯（sseBoot）复用同一份轮询，不重复请求
+      window.dispatchEvent(new CustomEvent('mp-sessions', { detail: { rows: rows, live: n } }));
+    }).catch(function () {});
+  }
+  tick();
+  setInterval(tick, 20000);
+})();
+</script>
+{{end}}
+
 {{define "pxLighthouse"}}
 <svg class="px-lighthouse" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
   <g class="beam-blink">
@@ -260,22 +299,19 @@ document.addEventListener('submit', function (e) {
   }
   sel.value = sel.value.replace(/\|NEW$/, '|' + dir);
 }, true);
-// 船队灯：20s 轮询 /api/sessions 刷在线船队数；/api/agents 只用来给看板卡片
-// 显示「谁正在做哪票货」。本地刷新，不触发整页 reload。
+// 船队在线数由底部 tab bar 的统一轮询驱动（mp-sessions 事件），这里只负责点亮
+// 顶栏船队灯；/api/agents 20s 轮询给看板卡片显示「谁正在做哪票货」。本地刷新不 reload。
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
-  function tickFleet() {
-    fetch('/api/sessions').then(function (r) { return r.json(); }).then(function (d) {
-      var rows = d.rows || [];
-      var live = rows.filter(function (r) { return r.online; }).length;
-      var fleet = document.getElementById('fleet');
-      if (!fleet) return;
-      fleet.classList.toggle('has-live', live > 0);
-      fleet.title = live + ' 支船队工作中 · 点开看全部会话';
-      var cnt = document.getElementById('fleet-count');
-      if (cnt) cnt.textContent = live ? String(live) : '';
-    }).catch(function () {});
-  }
+  window.addEventListener('mp-sessions', function (e) {
+    var live = e.detail.live;
+    var fleet = document.getElementById('fleet');
+    if (!fleet) return;
+    fleet.classList.toggle('has-live', live > 0);
+    fleet.title = live + ' 支船队工作中 · 点开看全部会话';
+    var cnt = document.getElementById('fleet-count');
+    if (cnt) cnt.textContent = live ? String(live) : '';
+  });
   function tickAgents() {
     fetch('/api/agents').then(function (r) { return r.json(); }).then(function (agents) {
       var byTask = {};
@@ -290,9 +326,8 @@ document.addEventListener('submit', function (e) {
       });
     }).catch(function () {});
   }
-  function tick() { tickFleet(); tickAgents(); }
-  tick();
-  setInterval(tick, 20000);
+  tickAgents();
+  setInterval(tickAgents, 20000);
 })();
 </script>`
 
@@ -308,6 +343,12 @@ const boardHTML = head + `
   </form>
   <p class="capture-hint" data-debug="ideas only">想到就先扔进来 · 集装箱可以挂到船队上跟着走 · 做完一起看结果 · 只问重要不谈紧急</p>
 </section>
+
+{{/* 手机端类 app 分段：一次只看一个区，取代四列纵向长滚动；桌面端隐藏，仍是看板 */}}
+<nav class="board-seg" id="board-seg" aria-label="任务分区">
+  <button type="button" data-seg="drafts" data-n="{{len .Drafts}}"><span class="seg-label">📝 草稿</span><i class="seg-n">{{len .Drafts}}</i></button>
+  {{range .Cols}}<button type="button" data-seg="{{.Key}}" data-n="{{len .Tasks}}"><span class="seg-label">{{.Seg}}</span><i class="seg-n">{{len .Tasks}}</i></button>{{end}}
+</nav>
 
 {{if .Drafts}}
 <section class="drafts">
@@ -372,8 +413,46 @@ const boardHTML = head + `
   </div>
   {{end}}
 </section>
-` + sseBoot + `
+{{template "tabbar" .}}
+` + boardSegJS + sseBoot + `
 </body></html>`
+
+// 看板手机端分段切换：body[data-seg] 配合 CSS 一次只显一个区；
+// 选择存 localStorage（SSE 整页 reload 后保持），记忆段为空时落到第一个非空段。
+const boardSegJS = `
+<script>
+(function () {
+  var nav = document.getElementById('board-seg');
+  if (!nav) return;
+  var btns = Array.prototype.slice.call(nav.querySelectorAll('[data-seg]'));
+  function keys() { return btns.map(function (b) { return b.dataset.seg; }); }
+  function count(k) {
+    var b = nav.querySelector('[data-seg="' + k + '"]');
+    return parseInt(b && b.getAttribute('data-n') || '0', 10);
+  }
+  function apply(k, persist) {
+    document.body.dataset.seg = k;
+    btns.forEach(function (b) {
+      var on = b.dataset.seg === k;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    if (persist) { try { localStorage.setItem('mindport-board-seg', k); } catch (e) {} }
+  }
+  var saved = null;
+  try { saved = localStorage.getItem('mindport-board-seg'); } catch (e) {}
+  var cur = keys().indexOf(saved) >= 0 && count(saved) > 0 ? saved
+    : keys().filter(function (k) { return count(k) > 0; })[0] || keys()[0];
+  apply(cur, false);
+  nav.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-seg]');
+    if (!b) return;
+    apply(b.dataset.seg, true);
+    var top = nav.getBoundingClientRect().top + window.pageYOffset - 56;
+    window.scrollTo(0, Math.max(0, top));
+  });
+})();
+</script>`
 
 const taskHTML = head + `
 {{template "topbar" .}}
@@ -556,5 +635,6 @@ const taskHTML = head + `
     </ul>
   </section>
 </article>
+{{template "tabbar" .}}
 ` + sseBoot + `
 </body></html>`

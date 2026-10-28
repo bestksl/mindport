@@ -427,4 +427,5 @@ const sessionHTML = head + `
 {{end}}
 {{template "tlEventJS" .}}
 </script>
+{{template "tabbar" .}}
 </body></html>`

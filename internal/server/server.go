@@ -197,6 +197,7 @@ type ShipView struct {
 type column struct {
 	Key   string
 	Title string
+	Seg   string // 手机端分段导航上的短名（带 emoji）
 	Tasks []store.Record
 }
 
@@ -246,10 +247,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Error: r.URL.Query().Get("error"),
 		Auth:  s.authOn(),
 		Cols: []column{
-			{Key: "anchored", Title: "⚓ 锚地待派"},
-			{Key: "ready", Title: "🚢 待接令"},
-			{Key: "busy", Title: "🌊 出港中"},
-			{Key: "done", Title: "🏁 已归港"},
+			{Key: "anchored", Title: "⚓ 锚地待派", Seg: "⚓ 锚地"},
+			{Key: "ready", Title: "🚢 待接令", Seg: "🚢 待接"},
+			{Key: "busy", Title: "🌊 出港中", Seg: "🌊 出海"},
+			{Key: "done", Title: "🏁 已归港", Seg: "🏁 归港"},
 		},
 	}
 	for _, t := range all {

@@ -177,11 +177,12 @@ go build -o bin/port ./cmd/port
 # 上锁后首次打开跳 /login，取密钥粘贴（cookie 30 天）：
 ./bin/port serve --host 0.0.0.0 --port 8787 --auth
 ./bin/port web-token
-# 手机浏览器（同 WiFi 或 Tailscale）：草稿区、锚地/待接令/出港中/已归港四列、
+# 手机浏览器（同 WiFi 或 Tailscale）：类 app 底部 tab（调度台 / 船队，船队带在线角标），
+# 调度台手机端用顶部分段切换 草稿/锚地/待接/出海/归港（桌面端仍是四列看板）；
 # 派船/改派下拉、船队在线灯与「正在做」状态行、验货勾选、批注；
 # 点船队里任一会话进「会话船台」：实时 transcript 时间线 + 上翻全量 + 直接给船回话；
 # 没有任何代船操作按钮；SSE 实时更新，在线状态 20s 轮询；手机单列大触控区，
-# 派船/改派需二次确认
+# 分段选择记忆在本机，派船/改派需二次确认
 ```
 
 Claude Code 在本仓开会话时，`.claude/settings.json` 钩子自动 present/away。

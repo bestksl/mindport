@@ -332,7 +332,8 @@ body {
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   -webkit-font-smoothing: antialiased;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* 底部给 app tab bar 留位（手机含安全区） */
+  padding-bottom: calc(70px + env(safe-area-inset-bottom));
   transition: background-color .25s ease, color .25s ease;
 }
 
@@ -1136,6 +1137,136 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   to   { transform: translateY(-1.5px) rotate(1.5deg); }
 }
 
+/* ============================================================
+   类 app 导航：底部 tab bar（调度台 / 船队）+ 手机端看板分段
+   ============================================================ */
+
+.tabbar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  background: var(--topbar);
+  border-top: 2px solid var(--line);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 0 5px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.tab-ic {
+  position: relative;
+  font-style: normal;
+  font-size: 21px;
+  line-height: 1.15;
+  filter: grayscale(.45) opacity(.85);
+  transition: transform .15s ease;
+}
+.tab.active { color: var(--amber); }
+.tab.active .tab-ic { filter: none; transform: translateY(-1px); }
+.tab-badge {
+  position: absolute;
+  top: -3px;
+  right: -13px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--busy);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* 桌面端：tab bar 收成底部居中浮坞，不全宽挡内容 */
+@media (min-width: 721px) {
+  body { padding-bottom: 92px; }
+  .tabbar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: 18px;
+    width: 240px;
+    border: 2px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    padding-bottom: 0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  }
+}
+
+/* 看板分段导航：只在手机端出现，桌面仍是四列看板 */
+.board-seg { display: none; }
+
+@media (max-width: 720px) {
+  .board-seg {
+    display: flex;
+    gap: 6px;
+    width: min(1180px, calc(100% - 20px));
+    margin: 0 auto;
+    padding: 8px 0;
+    position: sticky;
+    top: 56px; /* 紧贴吸顶顶栏下沿（手机端顶栏实测高 56px） */
+    z-index: 15;
+    background: var(--topbar);
+    backdrop-filter: saturate(160%) blur(12px);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
+  }
+  .board-seg button {
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 34px;
+    padding: 0 4px;
+    border: 1.5px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .board-seg button .seg-n { font-style: normal; font-size: 11px; opacity: .7; }
+  .board-seg button.active {
+    background: var(--amber);
+    border-color: var(--amber);
+    color: var(--amber-ink);
+    font-weight: 700;
+  }
+  .board-seg button.active .seg-n { opacity: .8; }
+
+  /* body[data-seg] 由 JS 设置；无 JS 时属性不存在，旧长滚动布局不破 */
+  body[data-seg] .drafts,
+  body[data-seg] .board .col { display: none; }
+  body[data-seg="drafts"] .drafts,
+  body[data-seg="anchored"] .board .col-anchored,
+  body[data-seg="ready"] .board .col-ready,
+  body[data-seg="busy"] .board .col-busy,
+  body[data-seg="done"] .board .col-done { display: block; }
+  body[data-seg] .drafts h2,
+  body[data-seg] .col h2 { margin-top: 8px; }
+}
+
 /* 中等屏：四列改 2×2 */
 @media (max-width: 1000px) {
   .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1699,7 +1830,13 @@ html[data-stealth="1"] .top-sea,
 html[data-stealth="1"] .brand-mark,
 html[data-stealth="1"] .caret,
 html[data-stealth="1"] .fleet-dot,
-html[data-stealth="1"] #themes { display: none !important; }
+html[data-stealth="1"] #themes,
+html[data-stealth="1"] .tabbar,
+html[data-stealth="1"] .board-seg { display: none !important; }
+html[data-stealth="1"] body { padding-bottom: 0 !important; }
+/* 皮相下忽略分段隐藏，看板恢复全区 */
+html[data-stealth="1"] body[data-seg] .drafts,
+html[data-stealth="1"] body[data-seg] .board .col { display: block !important; }
 
 /* 中文招牌换英文变量名：::before 顶替元素内文本 */
 html[data-stealth="1"] .brand { font-size: 0; text-decoration: none; }

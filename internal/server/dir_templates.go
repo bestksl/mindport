@@ -54,6 +54,7 @@ const dirListHTML = head + `
   {{if not .Rows}}<p class="dir-hint" data-debug="no sessions here">这个目录下还没有会话记录。</p>{{end}}
   {{end}}
 </main>
+{{template "tabbar" .}}
 
 {{define "dirRow"}}
 {{if .Anon}}
