@@ -46,6 +46,17 @@ var serveCmd = &cobra.Command{
 				return err
 			}
 		}
+		// 手机工具审批（v0.9）：默认开，桥养的 claude 遇写操作先在手机上请批；
+		// PORT_PERM=0 退回 v0.8 的 acceptEdits 放手模式。起不来不拖垮港口。
+		permWanted := os.Getenv("PORT_PERM") != "0"
+		permOK := false
+		if permWanted {
+			if err := srvHandler.EnablePerms(); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  手机审批通道没起来（船队仍以 acceptEdits 放手运行）：%v\n", err)
+			} else {
+				permOK = true
+			}
+		}
 
 		// 生产加固：限制读慢/空闲连接；WriteTimeout 必须为 0（SSE 是长连接流式响应）。
 		srv := &http.Server{
@@ -75,6 +86,11 @@ var serveCmd = &cobra.Command{
 		}
 		if host == "127.0.0.1" {
 			fmt.Fprintln(w, "   （仅本机能访问；手机同 WiFi 访问请加 --host 0.0.0.0）")
+		}
+		if permOK {
+			fmt.Fprintln(w, "   工具审批: 已开启——写/执行操作先在手机上批准（只读自动放行；单船队可切放手模式）")
+		} else if !permWanted {
+			fmt.Fprintln(w, "   工具审批: 关闭（PORT_PERM=0；船队以 acceptEdits 放手运行）")
 		}
 
 		sigCh := make(chan os.Signal, 1)

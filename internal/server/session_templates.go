@@ -43,6 +43,8 @@ const sessionHTML = head + `
       </span>
       <span class="s-actbtns" id="s-actbtns">
         <button type="button" class="actbtn" id="btn-stop" hidden title="中断当前这一轮（等同终端 Esc）；排队中的话照跑">⏹ 中断这轮</button>
+        <button type="button" class="actbtn" id="btn-auto" hidden title="开启后这支船队的写/执行操作不再逐条请批（放手模式，随时可关）">🆗 放手</button>
+        <button type="button" class="actbtn" id="btn-notify" title="完成、待你输入或待审批时，手机通知我">🔔 <span id="notify-word">通知</span></button>
         <button type="button" class="actbtn danger" id="btn-scuttle" title="把船队从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 拆船</button>
       </span>{{end}}
     </div>
@@ -92,6 +94,7 @@ const sessionHTML = head + `
 
   <div class="tl-typing" id="tl-typing" hidden><span class="dots"><i></i><i></i><i></i></span><span>船队正在思考…</span></div>
   <div class="tl-live" id="tl-live" hidden></div>
+  <div class="tl-perms" id="tl-perms" hidden></div>
   <div class="tl-queue" id="tl-queue" hidden>
     <div class="q-head"><span><span class="emo">📬 </span>已排队 <b id="q-n">0</b> 句，这轮跑完按顺序自动说</span>
       <button type="button" class="mini danger" id="q-cancel" title="中断当前轮并清空排队（Ctrl-X 语义）">⏹ 中断并清空</button>
@@ -245,9 +248,31 @@ const sessionHTML = head + `
     if (b.kind === 'text')
       return '<div class="tl-text tl-live-blk">' + esc(b.text) +
         '<span class="caret-blink">▍</span></div>';
-    if (b.kind === 'tool')
-      return '<div class="tl-tool tl-live-blk"><details><summary><span class="emo">' +
-        toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b> 进行中…</summary></details></div>';
+    if (b.kind === 'tool') {
+      var sum = b.summary ? ' <span class="tl-sum">' + esc(b.summary) + '</span>' : '';
+      var body = b.text ? '<pre class="live-in">' + prettyJSON(b.text) + '</pre>' : '';
+      var res = b._result;
+      var runTag = res ? '' : ' <i class="tool-run">进行中…</i>';
+      var resHTML = '';
+      if (res) {
+        resHTML = '<div class="tl-result ' + (res.err ? 'r-err' : 'r-ok') + ' live-result">' +
+          '<details open><summary data-debug="' + (res.err ? 'tool error' : 'tool result') +
+          '"><span class="emo">' + (res.err ? '⚠️' : '✅') + ' </span>' +
+          (res.err ? '工具回报失败' : '工具回报') + '</summary><pre>' + esc(res.text) + '</pre></details></div>';
+      }
+      return '<div class="tl-tool tl-live-blk" data-tid="' + esc(b.tid || '') + '"><details' +
+        (b.text && !res ? '' : ' open') + '><summary><span class="emo">' +
+        toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b>' + sum + runTag +
+        '</summary>' + body + resHTML + '</details></div>';
+    }
+    if (b.kind === 'result') {
+      // 兜底：没找到对应进行中工具（折叠失败/跨帧）时单列
+      return '<div class="tl-result tl-live-blk ' + (b.err ? 'r-err' : 'r-ok') +
+        '" data-tid="' + esc(b.tid || '') + '"><details open><summary data-debug="' +
+        (b.err ? 'tool error' : 'tool result') + '"><span class="emo">' +
+        (b.err ? '⚠️' : '✅') + ' </span>' + (b.err ? '工具回报失败' : '工具回报') +
+        '</summary><pre>' + esc(b.text) + '</pre></details></div>';
+    }
     return '';
   }
   function renderLive(blocks) {
@@ -255,9 +280,24 @@ const sessionHTML = head + `
     if (!el) return;
     if (!blocks || !blocks.length) { el.hidden = true; el.innerHTML = ''; return; }
     var stickNow = nearBottom();
-    el.innerHTML = blocks.map(liveBlockHTML).join('');
+    el.innerHTML = foldLive(blocks).map(liveBlockHTML).join('');
     el.hidden = false;
     if (stickNow) stick();
+  }
+  // 把 tool_result 并进同 tid 的进行中工具块（命令+产出一张卡）
+  function foldLive(blocks) {
+    var byId = {}, out = [];
+    blocks.forEach(function (b) {
+      if (b.kind === 'result' && b.tid && byId[b.tid]) { byId[b.tid]._result = b; }
+      else { out.push(b); if (b.kind === 'tool' && b.tid) byId[b.tid] = b; }
+    });
+    return out;
+  }
+  // 工具入参是流式 JSON：能解析就缩进美化，没闭合/非 JSON 原样显示
+  function prettyJSON(s) {
+    var t = String(s || '').trim();
+    if (!t) return '';
+    try { return esc(JSON.stringify(JSON.parse(t), null, 2)); } catch (e) { return esc(t); }
   }
 
   // ---- 忙时排队：CLI 自动排队续跑，这里让人看见队里有几句、可一键全撤 ----
@@ -273,16 +313,155 @@ const sessionHTML = head + `
     }).join('');
   }
 
+  // ---- 手机端工具审批：卡片 + 批准/拒绝 + 本船队放手模式 ----
+  function ageWord(sec) {
+    sec = sec || 0;
+    if (sec < 60) return '刚刚';
+    if (sec < 3600) return Math.floor(sec / 60) + ' 分钟';
+    return Math.floor(sec / 3600) + ' 小时';
+  }
+  function permCardHTML(p) {
+    var detail = (p.detail && p.detail !== p.summary)
+      ? '<pre class="perm-detail">' + esc(p.detail) + '</pre>' : '';
+    return '<div class="perm-card" data-pid="' + esc(p.id) + '">' +
+      '<div class="perm-head"><span class="perm-tool"><span class="emo">' + (p.emoji || '🔧') +
+      ' </span><b>' + esc(p.tool) + '</b></span><span class="perm-age">' + ageWord(p.age_sec) + '</span></div>' +
+      '<div class="perm-sum">' + esc(p.summary || p.tool) + '</div>' + detail +
+      '<div class="perm-actions"><button type="button" class="perm-yes" data-dec="allow" data-debug="perm allow">✅ 批准执行</button>' +
+      '<button type="button" class="perm-no" data-dec="deny" data-debug="perm deny">⛔ 拒绝</button></div></div>';
+  }
+  function renderPerms(perms, autopilot, on) {
+    var box = document.getElementById('tl-perms'),
+      autoBtn = document.getElementById('btn-auto');
+    if (autoBtn) {
+      autoBtn.hidden = !on;
+      autoBtn.classList.toggle('on', !!autopilot);
+      autoBtn.textContent = autopilot ? '🔓 放手中·点关' : '🆗 放手模式';
+    }
+    if (!box) return;
+    if (!on || !perms || !perms.length) { box.hidden = true; box.innerHTML = ''; return; }
+    var stickNow = nearBottom();
+    box.innerHTML = '<div class="perm-banner"><span class="emo">🔐 </span>船队要执行操作，等你拍板（不批 5 分钟后自动拒绝）：</div>' +
+      perms.map(permCardHTML).join('');
+    box.hidden = false;
+    if (stickNow) stick();
+  }
+  function postPerm(pid, decision) {
+    var body = new URLSearchParams();
+    body.set('id', pid); body.set('decision', decision);
+    return fetch('/sessions/' + encodeURIComponent(SID) + '/perm/decide' + dirQS(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); });
+  }
+  var permBox = document.getElementById('tl-perms');
+  if (permBox) permBox.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-dec]');
+    if (!btn) return;
+    var card = btn.closest('.perm-card');
+    var pid = card && card.getAttribute('data-pid');
+    if (!pid) return;
+    var dec = btn.getAttribute('data-dec');
+    card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    postPerm(pid, dec).then(function (d) {
+      if (d.error) { flash('⚠️ ' + d.error, 'note-err'); card.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); return; }
+      card.classList.add('decided', 'dec-' + dec);
+      card.querySelector('.perm-actions').innerHTML = dec === 'allow'
+        ? '<span class="perm-done ok">✅ 已批准，执行中</span>' : '<span class="perm-done no">⛔ 已拒绝</span>';
+      kickPoll();
+    }).catch(function (er) { if (er) flash('⚠️ 审批没递出去', 'note-err'); });
+  });
+  var autoBtn = document.getElementById('btn-auto');
+  if (autoBtn) autoBtn.addEventListener('click', function () {
+    var on = !autoBtn.classList.contains('on');
+    var body = new URLSearchParams(); body.set('on', on ? '1' : '0');
+    autoBtn.disabled = true;
+    fetch('/sessions/' + encodeURIComponent(SID) + '/autopilot' + dirQS(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
+      .then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        flash(on ? '🔓 这支船队已放手，操作不再逐条请批' : '🔒 已恢复逐操作请批', 'note-ok');
+        if (lastState) setStatus(Object.assign({}, lastState, { autopilot: on, perms: on ? [] : lastState.perms }));
+        kickPoll();
+      }).catch(function (er) { if (er) flash('⚠️ 没切成', 'note-err'); })
+      .finally(function () { autoBtn.disabled = false; });
+  });
+
+  // ---- 手机通知：完成 / 待你输入 / 待审批（仅页面在后台时响）----
+  var notifyBtn = document.getElementById('btn-notify'),
+    notifyWord = document.getElementById('notify-word');
+  function notifyOn() {
+    return ('Notification' in window) && Notification.permission === 'granted' &&
+      localStorage.getItem('mp-notify') === '1';
+  }
+  function paintNotify() {
+    if (!notifyBtn) return;
+    if (!('Notification' in window)) { notifyBtn.disabled = true; notifyWord.textContent = '不支持'; return; }
+    if (Notification.permission === 'denied') { notifyBtn.disabled = true; notifyWord.textContent = '被浏览器拦'; return; }
+    notifyBtn.classList.toggle('on', notifyOn());
+    notifyWord.textContent = notifyOn() ? '通知开' : (Notification.permission === 'granted' ? '点此开通知' : '通知');
+  }
+  function ping(title, body, tag) {
+    if (!notifyOn() || !document.hidden) return;
+    try {
+      var n = new Notification(title, { body: body, tag: tag || 'mindport', renotify: true });
+      n.onclick = function () { window.focus(); n.close(); };
+    } catch (e) {}
+  }
+  if (notifyBtn) notifyBtn.addEventListener('click', function () {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      var turnOn = localStorage.getItem('mp-notify') !== '1';
+      localStorage.setItem('mp-notify', turnOn ? '1' : '0');
+      if (turnOn) ping('思港通知已开', '船队完成或待你审批时会提醒你', 'mp-test');
+      paintNotify();
+    } else {
+      Notification.requestPermission().then(function (p) {
+        if (p === 'granted') { localStorage.setItem('mp-notify', '1'); ping('思港通知已开', '以后船队完成会提醒你', 'mp-test'); }
+        paintNotify();
+      });
+    }
+  });
+  paintNotify();
+
+  // 状态翻转 → 通知（只在真实轮询数据上跑；首次只建档不响，避免一开页就吵）
+  var prevStatus = null, prevPermIds = null;
+  function checkNotify(d) {
+    var s = stateKey(d);
+    var idSet = {};
+    (d.perms || []).forEach(function (p) { idSet[p.id] = p; });
+    if (prevPermIds) {
+      Object.keys(idSet).forEach(function (id) {
+        if (!prevPermIds[id]) {
+          var p = idSet[id];
+          ping('🔐 待审批 · ' + p.tool, p.summary || p.tool, 'perm-' + id);
+        }
+      });
+    }
+    if (prevStatus === 'working' && s === 'idle') {
+      ping('✅ 船队跑完一轮', '回到待命，可以再派下一句', 'done-' + SID);
+    } else if (prevStatus === 'working' && s === 'waiting') {
+      ping('⏸ 船队待你输入', d.waiting_for || '它停下等你说话', 'wait-' + SID);
+    }
+    prevStatus = s;
+    prevPermIds = idSet;
+  }
+
   // ---- 乐观气泡：话一送出就先挂上「你」的气泡，权威 transcript 行到了再顶替 ----
   var pendingMine = [];
   var pendingSeq = 0;
-  function appendPendingUser(msg) {
+  function appendPendingUser(msg, tag) {
     var seq = ++pendingSeq;
     var el = document.createElement('div');
     el.className = 'tl-ev tl-user tl-pending';
     el.setAttribute('data-pseq', String(seq));
     el.innerHTML = '<div class="tl-meta"><span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你' +
-      '<i class="pend-tag">已送达</i></span></div><div class="tl-body"><div class="tl-text">' +
+      '<i class="pend-tag' + (tag === '待终端接收' ? ' pend-wait' : '') + '">' + esc(tag || '已送达') +
+      '</i></span></div><div class="tl-body"><div class="tl-text">' +
       esc(msg) + '</div></div>';
     listEl.appendChild(el);
     stick();
@@ -344,6 +523,7 @@ const sessionHTML = head + `
     renderLive(busy ? d.streaming : null);
     // 重连中排队话照样亮着：它们会由新桥原样重投，让人确认话没丢
     renderQueue((busy || restarting) ? d.queued : null);
+    renderPerms(d.perms, d.autopilot, d.perm_on);
     if (typing) typing.hidden = !(busy && !(d.streaming && d.streaming.length));
     var stopBtn = document.getElementById('btn-stop');
     if (stopBtn) stopBtn.hidden = !(d.bridge && busy);
@@ -379,7 +559,9 @@ const sessionHTML = head + `
         if (d.cursor) cursor = d.cursor;
         setStatus({ online: d.online, status: d.status, mark: d.mark,
           waiting_for: d.waiting_for, pending: d.pending,
-          streaming: d.streaming, queued: d.queued, bridge: !!d.bridge });
+          streaming: d.streaming, queued: d.queued, bridge: !!d.bridge,
+          perms: d.perms, autopilot: d.autopilot, perm_on: d.perm_on });
+        checkNotify(d);
       }).catch(function (e) {
         if (e && e.message === 'auth') return;
         failStreak++;
@@ -397,7 +579,7 @@ const sessionHTML = head + `
     var es = new EventSource('/api/live');
     es.onmessage = function (e) {
       var ev; try { ev = JSON.parse(e.data); } catch (x) { return; }
-      if (ev.sid === SID && (ev.type === 'state' || ev.type === 'partial')) {
+      if (ev.type === 'perm' || (ev.sid === SID && (ev.type === 'state' || ev.type === 'partial'))) {
         failStreak = 0; setBanner(false);
         kickPoll();
       }
@@ -508,10 +690,12 @@ const sessionHTML = head + `
         input.value = '';
         input.style.height = 'auto';
         if (d.delivered === 'mail') {
-          flash('📬 ' + d.detail, 'note-mail');
+          // 桥真起不来才落信箱：话也要挂出来（标待接收），绝不能像没发过一样消失
+          pendingMine.push(appendPendingUser(msg, '待终端接收'));
+          flash('📬 ' + d.detail + '；你的话已留在画面上，终端会话下一轮会收到', 'note-mail');
         } else {
           // 即时桥：先挂乐观气泡，权威 transcript 行到了自动顶替
-          pendingMine.push(appendPendingUser(msg));
+          pendingMine.push(appendPendingUser(msg, d.delivered === 'live' && d.detail && d.detail.indexOf('唤醒') >= 0 ? '唤醒中…' : '已送达'));
           flash('⛵ ' + (d.detail || '已送达，船队立刻接着跑'), 'note-ok');
           // 重连中发的话：服务端会等新桥就位再注入，本地维持 restarting 态
           if (lastState && lastState.status !== 'restarting')

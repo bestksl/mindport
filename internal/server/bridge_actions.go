@@ -4,6 +4,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -68,8 +69,9 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _, err := s.bridge.Start(info.dir, sid, "", msg)
-	if err != nil {
-		// CLI 不可用/起桥失败：不丢指令，退回信箱等钩子（旧兜底链路）。
+	if err != nil && !errors.Is(err, errBridgeWarming) {
+		// 仅当 CLI 真的起不来（找不到可执行文件/登录态彻底坏）才退回信箱；
+		// 慢唤醒不算失败——话已在桥进程 stdin 里，不能再落信箱造成重复/黑洞。
 		s.queueMail(w, sid, msg)
 		return
 	}
@@ -78,6 +80,10 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.poller != nil {
 		go s.poller.poll()
+	}
+	if errors.Is(err, errBridgeWarming) {
+		writeJSON(w, sayResp{Delivered: "live", Detail: "正在唤醒电脑端会话（历史较长，读一会儿就接着跑），话已送达"})
+		return
 	}
 	writeJSON(w, sayResp{Delivered: "live", Detail: "已唤醒会话，正在接着跑"})
 }
@@ -196,6 +202,64 @@ func (s *Server) handleFleetDelete(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) isHiddenFleet(sid string) bool {
 	return s.V.HiddenSIDs()[sid]
+}
+
+// handlePerms 列出待审批（?sid= 只看这支船队；省略=全部页面角标用）。
+func (s *Server) handlePerms(w http.ResponseWriter, r *http.Request) {
+	if s.perm == nil {
+		writeJSON(w, map[string]any{"perms": []PermView{}, "enabled": false})
+		return
+	}
+	sid := r.URL.Query().Get("sid")
+	writeJSON(w, map[string]any{
+		"perms":     s.perm.views(sid),
+		"enabled":   true,
+		"autopilot": sid != "" && s.perm.isAutopilot(sid),
+	})
+}
+
+// handlePermDecide 手机拍板：decision=allow|deny。
+func (s *Server) handlePermDecide(w http.ResponseWriter, r *http.Request) {
+	if s.perm == nil {
+		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "手机审批通道未开启"})
+		return
+	}
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	_ = r.ParseForm()
+	id := strings.TrimSpace(r.PostFormValue("id"))
+	decision := strings.TrimSpace(r.PostFormValue("decision"))
+	if id == "" || (decision != "allow" && decision != "deny") {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给审批 id 和 allow/deny"})
+		return
+	}
+	if !s.perm.decide(id, decision) {
+		writeJSONStatus(w, http.StatusGone, map[string]string{"error": "这条审批已收束（可能已超时拒绝）"})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "decision": decision})
+}
+
+// handleAutopilot 开关一支船队的「本会话免审批」（等同 v0.8 的放手模式）。
+// 注意：仅对下一轮/重起生效到 CLI 行为——实际放行在我们这侧的回调里即时生效，
+// 不必重起桥（自动判定在 m.handleConn 内读 auto[sid]）。
+func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
+	if s.perm == nil {
+		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "手机审批通道未开启"})
+		return
+	}
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	_ = r.ParseForm()
+	on := r.PostFormValue("on") == "1"
+	s.perm.setAutopilot(sid, on)
+	writeJSON(w, map[string]any{"ok": true, "autopilot": on})
 }
 
 // handleLive 是桥事件的统一 SSE 出口：船台收 state/partial（逐字直播），

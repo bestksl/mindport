@@ -420,6 +420,12 @@ func summarize(name string, input json.RawMessage) string {
 	}
 }
 
+// Summarize 导出工具入参的一句话动作摘要，供即时桥的实时流复用同一套措辞。
+func Summarize(name string, input json.RawMessage) string { return summarize(name, input) }
+
+// ResultText 导出 tool_result 内容的纯文本提取，供实时流复用。
+func ResultText(raw json.RawMessage) string { return resultText(raw) }
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]

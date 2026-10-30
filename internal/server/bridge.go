@@ -21,6 +21,7 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -29,7 +30,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bestksl/mindport/internal/transcript"
 )
+
+// errBridgeWarming：--resume 冷启在等待窗口内还没报 init（大 transcript /
+// compaction 历史重放很慢）。此时第一句话已写进子进程 stdin 管道，CLI 读完
+// 历史后照样会处理，所以调用方绝不能当失败丢话、更不能杀进程——桥在后台
+// 继续等，readLoop 一起就跑，真崩了由 waitGen 自愈。
+var errBridgeWarming = errors.New("桥正在唤醒这个会话")
 
 // guard 兜住桥后台 goroutine 的 panic：一支船队的意外绝不能崩掉整个 serve。
 func (b *fleetBridge) guard(fp *fleetProc, where string) {
@@ -61,9 +70,12 @@ const maxAutoRestarts = 3
 
 // partialBlock 是当前轮还没落进 transcript 的流式内容块。
 type partialBlock struct {
-	Kind string `json:"kind"` // thinking | text | tool
-	Name string `json:"name,omitempty"`
-	Text string `json:"text"`
+	Kind    string `json:"kind"` // thinking | text | tool | result
+	Name    string `json:"name,omitempty"`
+	Text    string `json:"text"`
+	Summary string `json:"summary,omitempty"`
+	ToolID  string `json:"tid,omitempty"` // tool/result：关联 id
+	Err     bool   `json:"err,omitempty"` // result：工具回报失败
 }
 
 // fleetProc 是一支船队的常驻桥。CLI 进程可换代（中断/意外退出后 --resume
@@ -328,7 +340,22 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		"--output-format", "stream-json",
 		"--include-partial-messages",
 		"--verbose",
-		"--permission-mode", "acceptEdits",
+	}
+	// 手机审批在役：manual + 每船队一份 MCP 配置，工具授权走手机拍板；
+	// 审批通道没起（测试/精简装配）时维持 v0.8 的 acceptEdits，不打扰。
+	if b.srv.permReady() {
+		cfgPath, perr := b.srv.perm.configFor(fp.sid)
+		if perr == nil {
+			args = append(args,
+				"--mcp-config", cfgPath,
+				"--permission-mode", "manual",
+				"--permission-prompt-tool", "mcp__mindport__check_permission")
+		} else {
+			log.Printf("perm: 写 mcp 配置失败，退回 acceptEdits sid=%s: %v", fp.sid, perr)
+			args = append(args, "--permission-mode", "acceptEdits")
+		}
+	} else {
+		args = append(args, "--permission-mode", "acceptEdits")
 	}
 	if resume {
 		args = append(args, "--resume", fp.sid)
@@ -388,8 +415,14 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		return err
 	}
 
+	// 全新会话冷启通常秒级；--resume 要重放整段 transcript（实测 31MB/6380 行
+	// 且含多次 compaction 的大会话冷启远超 20s），给更长的窗口。
+	initWait := 25 * time.Second
+	if resume {
+		initWait = 60 * time.Second
+	}
 	initOK := false
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(initWait)
 	for time.Now().Before(deadline) {
 		fp.mu.Lock()
 		st := fp.state
@@ -409,8 +442,12 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		time.Sleep(150 * time.Millisecond)
 	}
 	if !initOK {
+		if resume && firstMsg != "" {
+			// 慢唤醒，不是失败：话已在 stdin 管道里，进程留后台继续跑。
+			return errBridgeWarming
+		}
 		_ = cmd.Process.Kill()
-		return fmt.Errorf("桥进程 20s 没报 init（CLI 登录态/网络异常？）")
+		return fmt.Errorf("桥进程 %s 没报 init（CLI 登录态/网络异常？）", initWait)
 	}
 	fp.mu.Lock()
 	fp.deaths = 0 // 跑起来了：意外死亡计数清零
@@ -585,6 +622,9 @@ func (b *fleetBridge) Kill(sid string) bool {
 	if proc != nil && proc.Process != nil {
 		_ = proc.Process.Kill()
 	}
+	if b.srv.perm != nil {
+		b.srv.perm.removeConfig(sid)
+	}
 	b.publishState(fp)
 	return true
 }
@@ -706,6 +746,17 @@ func (b *fleetBridge) readLoop(fp *fleetProc, r io.Reader, gen uint64) {
 			if b.applyStreamEvent(fp, ev.Event) {
 				b.publishState(fp)
 			}
+		case "user":
+			// 工具执行完的 tool_result 在这一轮结束前就先到：实时挂到直播区，
+			// 让人在手机上看到命令/读写的产出，不必等整轮 result 与 transcript 轮询。
+			if res := parseLiveResults(line); len(res) > 0 {
+				fp.mu.Lock()
+				if fp.gen == gen {
+					fp.blocks = append(fp.blocks, res...)
+				}
+				fp.mu.Unlock()
+				b.publishState(fp)
+			}
 		case "assistant":
 			// 完整消息落盘前后到达：什么都不做，transcript 轮询会拿到权威行。
 		case "result":
@@ -732,6 +783,7 @@ func (b *fleetBridge) applyStreamEvent(fp *fleetProc, raw json.RawMessage) bool 
 		ContentBlock struct {
 			Type string `json:"type"`
 			Name string `json:"name"`
+			ID   string `json:"id"`
 		} `json:"content_block"`
 		Delta struct {
 			Type     string `json:"type"`
@@ -758,7 +810,7 @@ func (b *fleetBridge) applyStreamEvent(fp *fleetProc, raw json.RawMessage) bool 
 			kind = "tool"
 		}
 		if kind != "" {
-			fp.blocks = append(fp.blocks, partialBlock{Kind: kind, Name: ev.ContentBlock.Name})
+			fp.blocks = append(fp.blocks, partialBlock{Kind: kind, Name: ev.ContentBlock.Name, ToolID: ev.ContentBlock.ID})
 			changed = true
 		}
 	case "content_block_delta":
@@ -774,7 +826,15 @@ func (b *fleetBridge) applyStreamEvent(fp *fleetProc, raw json.RawMessage) bool 
 			blk.Text += ev.Delta.Text
 			changed = true
 		case "input_json_delta":
-			blk.Text += ev.Delta.Partial // 工具入参只攒着，页面默认不展开
+			blk.Text += ev.Delta.Partial
+			// 入参拼全后（JSON 已闭合）实时给一句话摘要：手机上看到的是
+			// 「$ rm foo」「写 note.txt」而不是干等的「Bash 进行中」。
+			if blk.Kind == "tool" && blk.Summary == "" {
+				if in, ok := completeJSON(blk.Text); ok {
+					blk.Summary = liveToolSummary(blk.Name, in)
+					changed = true
+				}
+			}
 		}
 	case "message_stop":
 		// 不清空：权威 transcript 行到船台有秒级轮询延迟，留到 result 再清，
@@ -793,6 +853,55 @@ func newUUID() (string, error) {
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
+// completeJSON 判断流式拼接中的工具入参是否已构成完整 JSON 对象。
+func completeJSON(s string) (json.RawMessage, bool) {
+	var m map[string]any
+	if json.Unmarshal([]byte(s), &m) != nil {
+		return nil, false
+	}
+	return json.RawMessage(s), true
+}
+
+// liveToolSummary 复用 transcript 的动作摘要（$ 命令 / 文件名 / 子代理…）。
+func liveToolSummary(name string, in json.RawMessage) string {
+	return transcript.Summarize(name, in)
+}
+
+// parseLiveResults 从顶层 user 事件里抽出已完成的 tool_result，实时挂进直播区，
+// 不必等整轮 result 与 transcript 轮询。空结果的成功回报略去（与持久版一致）。
+func parseLiveResults(line []byte) []partialBlock {
+	var ev struct {
+		Type    string `json:"type"`
+		Message struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Type      string          `json:"type"`
+				ToolUseID string          `json:"tool_use_id"`
+				IsError   bool            `json:"is_error"`
+				Content   json.RawMessage `json:"content"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &ev) != nil || ev.Type != "user" || ev.Message.Role != "user" {
+		return nil
+	}
+	var out []partialBlock
+	for _, c := range ev.Message.Content {
+		if c.Type != "tool_result" || c.ToolUseID == "" {
+			continue
+		}
+		txt := transcript.ResultText(c.Content)
+		if strings.TrimSpace(txt) == "" && !c.IsError {
+			continue
+		}
+		out = append(out, partialBlock{
+			Kind: "result", ToolID: c.ToolUseID, Err: c.IsError,
+			Text: clipText(txt, 4000),
+		})
+	}
+	return out
 }
 
 // bridgeStatus 把桥状态翻成官方三态词（busy|idle）；死桥返回 ok=false。
@@ -898,6 +1007,12 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 		row.Class = "is-" + fs.Key
 		row.StateText = fs.Text
 		rows = append(rows, row)
+	}
+	// 待审批角标：让人在船队列表一眼看到哪支船正等手机拍板，不必逐艘点进去。
+	if s.perm != nil {
+		for i := range rows {
+			rows[i].Perms = s.perm.pendingCount(rows[i].SID)
+		}
 	}
 	return rows
 }

@@ -251,6 +251,9 @@ type streamResp struct {
 	Queued     []string           `json:"queued,omitempty"`    // 桥忙时排队中的消息
 	Streaming  []partialBlock     `json:"streaming,omitempty"` // 当前轮逐字块（未落 transcript）
 	Bridge     bool               `json:"bridge,omitempty"`    // 这支船队由网页桥驱动
+	Perms      []PermView         `json:"perms,omitempty"`     // 等手机拍板的工具审批
+	PermOn     bool               `json:"perm_on,omitempty"`   // 审批通道在役
+	Autopilot  bool               `json:"autopilot,omitempty"` // 本船队免审批
 }
 
 func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
@@ -284,6 +287,11 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		resp.Bridge = true
 		resp.Streaming = blocks
 		resp.Queued = queued
+	}
+	if s.perm != nil {
+		resp.PermOn = true
+		resp.Perms = s.perm.views(sid)
+		resp.Autopilot = s.perm.isAutopilot(sid)
 	}
 	home, _ := os.UserHomeDir()
 	p := transcript.Path(home, info.dir, sid)

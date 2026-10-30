@@ -43,6 +43,7 @@ type Server struct {
 	broker    *broker
 	poller    *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
 	bridge    *fleetBridge // 网页船队的常驻 stream-json 桥（即时注入+逐字直播）
+	perm      *permManager // 可选：手机端工具权限审批（serve 经 EnablePerms 开启）
 	authToken string       // 非空即强制鉴权（ADR-0008）；serve 命令经 EnableAuth 设置
 }
 
@@ -144,6 +145,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 	mux.HandleFunc("GET /api/live", s.handleLive)
+	mux.HandleFunc("GET /api/perms", s.handlePerms) // 手机端工具审批清单（?sid= 单船队）
 
 	// 航线（v0.8）：既定目标 + 描述，下面挂临时任务与船队。
 	mux.HandleFunc("GET /api/routes/summary", s.handleRoutesSummary)
@@ -171,6 +173,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
 	mux.HandleFunc("POST /sessions/{sid}/stop", s.handleFleetStop)
 	mux.HandleFunc("POST /sessions/{sid}/delete", s.handleFleetDelete)
+	mux.HandleFunc("POST /sessions/{sid}/perm/decide", s.handlePermDecide) // 手机批准/拒绝工具
+	mux.HandleFunc("POST /sessions/{sid}/autopilot", s.handleAutopilot)    // 本船队免审批开关
 	mux.HandleFunc("POST /sessions/{sid}/mark", s.handleSessionMark)
 	mux.HandleFunc("POST /sessions/{sid}/unmark", s.handleSessionUnmark)
 

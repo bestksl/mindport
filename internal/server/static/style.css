@@ -2377,6 +2377,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
   border: 1px solid var(--ok-line); border-radius: 999px;
   padding: 0 6px; margin-left: 7px; vertical-align: middle;
 }
+.tl-pending .pend-tag.pend-wait { color: var(--amber); border-color: var(--amber-line); }
 
 .s-actbtns { display: inline-flex; gap: 6px; }
 .actbtn {
@@ -2565,3 +2566,65 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
      58 顶栏 + 50 全宽 tabbar + 底部安全区，回话坞始终在 tabbar 之上 */
   .session { height: calc(var(--vvh, 100dvh) - 108px - env(safe-area-inset-bottom)); }
 }
+
+/* ===== v0.9 手机工具审批 + 实时工具卡 ===== */
+.tl-perms { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 8px; }
+.perm-banner {
+  font-size: 12.5px; color: var(--amber); font-weight: 600;
+  padding: 2px 2px 0;
+}
+.perm-card {
+  border: 1.5px solid var(--amber-line);
+  background: var(--amber-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  animation: perm-glow 1.8s ease-in-out infinite;
+}
+@keyframes perm-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px var(--amber-soft); }
+}
+.perm-card.decided { animation: none; opacity: .92; }
+.perm-card.dec-deny { border-color: rgba(224,131,98,.5); background: rgba(224,131,98,.1); }
+.perm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.perm-tool { font-size: 13px; color: var(--amber); min-width: 0; }
+.perm-tool b { font-weight: 700; }
+.perm-age { flex: none; font-size: 11px; opacity: .65; }
+.perm-sum {
+  margin-top: 5px; font-size: 13.5px; font-weight: 600;
+  word-break: break-word; color: var(--ink);
+}
+.perm-detail {
+  margin: 6px 0 0; max-height: 160px; overflow: auto;
+  font-size: 11.5px; line-height: 1.5; opacity: .82;
+  background: rgba(0,0,0,.18); border-radius: 8px; padding: 8px;
+}
+.perm-actions { display: flex; gap: 8px; margin-top: 10px; }
+.perm-actions button {
+  flex: 1; border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 9px 6px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  background: var(--bg-glow); color: var(--ink);
+}
+.perm-actions .perm-yes { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok-ink); }
+.perm-actions .perm-yes:active { transform: scale(.98); }
+.perm-actions .perm-no { border-color: rgba(224,131,98,.5); background: rgba(224,131,98,.12); color: #e08362; }
+.perm-done { font-size: 13px; font-weight: 600; padding: 8px 4px; }
+.perm-done.ok { color: var(--ok-ink); }
+.perm-done.no { color: #e08362; }
+
+/* 实时工具卡：进行中标记 / 入参 / 并入的产出 */
+.tl-tool .tool-run { font-style: normal; font-size: 11px; color: var(--amber); margin-left: 4px; }
+.tl-live-blk .live-in { margin-top: 5px; max-height: 200px; overflow: auto; }
+.tl-live-blk .live-result { margin-top: 5px; }
+.tl-live-blk .live-result pre { max-height: 220px; overflow: auto; }
+
+/* 头部放手/通知按钮态 */
+.actbtn.on { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok-ink); }
+#btn-auto.on { border-color: var(--amber-line); background: var(--amber-soft); color: var(--amber); }
+
+/* 船队列表：待审批角标 + 行高亮（手机列表一眼看到哪艘船等批） */
+.st-perm {
+  color: var(--amber); font-weight: 700; font-style: normal;
+  white-space: nowrap; animation: perm-glow 1.8s ease-in-out infinite;
+}
+.dir-row.has-perm { border-color: var(--amber-line); box-shadow: inset 3px 0 0 var(--amber); }

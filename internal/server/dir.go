@@ -32,6 +32,7 @@ type dirRow struct {
 	Mark      string // good | stop | ""
 	Name      string // 官方发现口里的会话简介（若有）
 	Anon      bool   // 进程在跑但还没说话：无 transcript、sid 是 proc-<pid>
+	Perms     int    // 等手机拍板的工具审批数（v0.9）
 }
 
 type knownDir struct {
@@ -251,6 +252,7 @@ type sessionRowJSON struct {
 	Status string `json:"status"`
 	Mark   string `json:"mark"`
 	Anon   bool   `json:"anon"`
+	Perms  int    `json:"perms"` // 待手机审批数
 	Stamp  int64  `json:"stamp"` // LastTS unnix，组内排序用
 }
 
@@ -277,7 +279,7 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, sessionRowJSON{
 			SID: r2.SID, Dir: r2.Dir, Title: r2.Title, Name: r2.Name, Proj: r2.Proj,
-			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark, Anon: r2.Anon, Stamp: stamp,
+			Events: r2.Events, Online: r2.Online, Status: r2.Status, Mark: r2.Mark, Anon: r2.Anon, Perms: r2.Perms, Stamp: stamp,
 		})
 	}
 	writeJSON(w, map[string]any{"rows": out})

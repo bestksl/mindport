@@ -104,12 +104,13 @@ const dirListHTML = head + `
   </span>
 </div>
 {{else}}
-<a class="dir-row {{.Class}}{{if .MarkText}} has-mark{{end}}" data-sid="{{.SID}}"
+<a class="dir-row {{.Class}}{{if .MarkText}} has-mark{{end}}{{if .Perms}} has-perm{{end}}" data-sid="{{.SID}}"
    href="/sessions/{{.SID}}?dir={{.Dir | urlquery}}" title="{{.Dir}}">
   <span class="dir-state"><i class="dot"></i></span>
   <span class="dir-main">
     <span class="dir-title">{{if .Name}}{{.Name}}{{else if .Title}}{{.Title}}{{else}}<code>{{slice .SID 0 8}}</code><span data-debug="(untitled)">（无题首句）</span>{{end}}</span>
     <span class="dir-meta">
+      {{if .Perms}}<em class="st-perm" data-debug="perm">🔐 待批准 {{.Perms}}<b>·</b></em>{{end}}
       <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
       {{if .ShowProj}}<i class="dir-proj"><span class="emo">📁 </span>{{.Proj}}</i><b>·</b>{{end}}
       {{if not .HideCount}}<span class="row-events">{{.Events}}</span> 条消息<b>·</b>{{end}}<span class="row-stamp">更新 {{if .LastTS.IsZero}}刚刚{{else}}{{.LastTS.Format "01-02 15:04"}}{{end}}</span>
@@ -171,8 +172,9 @@ const dirListHTML = head + `
     var titleHTML = title ? esc(title)
       : '<code>' + esc(r.sid.slice(0, 8)) + '</code><span>（无题首句）</span>';
     var mk = markText(r.mark);
-    var cls = 'is-' + groupOf(r) + (r.online && r.status === 'restarting' ? ' is-restarting' : '') + (mk ? ' has-mark' : '');
-    var meta = '<span class="row-state">' +
+    var cls = 'is-' + groupOf(r) + (r.online && r.status === 'restarting' ? ' is-restarting' : '') + (mk ? ' has-mark' : '') + (r.perms ? ' has-perm' : '');
+    var permTag = r.perms ? '<em class="st-perm" data-debug="perm">🔐 待批准 ' + r.perms + '<b>·</b></em>' : '';
+    var meta = permTag + '<span class="row-state">' +
       (mk ? '<em class="st-mark st-mark-' + esc(r.mark) + '">' + mk + '</em>' : '') +
       '<em class="st-working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting">待你输入</em><em class="st-stopped">已停止</em><b>·</b></span>';
     if (r.proj) meta += '<i class="dir-proj"><span class="emo">📁 </span>' + esc(r.proj) + '</i><b>·</b>';
@@ -196,8 +198,11 @@ const dirListHTML = head + `
       var body = seg.querySelector('.seg-body');
       var empty = seg.querySelector('.seg-empty');
       var n = seg.querySelector('.seg-n');
-      // 组内：在线按更新时间倒序；历史组同序
-      groups[key].sort(function (a, b) { return (b.stamp || 0) - (a.stamp || 0); });
+      // 组内：等审批的船队顶到最前（最该被看见），其余按更新时间倒序
+      groups[key].sort(function (a, b) {
+        if (!!a.perms !== !!b.perms) return (b.perms ? 1 : 0) - (a.perms ? 1 : 0);
+        return (b.stamp || 0) - (a.stamp || 0);
+      });
       body.innerHTML = groups[key].map(rowHTML).join('');
       if (n) n.textContent = groups[key].length ? String(groups[key].length) : '';
       if (empty) empty.hidden = groups[key].length > 0;
@@ -232,8 +237,8 @@ const dirListHTML = head + `
     es.onmessage = function (e) {
       var ev;
       try { ev = JSON.parse(e.data); } catch (x) { return; }
-      // fleet=任何船队翻灯/新生死；本页相关 state 也立刻拉
-      if (ev.type === 'fleet' || (ev.type === 'state' && ev.sid)) {
+      // fleet=任何船队翻灯/新生死；perm=某船等审批；本页相关 state 也立刻拉
+      if (ev.type === 'fleet' || ev.type === 'perm' || (ev.type === 'state' && ev.sid)) {
         var now = Date.now();
         if (now < kickAt) return;
         kickAt = now + 200;
