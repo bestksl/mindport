@@ -85,8 +85,18 @@ func TestSessionStreamIdempotent(t *testing.T) {
 		return d
 	}
 	first := get("/api/sessions/" + testSID + "/stream?from=0")
-	if len(first.Events) != 3 || first.Cursor != first.Size {
-		t.Fatalf("首次增量应得 3 事件且游标到尾: %+v", first)
+	// tool_result 行折叠进同 tid 的工具卡：u1 + a1 两事件，r1 不单列
+	if len(first.Events) != 2 || first.Cursor != first.Size {
+		t.Fatalf("首次增量应得 2 事件且游标到尾: %+v", first)
+	}
+	var toolDone bool
+	for _, b := range first.Events[1].Blocks {
+		if b.Kind == "tool" && b.ToolID == "tu1" && b.Result == "done" {
+			toolDone = true
+		}
+	}
+	if !toolDone {
+		t.Fatalf("工具卡应并入结果 done: %+v", first.Events[1].Blocks)
 	}
 	// 同游标重复：空事件、游标不动，且 wire 上必须是 [] 而非 null（前端直接 .length）
 	rec := httptest.NewRecorder()
@@ -115,8 +125,17 @@ func TestSessionHistoryAnd404(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Events) != 3 || d.From != 0 {
-		t.Fatalf("上翻应得 3 事件且 From=0: %+v", d)
+	if len(d.Events) != 2 || d.From != 0 {
+		t.Fatalf("上翻应得 2 事件（工具回报并入工具卡）且 From=0: %+v", d)
+	}
+	var sawResult bool
+	for _, b := range d.Events[1].Blocks {
+		if b.Kind == "tool" && b.Result == "done" {
+			sawResult = true
+		}
+	}
+	if !sawResult {
+		t.Fatalf("历史窗口里工具卡也应带结果: %+v", d.Events[1].Blocks)
 	}
 
 	// 心跳里没有的会话：页面友好提示

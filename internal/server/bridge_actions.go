@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bestksl/mindport/internal/store"
+	"github.com/bestksl/mindport/internal/transcript"
 )
 
 // maxFleetNameRunes 船名长度上限（短码-需求，保持列表一行放下）。
@@ -51,6 +52,15 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 	_ = s.V.UnmarkSession(sid)
 
 	if _, alive := s.bridge.stateOf(sid); alive {
+		// 豆包式「改发新请求」：忙时发送 = 立即中断当前轮，用新话点火新一轮（旧排队丢弃）。
+		if r.PostFormValue("stop_first") == "1" {
+			if st, _ := s.bridge.stateOf(sid); st == bridgeWorking || st == bridgeStarting || st == bridgeWaiting {
+				if err := s.bridge.ReplaceTurn(sid, msg); err == nil {
+					writeJSON(w, sayResp{Delivered: "live", Detail: "已停止上一轮，按你新的这句开跑"})
+					return
+				}
+			}
+		}
 		if queued, err := s.bridge.Say(sid, msg); err == nil {
 			n := 0
 			if queued {
@@ -86,6 +96,65 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, sayResp{Delivered: "live", Detail: "已唤醒会话，正在接着跑"})
+}
+
+// regenResp 报告「重新生成」取回的原话，供前端做重复气泡去重。
+type regenResp struct {
+	OK           string `json:"ok"`
+	Regenerating string `json:"regenerating"`
+	Detail       string `json:"detail,omitempty"`
+}
+
+// handleSessionRegenerate 豆包式「重新生成」：取回最近一句真人原话，中断当前轮，
+// 让新桥以同一句话重新作答（线性 transcript 无法云端分叉，等价终端 Esc 后 ↑回车）。
+func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	info, found := s.resolveSession(sid, r.URL.Query().Get("dir"))
+	if s.isHiddenFleet(sid) || !found || info.dir == "" {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	if info.anon {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这支船队还没说过话"})
+		return
+	}
+	p, ok := s.transcriptPath(info, sid)
+	if !ok {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "还没有对话记录，无法重新生成"})
+		return
+	}
+	last, ok2 := transcript.LastHumanText(p)
+	if !ok2 {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "找不到上一句真人发言"})
+		return
+	}
+	_ = s.V.UnmarkSession(sid) // 重新作答 = 旧结局翻篇
+
+	if _, alive := s.bridge.stateOf(sid); alive {
+		if err := s.bridge.ReplaceTurn(sid, last); err != nil {
+			writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "没停住当前轮，稍后重试：" + err.Error()})
+			return
+		}
+		writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "已让船队重新作答"})
+		return
+	}
+	// 桥不在（离线/已停）：resume 起一座新桥用原话点火。
+	_, _, err := s.bridge.Start(info.dir, sid, "", last)
+	if err != nil && !errors.Is(err, errBridgeWarming) {
+		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "唤不起船队：" + err.Error()})
+		return
+	}
+	if _, ok := s.V.Fleet(sid); !ok {
+		_ = s.V.SaveFleet(store.FleetInfo{SID: sid, Dir: info.dir, Name: info.name})
+	}
+	if s.poller != nil {
+		go s.poller.poll()
+	}
+	writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "正在唤醒船队重新作答"})
 }
 
 // handleFleetNew 一键新开船队：目录 + 船名（短码-需求）+ 首句话，

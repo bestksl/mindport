@@ -171,6 +171,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/sessions/{sid}/stream", s.handleSessionStream)
 	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleSessionHistory)
 	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
+	mux.HandleFunc("POST /sessions/{sid}/regenerate", s.handleSessionRegenerate)
 	mux.HandleFunc("POST /sessions/{sid}/stop", s.handleFleetStop)
 	mux.HandleFunc("POST /sessions/{sid}/delete", s.handleFleetDelete)
 	mux.HandleFunc("POST /sessions/{sid}/perm/decide", s.handlePermDecide) // 手机批准/拒绝工具
@@ -745,7 +746,9 @@ var funcMap = template.FuncMap{
 	"ago":         agoText,
 	"actorName":   shortActor,
 	"onlyResults": onlyResults,
+	"userText":    userText,
 	"toolEmoji":   toolEmoji,
+	"rawHTML":     func(s string) template.HTML { return template.HTML(s) }, //nolint:gosec // chatHTML 已做脚本无害化
 	"dict":        dictTmpl,
 	"routeDesc":   routeDesc,
 }
@@ -789,6 +792,16 @@ var sessionTmpl = template.Must(template.New("session").Funcs(funcMap).Parse(ses
 var dirTmpl = template.Must(template.New("dir").Funcs(funcMap).Parse(dirListHTML))
 var routeListTmpl = template.Must(template.New("routeList").Funcs(funcMap).Parse(routeListHTML))
 var routeTmpl = template.Must(template.New("route").Funcs(funcMap).Parse(routeHTML))
+
+// userText 取一条 user 事件里真人敲的原话（跳过工具回报块），供气泡上的编辑/复制按钮使用。
+func userText(ev transcript.Event) string {
+	for _, b := range ev.Blocks {
+		if b.Kind == "text" {
+			return b.Text
+		}
+	}
+	return ""
+}
 
 // onlyResults 判定一条 user 事件是否只是工具回报（没有真人发言），
 // 时间线上把它弱化成紧凑的「🧰 工具回报」行。

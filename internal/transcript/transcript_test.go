@@ -38,8 +38,8 @@ func TestParseFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pg.Events) != 3 { // u1 / a1 / r1；噪音与坏行被跳过
-		t.Fatalf("应解析出 3 条事件，得到 %d", len(pg.Events))
+	if len(pg.Events) != 2 { // u1 / a1（r1 已并入 a1 的工具卡）；噪音与坏行被跳过
+		t.Fatalf("应解析出 2 条事件（工具回报并入工具卡），得到 %d", len(pg.Events))
 	}
 	if pg.Events[0].ID != "u1" || pg.Events[0].Blocks[0].Kind != "text" ||
 		pg.Events[0].Blocks[0].Text != "先把登录做了" {
@@ -60,9 +60,9 @@ func TestParseFixture(t *testing.T) {
 	if tool.ToolID != "tu1" || tool.Name != "Edit" || !strings.Contains(tool.Summary, "auth.go") {
 		t.Fatalf("工具块摘要错误: %+v", tool)
 	}
-	res := pg.Events[2].Blocks[0]
-	if res.Kind != "result" || res.ToolID != "tu1" || res.Text != "done" {
-		t.Fatalf("工具结果解析错误: %+v", res)
+	// 工具回报并入同一工具块，而不是单列成一条 role=user 伪消息
+	if tool.Result != "done" || tool.ResultErr {
+		t.Fatalf("工具回报应并入工具卡: %+v", tool)
 	}
 	if pg.Cursor != pg.Size {
 		t.Fatalf("读全量后游标应到文件尾: cursor=%d size=%d", pg.Cursor, pg.Size)
@@ -75,8 +75,8 @@ func TestIncrementalIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Events) != 3 {
-		t.Fatalf("首次增量应得 3 条，得到 %d", len(first.Events))
+	if len(first.Events) != 2 { // u1 / a1（r1 并入 a1 工具卡）
+		t.Fatalf("首次增量应得 2 条，得到 %d", len(first.Events))
 	}
 	// 同游标重复请求：幂等，无新事件
 	again, _ := ReadSince(p, first.Cursor)
@@ -126,5 +126,56 @@ func TestPartialLineNotLost(t *testing.T) {
 	if len(pg.Events) != 1 || pg.Events[0].ID != "a3" ||
 		pg.Events[0].Blocks[0].Text != "半条" {
 		t.Fatalf("补全后应得完整 a3，得到 %+v", pg.Events)
+	}
+}
+
+// 错误回报并入工具卡时必须带上失败标记。
+func TestFoldToolError(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "sess.jsonl")
+	lines := []string{
+		`{"type":"user","uuid":"u1","timestamp":"2026-10-26T10:00:00.000Z","message":{"role":"user","content":"跑一下"}}`,
+		`{"type":"assistant","uuid":"a1","timestamp":"2026-10-26T10:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":"go test"}}]}}`,
+		`{"type":"user","uuid":"r1","timestamp":"2026-10-26T10:00:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"b1","content":"FAIL","is_error":true}]}}`,
+	}
+	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pg, _ := ReadTail(p)
+	if len(pg.Events) != 2 {
+		t.Fatalf("错误回报也应并入工具卡（2 条事件），得到 %d", len(pg.Events))
+	}
+	tb := pg.Events[1].Blocks[0]
+	if tb.Kind != "tool" || tb.Result != "FAIL" || !tb.ResultErr {
+		t.Fatalf("工具块应带错误回报与标记: %+v", tb)
+	}
+}
+
+// 找不到归属工具的回报（tool_use 在更早读取窗口）保留为独立 result 块，不丢。
+func TestFoldUnmatchedResultKept(t *testing.T) {
+	evs := []Event{
+		{ID: "r1", Role: "user", TS: "t", Blocks: []Block{{Kind: "result", ToolID: "ghost", Text: "orphan"}}},
+	}
+	out := foldToolResults(evs)
+	if len(out) != 1 || out[0].Blocks[0].Kind != "result" {
+		t.Fatalf("无归属回报应保留: %+v", out)
+	}
+}
+
+// 重新生成要取回最近一条真人原话，工具结果/中断/助手话都不算。
+func TestLastHumanText(t *testing.T) {
+	p := writeFixture(t)
+	txt, ok := LastHumanText(p)
+	if !ok || txt != "先把登录做了" {
+		t.Fatalf("应取到最近真人原话，得到 %q ok=%v", txt, ok)
+	}
+	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+	_, _ = f.WriteString(
+		`{"type":"assistant","uuid":"a9","timestamp":"2026-10-26T10:02:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"z1","name":"Read","input":{"file_path":"/x"}}]}}` + "\n" +
+			`{"type":"user","uuid":"rz","timestamp":"2026-10-26T10:02:01.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"z1","content":"x"}]}}` + "\n" +
+			`{"type":"user","uuid":"u9","timestamp":"2026-10-26T10:02:02.000Z","message":{"role":"user","content":"再改成蓝色"}}` + "\n")
+	f.Close()
+	txt, ok = LastHumanText(p)
+	if !ok || txt != "再改成蓝色" {
+		t.Fatalf("应越过工具回报取到最新真人话，得到 %q ok=%v", txt, ok)
 	}
 }

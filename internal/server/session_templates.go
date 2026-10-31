@@ -42,7 +42,6 @@ const sessionHTML = head + `
         <button type="button" class="markbtn cancel" id="s-mark-cancel" data-debug="mark cancel"{{if not .HasMark}} hidden{{end}}>撤结局</button>
       </span>
       <span class="s-actbtns" id="s-actbtns">
-        <button type="button" class="actbtn" id="btn-stop" hidden title="中断当前这一轮（等同终端 Esc）；排队中的话照跑">⏹ 中断这轮</button>
         <button type="button" class="actbtn" id="btn-auto" hidden title="开启后这支船队的写/执行操作不再逐条请批（放手模式，随时可关）">🆗 放手</button>
         <button type="button" class="actbtn" id="btn-notify" title="完成、待你输入或待审批时，手机通知我">🔔 <span id="notify-word">通知</span></button>
         <button type="button" class="actbtn danger" id="btn-scuttle" title="把船队从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 拆船</button>
@@ -84,7 +83,6 @@ const sessionHTML = head + `
   <div class="tl-wrap" id="tl-wrap">
     <div class="tl-edge" id="tl-top">
       {{if .HasLog}}{{if gt .From 0}}<button type="button" id="tl-more">↑ 翻更早的记录</button>{{else}}<span>· 已是会话开端 ·</span>{{end}}{{end}}
-      <button type="button" id="think-toggle" class="think-toggle" aria-pressed="true">思考：显</button>
     </div>
     <div class="tl" id="tl">
       {{if .HasLog}}{{range .Events}}{{template "tlEvent" .}}{{end}}
@@ -102,11 +100,16 @@ const sessionHTML = head + `
     <div class="q-list" id="q-list"></div>
   </div>
 
+  <div class="tl-actions" id="tl-actions" hidden>
+    <button type="button" class="msgact" id="btn-regen" data-debug="regenerate" title="中断当前回答，就上一句话重新作答"><span class="emo">🔄</span> 重新生成</button>
+    <button type="button" class="msgact" id="btn-copy-last" data-debug="copy" title="复制船队最近一次回复"><span class="emo">📋</span> 复制</button>
+  </div>
+
   <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
     <div class="say-note" id="say-note" hidden></div>
     <div class="say-row">
       <textarea name="msg" rows="1" maxlength="8000" enterkeyhint="send" autocomplete="off"
-        placeholder="{{if .Busy}}船队正忙：留言会排队，它下一轮自动收到{{else}}说点什么…（Enter 发送，Shift+Enter 换行）{{end}}"
+        placeholder="{{if .Busy}}船队正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队{{else}}说点什么…（Enter 发送）{{end}}"
         id="say-input"></textarea>
       <button type="submit" class="primary" id="say-btn" data-debug="send">📨 发送</button>
     </div>
@@ -122,19 +125,16 @@ const sessionHTML = head + `
 <div class="tl-ev tl-system" data-id="{{.ID}}"><div class="tl-body">{{range .Blocks}}{{template "tlBlock" .}}{{end}}</div></div>
 {{else}}
 <div class="tl-ev tl-{{.Role}}{{if .Sidechain}} side{{end}}{{if onlyResults .}} only-result{{end}}" data-id="{{.ID}}">
-  <div class="tl-meta">
-    {{if eq .Role "assistant"}}<span class="tl-who" data-debug="{{if .Sidechain}}subship{{else}}ship{{end}}"><span class="emo">⛵ </span>{{if .Sidechain}}子代理{{else}}Claude{{end}}</span>
-    {{else if onlyResults .}}<span class="tl-who" data-debug="tool-result"><span class="emo">🧰 </span>工具回报</span>
-    {{else}}<span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你</span>{{end}}
-    <time class="tl-ts" datetime="{{.TS}}">{{.TS}}</time>
-  </div>
+  {{if eq .Role "assistant"}}<div class="tl-meta">{{if .Sidechain}}<span class="tl-who" data-debug="subship">🤖 子代理</span>{{end}}<time class="tl-ts" datetime="{{.TS}}">{{.TS}}</time></div>
+  {{else if not (onlyResults .)}}<div class="tl-meta"><time class="tl-ts" datetime="{{.TS}}">{{.TS}}</time></div>{{end}}
   <div class="tl-body">{{range .Blocks}}{{template "tlBlock" .}}{{end}}</div>
+  {{if eq .Role "user"}}{{if not (onlyResults .)}}{{$ut := userText .}}{{if $ut}}<div class="bub-acts"><button type="button" class="bub-act" data-act="edit" data-debug="edit" data-text="{{$ut}}" title="编辑后重发（会停下当前轮）">✏️</button><button type="button" class="bub-act" data-act="copy" data-debug="copy" data-text="{{$ut}}" title="复制这句话">📋</button></div>{{end}}{{end}}{{end}}
 </div>
 {{end}}
 {{end}}
 
 {{define "tlBlock"}}
-{{if eq .Kind "text"}}<div class="tl-text">{{.Text}}</div>{{end}}{{if eq .Kind "thinking"}}<details class="tl-think" open><summary data-debug="thinking"><span class="emo">🤔 </span>思考</summary><pre>{{.Text}}</pre></details>{{end}}{{if eq .Kind "tool"}}<div class="tl-tool" data-tid="{{.ToolID}}"><details><summary><span class="emo">{{toolEmoji .Name}} </span><b>{{.Name}}</b>{{if .Summary}} <span class="tl-sum">{{.Summary}}</span>{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}{{if eq .Kind "result"}}<div class="tl-result {{if .IsError}}r-err{{else}}r-ok{{end}}" data-tid="{{.ToolID}}"><details><summary data-debug="{{if .IsError}}tool error{{else}}tool result{{end}}"><span class="emo">{{if .IsError}}⚠️{{else}}✅{{end}} </span>{{if .IsError}}工具回报失败{{else}}工具回报{{end}}</summary><pre>{{.Text}}</pre></details></div>{{end}}{{if eq .Kind "interrupt"}}<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 你按了 Ctrl-C，上一段输出就停在这里</div>{{end}}{{if eq .Kind "continue"}}<div class="tl-sys continue" data-debug="compacted"><span class="emo">🧵 </span>会话曾被压缩，从这里续接</div>{{end}}
+{{if eq .Kind "text"}}<div class="tl-text{{if .HTML}} md{{end}}">{{if .HTML}}{{rawHTML .HTML}}{{else}}{{.Text}}{{end}}</div>{{end}}{{if eq .Kind "thinking"}}<details class="tl-think"><summary data-debug="thinking"><span class="think-ico">🧠</span><span class="think-tx">已深度思考</span></summary><pre>{{.Text}}</pre></details>{{end}}{{if eq .Kind "tool"}}<details class="tl-tool ucall {{if .ResultErr}}uc-err{{else if .Result}}uc-ok{{else}}uc-run{{end}}" data-tid="{{.ToolID}}"{{if .ResultErr}} open{{end}}><summary data-debug="{{if .ResultErr}}tool error{{else if .Result}}tool{{else}}tool (running){{end}}"><span class="uc-ico">{{toolEmoji .Name}}</span><b class="uc-name">{{.Name}}</b>{{if .Summary}}<span class="tl-sum">{{.Summary}}</span>{{end}}<i class="uc-state">{{if .ResultErr}}⚠ 失败{{else if .Result}}✓{{else}}<span class="uc-spin"></span>进行中{{end}}</i></summary>{{if .Text}}<pre class="uc-in">{{.Text}}</pre>{{end}}{{if .Result}}<pre class="uc-out {{if .ResultErr}}r-err{{else}}r-ok{{end}}" data-debug="{{if .ResultErr}}tool error{{else}}tool result{{end}}">{{.Result}}</pre>{{end}}</details>{{end}}{{if eq .Kind "result"}}<details class="tl-tool ucall uc-orphan {{if .IsError}}uc-err{{else}}uc-ok{{end}}" data-tid="{{.ToolID}}"{{if .IsError}} open{{end}}><summary data-debug="{{if .IsError}}tool error{{else}}tool result{{end}}"><span class="uc-ico">🧰</span><b class="uc-name">工具回报</b><i class="uc-state">{{if .IsError}}⚠ 失败{{else}}✓{{end}}</i></summary><pre class="uc-out {{if .IsError}}r-err{{else}}r-ok{{end}}" data-debug="{{if .IsError}}tool error{{else}}tool result{{end}}">{{.Text}}</pre></details>{{end}}{{if eq .Kind "interrupt"}}<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 上一段输出就停在这里</div>{{end}}{{if eq .Kind "continue"}}<div class="tl-sys continue" data-debug="compacted"><span class="emo">🧵 </span>会话曾被压缩，从这里续接</div>{{end}}
 {{end}}
 
 <script>
@@ -150,9 +150,7 @@ const sessionHTML = head + `
   var wrapEl = document.getElementById('tl-wrap');
   if (!listEl || !wrapEl) return;
   var seen = {};
-  var thinkShown = true; // 思考默认像 CLI 一样直接可见，头部可一键隐掉
   document.querySelectorAll('#tl .tl-ev').forEach(function (el) { seen[el.getAttribute('data-id')] = 1; });
-  document.querySelectorAll('#tl .tl-think').forEach(function (d) { d.setAttribute('data-synced', '1'); });
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -168,33 +166,61 @@ const sessionHTML = head + `
     Agent: '🤖', Task: '🤖', WebFetch: '🌐', WebSearch: '🌐'};
   function toolEmoji(n) { return TOOL_EMOJI[n] || '🔧'; }
   function blockHTML(b) {
-    if (b.kind === 'text') return '<div class="tl-text">' + esc(b.text) + '</div>';
-    if (b.kind === 'thinking') return '<details class="tl-think" open><summary data-debug="thinking"><span class="emo">🤔 </span>思考</summary><pre>' + esc(b.text) + '</pre></details>';
-    if (b.kind === 'tool') return '<div class="tl-tool" data-tid="' + esc(b.tid) + '"><details><summary><span class="emo">' + toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b>' +
-      (b.summary ? ' <span class="tl-sum">' + esc(b.summary) + '</span>' : '') + '</summary><pre>' + esc(b.text) + '</pre></details></div>';
-    if (b.kind === 'result') return '<div class="tl-result ' + (b.err ? 'r-err' : 'r-ok') + '" data-tid="' + esc(b.tid) +
-      '"><details><summary data-debug="' + (b.err ? 'tool error' : 'tool result') + '"><span class="emo">' + (b.err ? '⚠️' : '✅') + ' </span>' + (b.err ? '工具回报失败' : '工具回报') + '</summary><pre>' + esc(b.text) + '</pre></details></div>';
-    if (b.kind === 'interrupt') return '<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 你按了 Ctrl-C，上一段输出就停在这里</div>';
+    if (b.kind === 'text') return textHTML(b.text, b.html);
+    if (b.kind === 'thinking')
+      return '<details class="tl-think"><summary data-debug="thinking"><span class="think-ico">🧠</span><span class="think-tx">已深度思考</span><span class="think-chevron">⌄</span></summary><pre>' + esc(b.text) + '</pre></details>';
+    if (b.kind === 'tool') return toolCallHTML({ tid: b.tid, name: b.name, summary: b.summary, input: b.text, result: b.result, rerr: b.rerr });
+    if (b.kind === 'result') return orphanResultHTML(b.tid, b.text, b.err);
+    if (b.kind === 'interrupt') return '<div class="tl-sys interrupt" data-debug="interrupted"><span class="emo">✋ </span>已中断 · 上一段输出就停在这里</div>';
     if (b.kind === 'continue') return '<div class="tl-sys continue" data-debug="compacted"><span class="emo">🧵 </span>会话曾被压缩，从这里续接</div>';
     return '';
+  }
+  // assistant 回复：服务端给了安全 Markdown HTML 就富文本渲染，否则纯文本兜底
+  function textHTML(text, html) {
+    if (html) return '<div class="tl-text md">' + html + '</div>';
+    return '<div class="tl-text">' + esc(text) + '</div>';
+  }
+  // 一张工具卡：命令/文件 + 状态（进行中转圈 / ✓ / ⚠）+ 入参 + 产出，点开看详情
+  function toolCallHTML(o) {
+    var cls = o.rerr ? 'uc-err' : (o.result ? 'uc-ok' : 'uc-run');
+    var state = o.rerr ? '⚠ 失败' : (o.result ? '✓' : '<span class="uc-spin"></span>进行中');
+    var inPre = o.input ? '<pre class="uc-in">' + prettyJSON(o.input) + '</pre>' : '';
+    var outPre = o.result ? '<pre class="uc-out ' + (o.rerr ? 'r-err' : 'r-ok') + '" data-debug="' + (o.rerr ? 'tool error' : 'tool result') + '">' + esc(o.result) + '</pre>' : '';
+    var dbg = o.rerr ? 'tool error' : (o.result ? 'tool' : 'tool (running)');
+    return '<details class="tl-tool ucall ' + cls + '" data-tid="' + esc(o.tid || '') + '"' + (o.rerr ? ' open' : '') + '>' +
+      '<summary data-debug="' + dbg + '"><span class="uc-ico">' + toolEmoji(o.name) + '</span><b class="uc-name">' + esc(o.name) + '</b>' +
+      (o.summary ? '<span class="tl-sum">' + esc(o.summary) + '</span>' : '') +
+      '<i class="uc-state">' + state + '</i></summary>' + inPre + outPre + '</details>';
+  }
+  function orphanResultHTML(tid, text, isErr) {
+    return '<details class="tl-tool ucall uc-orphan ' + (isErr ? 'uc-err' : 'uc-ok') + '" data-tid="' + esc(tid || '') + '"' + (isErr ? ' open' : '') + '>' +
+      '<summary data-debug="' + (isErr ? 'tool error' : 'tool result') + '"><span class="uc-ico">🧰</span><b class="uc-name">工具回报</b><i class="uc-state">' + (isErr ? '⚠ 失败' : '✓') + '</i></summary>' +
+      '<pre class="uc-out ' + (isErr ? 'r-err' : 'r-ok') + '" data-debug="' + (isErr ? 'tool error' : 'tool result') + '">' + esc(text) + '</pre></details>';
+  }
+  function eventUserText(ev) {
+    return (ev.blocks || []).filter(function (b) { return b.kind === 'text'; })
+      .map(function (b) { return b.text; }).join('\n');
   }
   function eventHTML(ev) {
     if (ev.role === 'system') {
       return '<div class="tl-ev tl-system" data-id="' + esc(ev.id) + '"><div class="tl-body">' +
         ev.blocks.map(blockHTML).join('') + '</div></div>';
     }
-    var who;
-    if (ev.role === 'assistant') {
-      who = '<span class="tl-who" data-debug="' + (ev.side ? 'subship' : 'ship') + '"><span class="emo">⛵ </span>' + (ev.side ? '子代理' : 'Claude') + '</span>';
-    } else if (onlyResult(ev)) {
-      who = '<span class="tl-who" data-debug="tool-result"><span class="emo">🧰 </span>工具回报</span>';
-    } else {
-      who = '<span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你</span>';
+    var cls = 'tl-ev tl-' + ev.role + (ev.side ? ' side' : '') + (onlyResult(ev) ? ' only-result' : '');
+    var meta = '';
+    if (!onlyResult(ev)) {
+      var who = ev.role === 'assistant' && ev.side ? '<span class="tl-who" data-debug="subship">🤖 子代理</span>' : '';
+      meta = '<div class="tl-meta">' + who + '<time class="tl-ts" datetime="' + esc(ev.ts) + '">' + esc(ev.ts) + '</time></div>';
     }
-    return '<div class="tl-ev tl-' + ev.role + (ev.side ? ' side' : '') + (onlyResult(ev) ? ' only-result' : '') +
-      '" data-id="' + esc(ev.id) + '">' +
-      '<div class="tl-meta">' + who + '<time class="tl-ts" datetime="' + esc(ev.ts) + '">' + esc(ev.ts) + '</time></div>' +
-      '<div class="tl-body">' + ev.blocks.map(blockHTML).join('') + '</div></div>';
+    var acts = '';
+    if (ev.role === 'user' && !onlyResult(ev)) {
+      var ut = eventUserText(ev);
+      if (ut) acts = '<div class="bub-acts">' +
+        '<button type="button" class="bub-act" data-act="edit" data-debug="edit" data-text="' + esc(ut) + '" title="编辑后重发（会停下当前轮）">✏️</button>' +
+        '<button type="button" class="bub-act" data-act="copy" data-debug="copy" data-text="' + esc(ut) + '" title="复制这句话">📋</button></div>';
+    }
+    return '<div class="' + cls + '" data-id="' + esc(ev.id) + '">' + meta +
+      '<div class="tl-body">' + ev.blocks.map(blockHTML).join('') + '</div>' + acts + '</div>';
   }
   function fmtTimes(scope) {
     (scope || listEl).querySelectorAll('time.tl-ts').forEach(function (t) {
@@ -209,6 +235,50 @@ const sessionHTML = head + `
   }
   function nearBottom() { return wrapEl.scrollHeight - wrapEl.scrollTop - wrapEl.clientHeight < 72; }
   function stick() { wrapEl.scrollTop = wrapEl.scrollHeight; }
+
+  // ---- 复制：气泡 / 代码块 / 最后一次回复 共用 ----
+  function legacyCopy(t) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+  function copyText(t, btn) {
+    t = String(t == null ? '' : t).replace(/▍$/, '').replace(/ $/,'');
+    function done() {
+      if (!btn) return;
+      var old = btn.innerHTML;
+      btn.innerHTML = '<span class="emo">✓ </span>已复制';
+      btn.classList.add('copied');
+      setTimeout(function () { btn.innerHTML = old; btn.classList.remove('copied'); }, 1400);
+    }
+    var p = (navigator.clipboard && navigator.clipboard.writeText)
+      ? navigator.clipboard.writeText(t)
+      : (legacyCopy(t) ? Promise.resolve() : Promise.reject());
+    return p.then(done).catch(function () {
+      if (legacyCopy(t)) done(); else flash('⚠️ 复制失败，请长按选择文本', 'note-err');
+    });
+  }
+  // Markdown 代码块右上角挂「复制」（服务端首批 + 增量插入后都要接一次）
+  function wireCodeCopy(scope) {
+    (scope || listEl).querySelectorAll('.md pre').forEach(function (pre) {
+      if (pre.dataset.cw) return;
+      pre.dataset.cw = '1';
+      var wrap = document.createElement('div');
+      wrap.className = 'code-wrap';
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var c = document.createElement('button');
+      c.type = 'button'; c.className = 'code-copy'; c.setAttribute('data-debug', 'copy');
+      c.innerHTML = '<span class="emo">📋 </span>复制';
+      c.addEventListener('click', function () { copyText((pre.querySelector('code') || pre).innerText, c); });
+      wrap.appendChild(c);
+    });
+  }
   function appendEvents(evs) {
     var empty = listEl.querySelector('.tl-empty');
     if (empty) empty.remove();
@@ -216,14 +286,12 @@ const sessionHTML = head + `
     evs.forEach(function (ev) { if (!seen[ev.id]) { seen[ev.id] = 1; html += eventHTML(ev); } });
     if (html) {
       listEl.insertAdjacentHTML('beforeend', html);
-      // 新到的思考块按当前总开关决定开合，之后用户可单独展开
-      listEl.querySelectorAll('.tl-think:not([data-synced])').forEach(function (d) {
-        d.open = thinkShown; d.setAttribute('data-synced', '1');
-      });
+      wireCodeCopy(listEl);
     }
     fmtTimes();
   }
   fmtTimes();
+  wireCodeCopy(listEl);
   stick();
 
   var MARK_TEXT = { good: '✅ 圆满结束', stop: '⏹ 中途停止' };
@@ -243,35 +311,24 @@ const sessionHTML = head + `
   // ---- 逐字直播：当前轮还没落进 transcript 的 thinking/text/tool 块 ----
   function liveBlockHTML(b) {
     if (b.kind === 'thinking')
-      return '<details class="tl-think tl-live-blk" ' + (thinkShown ? 'open' : '') +
-        '><summary data-debug="thinking"><span class="emo">🤔 </span>思考中…</summary><pre>' + esc(b.text) + '</pre></details>';
+      // 思考过程实时展开（像豆包滚动它在想什么），落盘成正式事件后默认折叠
+      return '<details class="tl-think tl-live-blk is-live" open>' +
+        '<summary data-debug="thinking"><span class="think-ico">🧠</span><span class="think-tx">思考中</span><span class="uc-spin think-spin"></span></summary>' +
+        '<pre>' + esc(b.text) + '</pre></details>';
     if (b.kind === 'text')
-      return '<div class="tl-text tl-live-blk">' + esc(b.text) +
-        '<span class="caret-blink">▍</span></div>';
+      // 服务端已按 GFM 渲染（脚本无害转义）；中途未闭合的代码围栏由 goldmark 退化成段落，闭合后自动成形
+      return '<div class="tl-text tl-live-blk' + (b.html ? ' md' : '') + '">' +
+        (b.html || esc(b.text)) + '<span class="caret-blink">▍</span></div>';
     if (b.kind === 'tool') {
-      var sum = b.summary ? ' <span class="tl-sum">' + esc(b.summary) + '</span>' : '';
-      var body = b.text ? '<pre class="live-in">' + prettyJSON(b.text) + '</pre>' : '';
       var res = b._result;
-      var runTag = res ? '' : ' <i class="tool-run">进行中…</i>';
-      var resHTML = '';
-      if (res) {
-        resHTML = '<div class="tl-result ' + (res.err ? 'r-err' : 'r-ok') + ' live-result">' +
-          '<details open><summary data-debug="' + (res.err ? 'tool error' : 'tool result') +
-          '"><span class="emo">' + (res.err ? '⚠️' : '✅') + ' </span>' +
-          (res.err ? '工具回报失败' : '工具回报') + '</summary><pre>' + esc(res.text) + '</pre></details></div>';
-      }
-      return '<div class="tl-tool tl-live-blk" data-tid="' + esc(b.tid || '') + '"><details' +
-        (b.text && !res ? '' : ' open') + '><summary><span class="emo">' +
-        toolEmoji(b.name) + ' </span><b>' + esc(b.name) + '</b>' + sum + runTag +
-        '</summary>' + body + resHTML + '</details></div>';
+      return toolCallHTML({
+        tid: b.tid, name: b.name, summary: b.summary, input: b.text,
+        result: res ? res.text : '', rerr: res ? res.err : false
+      }).replace('<details ', '<details data-live="1" ');
     }
     if (b.kind === 'result') {
       // 兜底：没找到对应进行中工具（折叠失败/跨帧）时单列
-      return '<div class="tl-result tl-live-blk ' + (b.err ? 'r-err' : 'r-ok') +
-        '" data-tid="' + esc(b.tid || '') + '"><details open><summary data-debug="' +
-        (b.err ? 'tool error' : 'tool result') + '"><span class="emo">' +
-        (b.err ? '⚠️' : '✅') + ' </span>' + (b.err ? '工具回报失败' : '工具回报') +
-        '</summary><pre>' + esc(b.text) + '</pre></details></div>';
+      return orphanResultHTML(b.tid, b.text, b.err);
     }
     return '';
   }
@@ -282,6 +339,7 @@ const sessionHTML = head + `
     var stickNow = nearBottom();
     el.innerHTML = foldLive(blocks).map(liveBlockHTML).join('');
     el.hidden = false;
+    wireCodeCopy(el);
     if (stickNow) stick();
   }
   // 把 tool_result 并进同 tid 的进行中工具块（命令+产出一张卡）
@@ -459,10 +517,17 @@ const sessionHTML = head + `
     var el = document.createElement('div');
     el.className = 'tl-ev tl-user tl-pending';
     el.setAttribute('data-pseq', String(seq));
-    el.innerHTML = '<div class="tl-meta"><span class="tl-who" data-debug="you"><span class="emo">🧭 </span>你' +
-      '<i class="pend-tag' + (tag === '待终端接收' ? ' pend-wait' : '') + '">' + esc(tag || '已送达') +
-      '</i></span></div><div class="tl-body"><div class="tl-text">' +
-      esc(msg) + '</div></div>';
+    var now = new Date();
+    var iso = now.toISOString();
+    var label = String(now.getHours()).padStart(2, '0') + ':' +
+      String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+    el.innerHTML = '<div class="tl-meta"><time class="tl-ts" datetime="' + iso + '">' + label +
+      '</time><i class="pend-tag' + (tag === '待终端接收' ? ' pend-wait' : '') + '">' + esc(tag || '已送达') +
+      '</i></div><div class="tl-body"><div class="tl-text">' + esc(msg) + '</div></div>' +
+      '<div class="bub-acts"><button type="button" class="bub-act" data-act="edit" data-debug="edit" data-text="' + esc(msg) +
+      '" title="取回输入框，改完重发">✏️</button>' +
+      '<button type="button" class="bub-act" data-act="copy" data-debug="copy" data-text="' + esc(msg) +
+      '" title="复制这句话">📋</button></div>';
     listEl.appendChild(el);
     stick();
     return { seq: seq, text: msg };
@@ -525,15 +590,86 @@ const sessionHTML = head + `
     renderQueue((busy || restarting) ? d.queued : null);
     renderPerms(d.perms, d.autopilot, d.perm_on);
     if (typing) typing.hidden = !(busy && !(d.streaming && d.streaming.length));
-    var stopBtn = document.getElementById('btn-stop');
-    if (stopBtn) stopBtn.hidden = !(d.bridge && busy);
+    refreshDock();
+    syncMsgActions(!busy && !restarting);
     if (inp && document.documentElement.dataset.stealth !== '1') {
       inp.placeholder = busy
-        ? '船队正忙：话会排队，这轮跑完马上接着说'
+        ? '船队正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队等它跑完'
         : restarting ? '♻️ 新桥接续中，马上就能继续说…'
-        : '说点什么…（Enter 发送，Shift+Enter 换行）';
+        : '说点什么…（Enter 发送）';
     }
     if (pend) { if (d.pending > 0) { pn.textContent = d.pending; pend.hidden = false; } else pend.hidden = true; }
+  }
+
+  // ---- 豆包式发送坞：空闲=发送；忙+有字=停止并改发；忙+空=停止 ----
+  var dockMode = 'send';
+  function refreshDock() {
+    if (!btn || !input) return;
+    var busyNow = !!(lastState && stateKey(lastState) === 'working');
+    var hasText = input.value.trim() !== '';
+    var mode = busyNow ? (hasText ? 'stopfirst' : 'stop') : 'send';
+    dockMode = mode;
+    btn.classList.toggle('is-stop', mode === 'stop');
+    btn.classList.toggle('is-stopfirst', mode === 'stopfirst');
+    if (mode === 'stop') {
+      btn.innerHTML = '■';
+      btn.title = '停止当前回答（等同终端 Esc）';
+      btn.setAttribute('aria-label', '停止生成');
+      btn.setAttribute('data-debug', 'stop');
+    } else if (mode === 'stopfirst') {
+      btn.innerHTML = '⏩';
+      btn.title = '停止当前回答，立刻改发这句';
+      btn.setAttribute('aria-label', '停止并发送');
+      btn.setAttribute('data-debug', 'stop+send');
+    } else {
+      btn.innerHTML = '<span class="emo">📨 </span>发送';
+      btn.title = '发送（Enter）';
+      btn.setAttribute('aria-label', '发送');
+      btn.setAttribute('data-debug', 'send');
+    }
+  }
+  // 「重新生成 / 复制」操作条：待命且画面里有船队回复时才出现
+  function lastAssistantText() {
+    var live = document.getElementById('tl-live');
+    var nodes = (live && !live.hidden) ? live.querySelectorAll('.tl-text') : [];
+    if (!nodes.length) nodes = listEl.querySelectorAll('.tl-assistant:not(.superseded) .tl-text');
+    if (!nodes.length) return '';
+    return nodes[nodes.length - 1].innerText;
+  }
+  function syncMsgActions(show) {
+    var bar = document.getElementById('tl-actions');
+    if (!bar) return;
+    var hasReply = !!listEl.querySelector('.tl-assistant:not(.superseded) .tl-text') ||
+      !!((function () {
+        var live = document.getElementById('tl-live');
+        return live && !live.hidden && live.querySelector('.tl-text');
+      })());
+    bar.hidden = !(show && hasReply);
+  }
+  // 重新生成：把最后一句真人话之后的旧回答客户端折叠（线性 transcript 不能云端分叉）
+  function supersedeLastTurn() {
+    var users = listEl.querySelectorAll('.tl-user:not(.tl-pending)');
+    var lastUser = users[users.length - 1];
+    if (!lastUser) return;
+    var n = lastUser.nextElementSibling, killed = [];
+    while (n) {
+      if (n.classList.contains('tl-user')) break;
+      if (n.classList.contains('tl-assistant') || n.classList.contains('tl-system')) killed.push(n);
+      n = n.nextElementSibling;
+    }
+    if (!killed.length) return;
+    var tag = document.createElement('button');
+    tag.type = 'button'; tag.className = 'tl-sys regen-tag';
+    tag.setAttribute('data-debug', 'regenerated (click to toggle)');
+    tag.textContent = '↻ 上一版回答已折叠，点这里对照查看';
+    lastUser.parentNode.insertBefore(tag, killed[0]);
+    function apply(hide) { killed.forEach(function (el) { el.classList.toggle('superseded', hide); }); }
+    apply(true);
+    tag.addEventListener('click', function () {
+      var expanded = tag.classList.toggle('expanded');
+      apply(!expanded);
+      tag.textContent = expanded ? '↻ 收起上一版回答' : '↻ 上一版回答已折叠，点这里对照查看';
+    });
   }
 
   // 增量轮询：SSE 事件即时踢一脚，1s 轮询兜底；页面隐藏时暂停
@@ -591,6 +727,8 @@ const sessionHTML = head + `
     if (document.hidden) stopTimer(); else { poll(); startTimer(); }
   });
   startTimer();
+  refreshDock();
+  syncMsgActions(true);
 
   // 手机键盘避让：把 visualViewport 的实时高度写给 CSS（.session 用 var(--vvh)），
   // 输入坞不再被软键盘盖住
@@ -619,9 +757,7 @@ const sessionHTML = head + `
         d.events.forEach(function (ev) { if (!seen[ev.id]) { seen[ev.id] = 1; html += eventHTML(ev); } });
         if (html) {
           listEl.insertAdjacentHTML('afterbegin', html);
-          listEl.querySelectorAll('.tl-think:not([data-synced])').forEach(function (d) {
-            d.open = thinkShown; d.setAttribute('data-synced', '1');
-          });
+          wireCodeCopy(listEl);
           wrapEl.scrollTop += wrapEl.scrollHeight - prevH;
           fmtTimes();
         }
@@ -648,15 +784,34 @@ const sessionHTML = head + `
   if (input && document.documentElement.dataset.stealth === '1') {
     input.placeholder = 'msg (enter=send)';
   }
+  var enqueueHint = false; // Ctrl/Cmd+Enter = 忙时排队等跑完
   if (input) {
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        enqueueHint = !!(e.ctrlKey || e.metaKey);
+        form.requestSubmit();
+      }
     });
     input.addEventListener('input', function () {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      refreshDock();
     });
   }
+  // 忙且输入框空时，主按钮是「■ 停止」：点击只停，不发空消息
+  if (btn) btn.addEventListener('click', function (e) {
+    if (dockMode === 'stop') {
+      e.preventDefault();
+      btn.disabled = true;
+      postAction('stop', { cancel_all: '0' }).then(function (d) {
+        if (d.error) flash('⚠️ ' + d.error, 'note-err');
+        else flash('✋ 已停止，船队就停在这里', 'note-ok');
+        kickPoll();
+      }).catch(function () { flash('⚠️ 停止令没送达', 'note-err'); })
+        .finally(function () { btn.disabled = false; refreshDock(); });
+    }
+  });
   function flash(msg, kind) {
     if (!note) return;
     note.textContent = msg;
@@ -679,6 +834,10 @@ const sessionHTML = head + `
     // 保证「发出去的」和「校验过的」是同一个值。
     var body = new URLSearchParams();
     body.set('msg', msg);
+    // 豆包式插话：忙时直接发送 = 停掉当前轮换跑这句；Ctrl/Cmd+Enter 才排队等它跑完
+    var stopFirst = dockMode === 'stopfirst' && !enqueueHint;
+    enqueueHint = false;
+    if (stopFirst) body.set('stop_first', '1');
     fetch(form.action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -705,16 +864,47 @@ const sessionHTML = head + `
         setTimeout(poll, 400);
       })
       .catch(function (e) { if (e) flash('⚠️ 网络岔了，没递出去', 'note-err'); })
-      .finally(function () { btn.disabled = false; });
+      .finally(function () { btn.disabled = false; refreshDock(); });
   });
 
-  // 思考总开关：像 CLI 一样默认直接可见，嫌长可一键隐掉（新到块跟随）
-  var thinkBtn = document.getElementById('think-toggle');
-  if (thinkBtn) thinkBtn.addEventListener('click', function () {
-    thinkShown = !thinkShown;
-    listEl.querySelectorAll('.tl-think').forEach(function (d) { d.open = thinkShown; });
-    thinkBtn.textContent = '思考：' + (thinkShown ? '显' : '隐');
-    thinkBtn.setAttribute('aria-pressed', thinkShown ? 'true' : 'false');
+  // 气泡操作（事件委托）：✏️ 取回输入框改完重发；📋 复制这句话
+  listEl.addEventListener('click', function (e) {
+    var b = e.target.closest('button.bub-act');
+    if (!b) return;
+    var act = b.getAttribute('data-act'), text = b.getAttribute('data-text') || '';
+    if (act === 'copy') { copyText(text, b); return; }
+    if (act === 'edit') {
+      input.value = text;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      input.focus();
+      refreshDock();
+      flash('✏️ 已取回输入框：改完直接发送（船队正忙时会停下当前轮再发）', 'note-ok');
+    }
+  });
+  // 🔄 重新生成：中断当前轮，就上一句话重新作答
+  var regenBtn = document.getElementById('btn-regen');
+  if (regenBtn) regenBtn.addEventListener('click', function () {
+    regenBtn.disabled = true;
+    fetch(actionURL('regenerate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
+      .then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        supersedeLastTurn();
+        flash('🔄 ' + (d.detail || '已让船队重新作答'), 'note-ok');
+        if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
+        kickPoll(); setTimeout(poll, 400);
+      }).catch(function (e) { if (e) flash('⚠️ 重新生成没递出去', 'note-err'); })
+      .finally(function () { regenBtn.disabled = false; });
+  });
+  // 📋 复制船队最近一次回复
+  var copyLastBtn = document.getElementById('btn-copy-last');
+  if (copyLastBtn) copyLastBtn.addEventListener('click', function () {
+    var t = lastAssistantText();
+    if (!t) { flash('还没有可复制的回复', 'note-err'); return; }
+    copyText(t, copyLastBtn);
   });
 
   // 结局标记：✅ 圆满结束 / ⏹ 中途停止；再开口说话时服务端自动撤掉
@@ -756,16 +946,6 @@ const sessionHTML = head + `
       body: new URLSearchParams(params || {})
     }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); });
   }
-  var stopBtn = document.getElementById('btn-stop');
-  if (stopBtn) stopBtn.addEventListener('click', function () {
-    stopBtn.disabled = true;
-    postAction('stop', { cancel_all: '0' }).then(function (d) {
-      if (d.error) flash('⚠️ ' + d.error, 'note-err');
-      else flash('✋ 中断令已送达', 'note-ok');
-      kickPoll();
-    }).catch(function (e) { if (e) flash('⚠️ 中断令没送达', 'note-err'); })
-      .finally(function () { stopBtn.disabled = false; });
-  });
   var qCancel = document.getElementById('q-cancel');
   if (qCancel) qCancel.addEventListener('click', function () {
     postAction('stop', { cancel_all: '1' }).then(function (d) {

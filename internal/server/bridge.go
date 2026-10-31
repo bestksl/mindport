@@ -73,6 +73,7 @@ type partialBlock struct {
 	Kind    string `json:"kind"` // thinking | text | tool | result
 	Name    string `json:"name,omitempty"`
 	Text    string `json:"text"`
+	HTML    string `json:"html,omitempty"` // text：服务端 GFM 逐字渲染（随快照现算）
 	Summary string `json:"summary,omitempty"`
 	ToolID  string `json:"tid,omitempty"` // tool/result：关联 id
 	Err     bool   `json:"err,omitempty"` // result：工具回报失败
@@ -520,6 +521,24 @@ func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 // cancelQueued=true 连排队的话一起撤；false 时排队话由新桥原样重投（CLI
 // 内部队列随进程蒸发，且这些话尚未落 transcript，不重投就丢了）。
 func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
+	return b.interrupt(sid, "", !cancelQueued)
+}
+
+// ReplaceTurn 中断当前轮、丢弃排队，并用 first 作为新一轮的点火句（--resume 后
+// 立即开跑）。豆包式「重新生成」「生成中直接改发新请求」都走它：网页 sid 不变，
+// 只见短暂「重连中」后新回答接上。first 为空时退化为纯中断（待命）。
+func (b *fleetBridge) ReplaceTurn(sid, first string) error {
+	if strings.TrimSpace(first) == "" {
+		return b.interrupt(sid, "", false)
+	}
+	return b.interrupt(sid, first, false)
+}
+
+// interrupt 是中断/换轮的公共实现：
+//   - override 非空：用它点火新一代，排队旧话一律丢弃；
+//   - override 为空且 keepQueued：排队话原样留给新桥（首句点火，其余重投）；
+//   - 两者皆无：纯中断，新一代 --resume 待命。
+func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 	if b == nil {
 		return fmt.Errorf("即时桥未启用")
 	}
@@ -537,10 +556,14 @@ func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
 	fp.gen++ // 提前宣告旧代作废：旧 waitGen/readLoop 凭代数不等静默退场，不会误判「意外死亡」重复重起
 	oldDone := fp.procDone
 	oldProc := fp.cmd
-	pending := append([]string(nil), fp.queued...)
-	if cancelQueued {
+	var pending []string
+	if strings.TrimSpace(override) != "" {
+		pending = []string{override} // 换轮：新句独占点火，旧队列丢弃
 		fp.queued = nil
-		pending = nil
+	} else if keepQueued {
+		pending = append([]string(nil), fp.queued...) // 新桥原样重投（CLI 内部队列随旧进程蒸发）
+	} else {
+		fp.queued = nil
 	}
 	fp.blocks = nil
 	fp.state = bridgeRestarting
@@ -550,6 +573,7 @@ func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
 
 	// 先礼后兵：协议中断 → 等旧代真退出 → 兜底 SIGKILL。
 	// 绝不能让两代 CLI 同时写同一份 transcript。
+	cancelQueued := override != "" || !keepQueued // 换轮/撤队时让旧代把它内部排队也丢掉
 	payload, _ := json.Marshal(map[string]any{
 		"type":          "control_request",
 		"action":        "interrupt",

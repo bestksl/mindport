@@ -225,6 +225,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		if p, ok := s.transcriptPath(info, sid); ok {
 			d.HasLog = true
 			if pg, err := transcript.ReadTail(p); err == nil {
+				enrichMarkdown(pg.Events)
 				d.Events = pg.Events
 				d.Cursor = pg.Cursor
 				d.From = pg.From
@@ -285,6 +286,11 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 	resp.Pending, _ = s.V.MailPending(sid)
 	if _, blocks, queued, alive := s.bridge.snapshot(sid); alive {
 		resp.Bridge = true
+		for i := range blocks { // 直播文本也走 GFM：轮中即见代码块/表格/列表，与落盘后观感一致
+			if blocks[i].Kind == "text" && blocks[i].Text != "" {
+				blocks[i].HTML = chatHTML(blocks[i].Text)
+			}
+		}
 		resp.Streaming = blocks
 		resp.Queued = queued
 	}
@@ -297,6 +303,7 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 	p := transcript.Path(home, info.dir, sid)
 	from := int64(atoiDefault(r.URL.Query().Get("from"), 0))
 	if pg, err := transcript.ReadSince(p, from); err == nil {
+		enrichMarkdown(pg.Events)
 		if len(pg.Events) > 0 { // nil 切片会编码成 null，前端要稳定的 []
 			resp.Events = pg.Events
 		}
@@ -337,6 +344,7 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "transcript 读不到"})
 		return
 	}
+	enrichMarkdown(pg.Events)
 	evs := pg.Events
 	if evs == nil {
 		evs = []transcript.Event{}

@@ -37,7 +37,10 @@ type Block struct {
 	ToolID    string `json:"tid,omitempty"`     // tool/result：关联 id
 	Name      string `json:"name,omitempty"`    // tool：工具名
 	Summary   string `json:"summary,omitempty"` // tool：白名单动作摘要
-	IsError   bool   `json:"err,omitempty"`     // result：失败
+	IsError   bool   `json:"err,omitempty"`     // result（独立兜底块）：失败
+	Result    string `json:"result,omitempty"`  // tool：工具回报原文（已按 tid 并入同一张工具卡）
+	ResultErr bool   `json:"rerr,omitempty"`    // tool：回报是失败
+	HTML      string `json:"html,omitempty"`    // text：server 层填充的安全 Markdown HTML（前端富文本）
 	Collapsed bool   `json:"collapsed,omitempty"`
 }
 
@@ -202,7 +205,81 @@ func readRange(f *os.File, start, end int64, dropHead bool) (events []Event, ali
 			break
 		}
 	}
-	return events, aligned, next, err
+	return foldToolResults(events), aligned, next, err
+}
+
+// foldToolResults 把 tool_result 并入同页窗口内对应的 tool_use，工具的命令与
+// 回报落在同一张卡上。Claude Code 里 tool_result 伪装成 role=user 记录——若单列
+// 就会在对话里冒充成「你」说的话（豆包式视图最忌讳这点）。合并后该伪用户行整条
+// 删除；跨页窗口、找不到归属工具的 result 保留为独立 result 块由前端再按 tid 兜底。
+func foldToolResults(evs []Event) []Event {
+	toolByID := make(map[string]*Block)
+	for i := range evs {
+		for j := range evs[i].Blocks {
+			b := &evs[i].Blocks[j]
+			if b.Kind == "tool" && b.ToolID != "" {
+				toolByID[b.ToolID] = b
+			}
+		}
+	}
+	out := make([]Event, 0, len(evs))
+	for _, ev := range evs {
+		if ev.Role == "user" && len(ev.Blocks) > 0 {
+			allResult := true
+			for i := range ev.Blocks {
+				if ev.Blocks[i].Kind != "result" {
+					allResult = false
+					break
+				}
+			}
+			if allResult {
+				var unmatched []Block
+				for _, rb := range ev.Blocks {
+					if tb, ok := toolByID[rb.ToolID]; ok && rb.ToolID != "" {
+						tb.Result = rb.Text
+						tb.ResultErr = rb.IsError
+					} else {
+						unmatched = append(unmatched, rb) // tool_use 在更早的读取窗口
+					}
+				}
+				if len(unmatched) == 0 {
+					continue // 回报全部并入工具卡：不再以「你」的名义单列
+				}
+				ev.Blocks = unmatched
+			}
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
+// LastHumanText 返回 transcript 里最近一条真人发言原文（非工具结果/中断/压缩），
+// 供「重新生成」取回上一句原话。尾读窗口取大些，避免被超长工具回报挤出视野。
+func LastHumanText(path string) (string, bool) {
+	f, size, err := openSize(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	start := size - tailBytes*4
+	if start < 0 {
+		start = 0
+	}
+	events, _, _, err := readRange(f, start, size, start > 0)
+	if err != nil {
+		return "", false
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Role != "user" {
+			continue
+		}
+		for _, b := range events[i].Blocks {
+			if b.Kind == "text" && strings.TrimSpace(b.Text) != "" {
+				return b.Text, true
+			}
+		}
+	}
+	return "", false
 }
 
 // ---------- jsonl 解析 ----------
