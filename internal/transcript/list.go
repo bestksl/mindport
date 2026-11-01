@@ -206,8 +206,8 @@ func scanMeta(path string) SessionMeta {
 		if rec.Type != "user" && rec.Type != "assistant" || len(rec.Message) == 0 {
 			continue
 		}
-		if !rec.isSystemMarker() {
-			m.Events++ // 中断/压缩是状态分隔，不计入消息条数
+		if !rec.isSystemMarker() && !(rec.Type == "user" && injectionOnly(rec.Message)) {
+			m.Events++ // 中断/压缩与系统注入是状态/噪声，不计入消息条数
 		}
 		ts := ParseTS(rec.Timestamp)
 		if m.FirstTS.IsZero() {
@@ -281,7 +281,7 @@ func scanMetaCheap(path string) SessionMeta {
 }
 
 // titleWorthy 排除系统注入的「伪首句」：compaction 续接提示、
-// 图片占位说明等都不是真人起的话，不该当会话标题。
+// 图片占位说明、任务通知 XML 等都不是真人起的话，不该当会话标题。
 func titleWorthy(t string) bool {
 	t = strings.TrimSpace(t)
 	switch {
@@ -293,7 +293,7 @@ func titleWorthy(t string) bool {
 		return false
 	case strings.HasPrefix(t, "[Image:"):
 		return false
-	case strings.HasPrefix(t, "<system-reminder>"):
+	case IsSystemInjection(t):
 		return false
 	}
 	return true
@@ -328,7 +328,8 @@ func firstHumanText(raw json.RawMessage) string {
 		return ""
 	}
 	for _, b := range blocks {
-		if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+		// 跳过任务通知等系统注入块，标题必须取自真人写的那句。
+		if b.Type == "text" && strings.TrimSpace(b.Text) != "" && !IsSystemInjection(b.Text) {
 			return b.Text
 		}
 	}

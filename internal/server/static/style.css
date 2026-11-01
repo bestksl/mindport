@@ -1598,10 +1598,59 @@ a.chip:hover { border-color: var(--amber-line); }
   color: var(--muted);
   margin-bottom: 4px;
 }
-.tl-user:not(.only-result) { align-items: flex-end; }
 .tl-who { font-weight: 600; }
 .tl-ts { font-variant-numeric: tabular-nums; opacity: .7; }
 .tl-body { width: 100%; min-width: 0; }
+
+/* 谁在说话——头像分列（豆包式）：船队左栏 ⚓，我右栏「我」，
+   中间内容各归其列，不看气泡也能一眼分清左右。 */
+.tl-assistant {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 9px;
+  align-items: start;
+}
+.tl-assistant::before {
+  content: "⚓";
+  grid-column: 1;
+  grid-row: 1 / -1;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  margin-top: 1px;
+}
+.tl-assistant.side::before { content: "🤖"; font-size: 14px; }
+.tl-assistant > .tl-meta, .tl-assistant > .tl-body { grid-column: 2; }
+.tl-assistant > .tl-body { min-width: 0; }
+
+/* 用户：右栏头像，内容整体贴右 */
+.tl-user:not(.only-result) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  column-gap: 9px;
+  align-items: start;
+}
+.tl-user:not(.only-result)::before {
+  content: "我";
+  grid-column: 2;
+  grid-row: 1 / -1;
+  justify-self: end;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600;
+  color: var(--ok-ink);
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: 50%;
+  margin-top: 1px;
+}
+.tl-user:not(.only-result) > .tl-meta,
+.tl-user:not(.only-result) > .tl-body,
+.tl-user:not(.only-result) > .bub-acts { grid-column: 1; }
+.tl-user:not(.only-result) > .tl-meta { justify-self: end; }
 
 /* 船队回复：无气泡，直接在页面上铺正文（markdown 富排版见 .md） */
 .tl-text {
@@ -1610,13 +1659,14 @@ a.chip:hover { border-color: var(--amber-line); }
   margin: 2px 0;
   font-size: 14.5px;
   line-height: 1.72;
+  max-width: 82ch;
 }
-.tl-text.md { white-space: normal; max-width: 82ch; }
+.tl-text.md { white-space: normal; }
 
 /* 用户的话：右对齐气泡（只泡一边，不是微信式双泡对喷） */
 .tl-user:not(.only-result) .tl-body { display: flex; flex-direction: column; align-items: flex-end; }
 .tl-user:not(.only-result) .tl-text {
-  max-width: min(62ch, 88%);
+  max-width: min(58ch, 100%);
   padding: 9px 13px;
   border: 1px solid var(--amber-line);
   border-radius: 15px 15px 4px 15px;
@@ -1638,7 +1688,7 @@ a.chip:hover { border-color: var(--amber-line); }
 .bub-act.copied { color: var(--ok-ink); opacity: 1; }
 
 /* 回复下方操作条：重新生成 / 复制 */
-.tl-actions { display: flex; gap: 8px; margin: 4px 0 2px; }
+.tl-actions { display: flex; gap: 8px; margin: 4px 0 2px 39px; }
 .msgact {
   min-height: 0; padding: 4px 13px; font-size: 12px; font-weight: 400;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -1722,53 +1772,55 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 .tl-text.md th { background: var(--panel); font-weight: 600; }
 .tl-text.md tr:nth-child(2n) td { background: color-mix(in srgb, var(--panel) 55%, transparent); }
 
-/* ---- 思考折叠卡：默认收起，直播中的那张实时展开 ---- */
+/* ---- 思考折叠卡：默认收起，直播中的那张实时展开 ----
+   思考是「船上自己的事」，不是给人看的正文：字号整体小一档。 */
 .tl-think {
-  margin: 6px 0;
+  margin: 5px 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--panel);
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .tl-think > summary {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 12px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 11px;
   cursor: pointer; color: var(--muted); user-select: none; list-style: none;
 }
 .tl-think > summary::-webkit-details-marker { display: none; }
-.think-ico { font-style: normal; }
-.think-tx { font-weight: 600; }
+.think-ico { font-style: normal; font-size: 11.5px; }
+.think-tx { font-weight: 500; }
 .think-chevron { margin-left: auto; transition: transform .18s ease; }
 .tl-think[open] .think-chevron { transform: rotate(180deg); }
 .tl-think > pre {
-  margin: 0; padding: 8px 13px 11px;
+  margin: 0; padding: 6px 12px 9px;
   border-top: 1px dashed var(--line);
-  max-height: 300px; overflow: auto;
+  max-height: 260px; overflow: auto;
   white-space: pre-wrap; word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px; line-height: 1.6; color: var(--muted);
+  font-size: 11px; line-height: 1.55; color: var(--muted);
 }
 .tl-think.is-live > summary { color: var(--busy); }
 .think-spin { margin-left: auto; }
 
-/* ---- 工具调用状态卡：转圈 / ✓ / ⚠，点开看入参与产出 ---- */
+/* ---- 工具调用状态卡：转圈 / ✓ / ⚠，点开看入参与产出 ----
+   中间步骤同样小一档：扫一眼知道在干嘛即可，正文才是 14.5px。 */
 .tl-tool.ucall {
-  margin: 6px 0;
+  margin: 5px 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--panel);
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .ucall > summary {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 12px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 11px;
   cursor: pointer; user-select: none; list-style: none;
   color: var(--ink);
 }
 .ucall > summary::-webkit-details-marker { display: none; }
-.uc-ico { font-style: normal; }
+.uc-ico { font-style: normal; font-size: 11.5px; }
 .uc-name { font-weight: 600; }
 .ucall .tl-sum {
   flex: 0 1 auto; min-width: 0;
@@ -1778,7 +1830,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 .uc-state {
   margin-left: auto; flex: none;
   display: inline-flex; align-items: center; gap: 5px;
-  font-style: normal; font-size: 11.5px; color: var(--muted);
+  font-style: normal; font-size: 11px; color: var(--muted);
   white-space: nowrap;
 }
 .uc-run { border-color: color-mix(in srgb, var(--busy) 45%, var(--line)); }
@@ -1787,12 +1839,12 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 .uc-err { border-color: rgba(224, 131, 98, .55); }
 .uc-err > summary, .uc-err .uc-state { color: #e08362; }
 .ucall > pre {
-  margin: 0; padding: 8px 12px;
+  margin: 0; padding: 6px 11px 8px;
   border-top: 1px dashed var(--line);
-  max-height: 320px; overflow: auto;
+  max-height: 280px; overflow: auto;
   white-space: pre-wrap; word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px; line-height: 1.55;
+  font-size: 11px; line-height: 1.5;
 }
 .uc-in { background: var(--panel-2); color: var(--ink); }
 .uc-out { color: var(--muted); }
@@ -1832,6 +1884,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
   gap: 8px;
   font-size: 12px;
   color: var(--busy);
+  margin-left: 39px; /* 与助手正文列对齐 */
   padding: 4px 2px 2px;
 }
 .tl-typing .dots { display: inline-flex; gap: 3px; }
@@ -2509,7 +2562,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 /* —— 船台：逐字直播 / 排队 / 动作 —— */
 .tl-live {
   padding: 8px 12px 2px;
-  margin: 0 2px;
+  margin: 0 2px 0 39px; /* 与助手正文列对齐（头像列 30 + 间隙 9） */
   border-left: 2px solid var(--busy);
   background: var(--busy-soft);
   border-radius: 0 10px 10px 0;
@@ -2736,7 +2789,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 }
 
 /* ===== v0.9 手机工具审批 + 实时工具卡 ===== */
-.tl-perms { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 8px; }
+.tl-perms { display: flex; flex-direction: column; gap: 8px; margin-left: 39px; padding: 4px 2px 8px; }
 .perm-banner {
   font-size: 12.5px; color: var(--amber); font-weight: 600;
   padding: 2px 2px 0;

@@ -3,6 +3,7 @@ package server
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // runReadLoop 把若干 stream-json 行喂给指定代数的 readLoop，喂完即 EOF。
@@ -151,6 +152,66 @@ type nopCloserWriter struct{}
 
 func (nopCloserWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (nopCloserWriter) Close() error                { return nil }
+
+// 空闲退役：超时 idle/cold 桥置 dead 但不杀复活资格（killed=false），
+// 年轻空闲桥与正忙/等人的桥不动。
+func TestReapIdleRetires(t *testing.T) {
+	b := newFleetBridge(nil)
+	mk := func(sid, state string, idleAt time.Time) *fleetProc {
+		fp := &fleetProc{sid: sid, state: state, gen: 1, idleAt: idleAt}
+		b.procs[sid] = fp
+		return fp
+	}
+	old := mk("old", bridgeIdle, time.Now().Add(-2*time.Minute))
+	cold := mk("cold", bridgeCold, time.Now().Add(-90*time.Second))
+	young := mk("young", bridgeIdle, time.Now())
+	busy := mk("busy", bridgeWorking, time.Now().Add(-10*time.Minute))
+	wait := mk("wait", bridgeWaiting, time.Now().Add(-10*time.Minute))
+	gone := mk("gone", bridgeDead, time.Now().Add(-10*time.Minute))
+
+	b.reapOnce()
+
+	if old.state != bridgeDead || old.gen != 2 || old.killed {
+		t.Fatalf("超时 idle 桥应退役（dead/gen+1/killed=false），实得 state=%s gen=%d killed=%v",
+			old.state, old.gen, old.killed)
+	}
+	if cold.state != bridgeDead {
+		t.Fatalf("超时 cold 空船也应退役，实得 %s", cold.state)
+	}
+	if young.state != bridgeIdle {
+		t.Errorf("未满 TTL 的空闲桥不应动，实得 %s", young.state)
+	}
+	if busy.state != bridgeWorking {
+		t.Errorf("工作中的桥不能退役，实得 %s", busy.state)
+	}
+	if wait.state != bridgeWaiting {
+		t.Errorf("等人拍板的桥不能退役，实得 %s", wait.state)
+	}
+	if gone.state != bridgeDead {
+		t.Errorf("已死桥无需变化，实得 %s", gone.state)
+	}
+}
+
+// 起桥前席位探测的命令行识别：--resume/--session-id 两种写法都要认。
+func TestResumeSidRe(t *testing.T) {
+	cases := map[string]string{
+		"/x/claude -p --resume abcdef12-3456-7890-abcd-ef1234567890 --verbose": "abcdef12-3456-7890-abcd-ef1234567890",
+		"/x/claude --session-id=abcdef12-3456-7890-abcd-ef1234567890":          "abcdef12-3456-7890-abcd-ef1234567890",
+		"/x/claude --session-id abcdef12-3456-7890-abcd-ef1234567890 -p":       "abcdef12-3456-7890-abcd-ef1234567890",
+		`vim /notes/abcdef12-3456-7890-abcd-ef1234567890.md`:                   "",
+		"claude": "",
+	}
+	for args, want := range cases {
+		m := resumeSidRe.FindStringSubmatch(args)
+		got := ""
+		if m != nil {
+			got = m[1]
+		}
+		if got != want {
+			t.Errorf("args=%q 识别得 %q，应得 %q", args, got, want)
+		}
+	}
+}
 
 // restarting 对外三态映射与列表分组。
 func TestRestartingMapping(t *testing.T) {

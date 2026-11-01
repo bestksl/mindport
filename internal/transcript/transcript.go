@@ -30,6 +30,73 @@ const (
 // ErrNotFound 表示按会话定位不到 transcript 文件（会话太旧或已被清理）。
 var ErrNotFound = errors.New("transcript not found")
 
+// injectionTags 是 Claude Code 以 role=user 身份落盘、但并非任何人发言的
+// 系统注入文本：后台任务完成/中止通知、系统提醒、斜杠命令包装、本地命令
+// 回报、超长输出指引等。它们一旦按用户气泡渲染，就会在真人那句话上方
+// 冒出一段结构化 XML——豆包式视图必须整条滤掉。
+var injectionTags = []string{
+	"<task-notification>",
+	"<system-reminder>",
+	"<command-name>",
+	"<command-message>",
+	"<command-args>",
+	"<local-command-request>",
+	"<local-command-stdout>",
+	"<local-command-stderr>",
+	"<persisted-output>",
+	"<bash-input>",
+	"<bash-stdout>",
+	"<bash-stderr>",
+	"<bash-metadata>",
+}
+
+// IsSystemInjection 报告一段文本是不是系统注入（而非真人发言）。
+// 只认行首标签，避免误伤正文里引用了 XML 的真人消息。
+func IsSystemInjection(s string) bool {
+	t := strings.TrimLeft(s, " \t\r\n")
+	for _, tag := range injectionTags {
+		if strings.HasPrefix(t, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+// injectionOnly 报告一条 user 记录是否除系统注入文本外没有任何真人内容
+// （字符串 content 本身是注入，或块数组里只剩注入 text 块）。
+// 供目录计数把这类记录与中断/压缩状态记录同等排除。
+func injectionOnly(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var msg wireMessage
+	if json.Unmarshal(raw, &msg) != nil || len(msg.Content) == 0 {
+		return false
+	}
+	if msg.Content[0] == '"' {
+		var s string
+		return json.Unmarshal(msg.Content, &s) == nil && strings.TrimSpace(s) != "" && IsSystemInjection(s)
+	}
+	var blocks []wireBlock
+	if json.Unmarshal(msg.Content, &blocks) != nil || len(blocks) == 0 {
+		return false
+	}
+	sawText := false
+	for _, b := range blocks {
+		if b.Type != "text" {
+			return false // 含工具回报等其它块，交给既有折叠逻辑
+		}
+		if strings.TrimSpace(b.Text) == "" {
+			continue
+		}
+		sawText = true
+		if !IsSystemInjection(b.Text) {
+			return false
+		}
+	}
+	return sawText
+}
+
 // Block 是时间线上的一个内容块。
 type Block struct {
 	Kind      string `json:"kind"` // text | thinking | tool | result | interrupt | continue
@@ -347,6 +414,9 @@ func parseLine(line []byte) (Event, bool) {
 	if len(msg.Content) > 0 && msg.Content[0] == '"' {
 		var s string
 		if json.Unmarshal(msg.Content, &s) == nil && strings.TrimSpace(s) != "" {
+			if IsSystemInjection(s) {
+				return Event{}, false // 后台任务通知等系统注入：不是谁说的话，整条丢弃
+			}
 			ev.Blocks = append(ev.Blocks, Block{Kind: "text", Text: clip(s, maxText)})
 		}
 		return ev, len(ev.Blocks) > 0
@@ -360,6 +430,9 @@ func parseLine(line []byte) (Event, bool) {
 		switch b.Type {
 		case "text":
 			if strings.TrimSpace(b.Text) != "" {
+				if IsSystemInjection(b.Text) {
+					continue // 系统注入 text 块：丢弃；若整条只剩它，本行最终不落事件
+				}
 				ev.Blocks = append(ev.Blocks, Block{Kind: "text", Text: clip(b.Text, maxText)})
 			}
 		case "thinking":

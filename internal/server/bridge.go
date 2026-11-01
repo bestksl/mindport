@@ -98,6 +98,7 @@ type fleetProc struct {
 	killed   bool   // 拆船：本次退出不要重起
 	procDone chan struct{}
 	state    string
+	idleAt   time.Time // 进入 idle/cold 的时刻；收割器据此给终端让出会话席位
 	blocks   []partialBlock
 	queued   []string // 忙时注入、尚未跑完的消息（原文，用于页面展示与撤回）
 	errMsg   string
@@ -153,7 +154,139 @@ type bridgeEvent struct {
 }
 
 func newFleetBridge(s *Server) *fleetBridge {
-	return &fleetBridge{srv: s, procs: map[string]*fleetProc{}, subs: map[chan bridgeEvent]struct{}{}}
+	b := &fleetBridge{srv: s, procs: map[string]*fleetProc{}, subs: map[chan bridgeEvent]struct{}{}}
+	go b.reaperLoop() // 空闲桥到点退役：给终端 TUI 让出同会话的席位
+	return b
+}
+
+// 空闲退役节奏：桥连续 idle/cold 满 bridgeIdleTTL 就收掉 CLI，会话席位释放；
+// 网页再说一句话时按 --resume 冷启一座新桥（errBridgeWarming 慢唤醒不丢话）。
+// 常驻桥占着 sid 时，终端 claude --resume 同一 sid 会被 daemon 以
+// 「上一个会话没结束」拒之门外——退役就是给这条让道。
+const (
+	bridgeReapInterval = 10 * time.Second
+	bridgeIdleTTL      = 60 * time.Second
+	bridgeRetireGrace  = 300 * time.Millisecond
+)
+
+// errSessionHeldElsewhere 标记「同一会话正被别的 claude 客户端占着」：
+// 此时不能再起桥双写同一份 transcript，handler 要把人话原样还给用户而不是
+// 默默塞进留言信箱。
+var errSessionHeldElsewhere = errors.New("会话在别处开着")
+
+// reaperLoop 周期收割空闲桥。
+func (b *fleetBridge) reaperLoop() {
+	t := time.NewTicker(bridgeReapInterval)
+	defer t.Stop()
+	for range t.C {
+		b.reapOnce()
+	}
+}
+
+// reapOnce 扫一遍名册，把 idle/cold 超时的桥退役掉。
+func (b *fleetBridge) reapOnce() {
+	b.mu.Lock()
+	fps := make([]*fleetProc, 0, len(b.procs))
+	for _, fp := range b.procs {
+		fps = append(fps, fp)
+	}
+	b.mu.Unlock()
+	for _, fp := range fps {
+		fp.mu.Lock()
+		st := fp.state
+		idleAt := fp.idleAt
+		killed := fp.killed
+		fp.mu.Unlock()
+		if killed || idleAt.IsZero() {
+			continue
+		}
+		if st != bridgeIdle && st != bridgeCold {
+			continue
+		}
+		if time.Since(idleAt) < bridgeIdleTTL {
+			continue
+		}
+		b.retire(fp)
+	}
+}
+
+// retire 收掉一支空闲桥：宣告旧代作废、状态置 dead（网页退回 transcript 视图）、
+// 协议中断 + SIGKILL 收进程。与拆船的区别：killed 不置位，下一句话照常
+// --resume 复活。两阶段（先挂 restarting 宽限 300ms）避免杀掉「刚好在
+// TTL 点上注入、CLI 已读但 status 事件还没到」的新轮。
+func (b *fleetBridge) retire(fp *fleetProc) {
+	fp.spawnMu.Lock()
+	defer fp.spawnMu.Unlock()
+
+	fp.wmu.Lock()
+	fp.mu.Lock()
+	if fp.killed || fp.idleAt.IsZero() || time.Since(fp.idleAt) < bridgeIdleTTL {
+		fp.mu.Unlock()
+		fp.wmu.Unlock()
+		return
+	}
+	if fp.state != bridgeIdle && fp.state != bridgeCold {
+		fp.mu.Unlock()
+		fp.wmu.Unlock()
+		return
+	}
+	proc, stdin, done := fp.cmd, fp.stdin, fp.procDone
+	fp.state = bridgeRestarting // 预告：此刻进来的 Say 走「等待换代」→ 见 dead 后由 handler 复活
+	fp.mu.Unlock()
+	fp.wmu.Unlock()
+	b.publishState(fp)
+
+	time.Sleep(bridgeRetireGrace)
+
+	fp.mu.Lock()
+	switch fp.state {
+	case bridgeWorking, bridgeWaiting, bridgeStarting:
+		// 宽限期里新话已经开跑（或换代正在进行）：放弃退役，状态机自己接管
+		fp.mu.Unlock()
+		return
+	}
+	if fp.state != bridgeRestarting || fp.killed {
+		fp.mu.Unlock()
+		return
+	}
+	fp.gen++ // 旧 waitGen/readLoop 凭代数不等静默退场，不触发自动重起
+	fp.state = bridgeDead
+	fp.blocks = nil
+	fp.queued = nil
+	fp.idleAt = time.Time{}
+	fp.errMsg = ""
+	fp.mu.Unlock()
+
+	// 先礼后兵收进程（与 interrupt 同一套）：两代 CLI 绝不能并存。
+	payload, _ := json.Marshal(map[string]any{
+		"type":          "control_request",
+		"action":        "interrupt",
+		"cancel_queued": true,
+	})
+	payload = append(payload, '\n')
+	fp.wmu.Lock()
+	if stdin != nil {
+		_, _ = stdin.Write(payload)
+	}
+	fp.wmu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(1500 * time.Millisecond):
+			if proc != nil && proc.Process != nil {
+				_ = proc.Process.Kill()
+			}
+			select {
+			case <-done:
+			case <-time.After(1500 * time.Millisecond):
+				if proc != nil && proc.Process != nil {
+					log.Printf("bridge retire: 旧进程收不掉 sid=%s pid=%d", fp.sid, proc.Process.Pid)
+				}
+			}
+		}
+	}
+	b.publishState(fp)
+	log.Printf("bridge retire: 空闲桥已退役、会话席位让出 sid=%s", fp.sid)
 }
 
 func (b *fleetBridge) subscribe() chan bridgeEvent {
@@ -290,6 +423,14 @@ func (b *fleetBridge) Start(dir, resumeSID, name, firstMsg string) (string, *fle
 		b.mu.Unlock()
 	}
 	if err := b.spawn(fp, resumeSID != "", name, firstMsg); err != nil {
+		// 起桥失败（占用探测拦截/CLI 没找到）：半初始化的 fp 不能留在名册里装活——
+		// state 零值不等于 dead，stateOf 会把它当活桥，下一句 Say 就会对 nil stdin 写爆。
+		fp.mu.Lock()
+		if fp.cmd == nil {
+			fp.state = bridgeDead
+			fp.errMsg = clipText(err.Error(), 300)
+		}
+		fp.mu.Unlock()
 		return sid, fp, err
 	}
 	return sid, fp, nil
@@ -328,6 +469,16 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 			case <-time.After(2 * time.Second):
 				return fmt.Errorf("旧桥进程收不掉，先不换代")
 			}
+		}
+	}
+
+	// --resume 起桥前先看席位：终端 TUI/桌面/别的守护若正开着同一 sid，
+	// 两代 CLI 会双写同一份 transcript，必须拦下并把人话还给用户。
+	// （全新 sid 不可能有人占；探测本身任何故障都 fail-open。）
+	if resume {
+		if pid, who, held := b.externalHolder(fp.sid); held {
+			return fmt.Errorf("%w：这个会话还在%s里开着（PID %d）。请先在那边退出（终端按 Ctrl-C/关掉窗口），再回船队说话——两边不能同时写同一份记录",
+				errSessionHeldElsewhere, who, pid)
 		}
 	}
 
@@ -392,6 +543,7 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 	fp.stdin = stdin
 	fp.procDone = done
 	fp.state = bridgeStarting
+	fp.idleAt = time.Time{} // 起跑中不算空闲
 	fp.blocks = nil
 	fp.errMsg = ""
 	fp.mu.Unlock()
@@ -407,6 +559,7 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		fp.mu.Lock()
 		if fp.gen == gen && fp.state == bridgeStarting {
 			fp.state = bridgeCold
+			fp.idleAt = time.Now() // 空船同样占席位，到点也退役
 		}
 		fp.mu.Unlock()
 		b.publishState(fp)
@@ -502,6 +655,12 @@ func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 		fp.mu.Unlock()
 		return false, fmt.Errorf("桥进程已退出")
 	}
+	if fp.stdin == nil {
+		// 半初始化（spawn 在 cmd.Start 前失败，例如席位被占用）：让调用方走 Start 复活，
+		// 绝不能对 nil 管道写。
+		fp.mu.Unlock()
+		return false, fmt.Errorf("桥还没接上")
+	}
 	// working/starting/waiting 写入由 CLI 自己排队续跑；cold/idle 直接开跑。
 	isWorking := fp.state == bridgeWorking || fp.state == bridgeStarting || fp.state == bridgeWaiting
 	if isWorking {
@@ -567,6 +726,7 @@ func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 	}
 	fp.blocks = nil
 	fp.state = bridgeRestarting
+	fp.idleAt = time.Time{} // 换代中不退役
 	fp.errMsg = ""
 	fp.mu.Unlock()
 	b.publishState(fp)
@@ -639,6 +799,7 @@ func (b *fleetBridge) Kill(sid string) bool {
 	}
 	fp.killed = true
 	fp.state = bridgeDead
+	fp.idleAt = time.Time{}
 	fp.blocks = nil
 	fp.queued = nil
 	proc := fp.cmd
@@ -674,6 +835,7 @@ func (b *fleetBridge) waitGen(fp *fleetProc, cmd *exec.Cmd, stderrBuf *limitedBu
 	fp.deaths++
 	deaths := fp.deaths
 	fp.state = bridgeRestarting
+	fp.idleAt = time.Time{}
 	fp.blocks = nil
 	if err != nil && fp.errMsg == "" {
 		if s := strings.TrimSpace(stderrBuf.String()); s != "" {
@@ -748,6 +910,7 @@ func (b *fleetBridge) readLoop(fp *fleetProc, r io.Reader, gen uint64) {
 				fp.mu.Lock()
 				if fp.state == bridgeStarting || fp.state == bridgeCold {
 					fp.state = bridgeIdle
+					fp.idleAt = time.Now()
 				}
 				fp.errMsg = ""
 				fp.mu.Unlock()
@@ -757,11 +920,13 @@ func (b *fleetBridge) readLoop(fp *fleetProc, r io.Reader, gen uint64) {
 				switch {
 				case ev.Status == "requesting":
 					fp.state = bridgeWorking
+					fp.idleAt = time.Time{} // 开跑：退役计时作废
 					fp.blocks = nil
 					fp.errMsg = ""
 				case strings.Contains(ev.Status, "wait"):
-					// waiting_for_input 等：黄灯，别再当工作中
+					// waiting_for_input 等：黄灯，别再当工作中；等人期间不退役
 					fp.state = bridgeWaiting
+					fp.idleAt = time.Time{}
 				}
 				fp.mu.Unlock()
 				b.publishState(fp)
@@ -786,6 +951,7 @@ func (b *fleetBridge) readLoop(fp *fleetProc, r io.Reader, gen uint64) {
 		case "result":
 			fp.mu.Lock()
 			fp.state = bridgeIdle
+			fp.idleAt = time.Now() // 开始空闲倒计时：60s 后给终端让席位
 			fp.blocks = nil
 			if len(fp.queued) > 0 {
 				fp.queued = fp.queued[1:] // 跑完一句，弹出队首

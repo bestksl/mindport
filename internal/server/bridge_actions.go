@@ -80,6 +80,11 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err := s.bridge.Start(info.dir, sid, "", msg)
 	if err != nil && !errors.Is(err, errBridgeWarming) {
+		// 会话正被终端/别的客户端占着：把原因原样还给用户，不能默默塞进信箱。
+		if errors.Is(err, errSessionHeldElsewhere) {
+			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
 		// 仅当 CLI 真的起不来（找不到可执行文件/登录态彻底坏）才退回信箱；
 		// 慢唤醒不算失败——话已在桥进程 stdin 里，不能再落信箱造成重复/黑洞。
 		s.queueMail(w, sid, msg)
@@ -145,6 +150,10 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 	// 桥不在（离线/已停）：resume 起一座新桥用原话点火。
 	_, _, err := s.bridge.Start(info.dir, sid, "", last)
 	if err != nil && !errors.Is(err, errBridgeWarming) {
+		if errors.Is(err, errSessionHeldElsewhere) {
+			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "唤不起船队：" + err.Error()})
 		return
 	}
