@@ -493,20 +493,36 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		"--include-partial-messages",
 		"--verbose",
 	}
-	// 手机审批在役：manual + 每船队一份 MCP 配置，工具授权走手机拍板；
-	// 审批通道没起（测试/精简装配）时维持 v0.8 的 acceptEdits，不打扰。
-	if b.srv.permReady() {
+	// 权限模式对齐 Claude Code（Auto/Plan/无人值守），默认 auto：
+	// 审批通道在役时挂上每船队的 MCP 回调，CLI 认为有风险的操作仍走手机拍板。
+	mode := b.srv.sessionMode(fp.sid)
+	attachPrompt := func() bool {
 		cfgPath, perr := b.srv.perm.configFor(fp.sid)
-		if perr == nil {
-			args = append(args,
-				"--mcp-config", cfgPath,
-				"--permission-mode", "manual",
-				"--permission-prompt-tool", "mcp__mindport__check_permission")
-		} else {
+		if perr != nil {
 			log.Printf("perm: 写 mcp 配置失败，退回 acceptEdits sid=%s: %v", fp.sid, perr)
-			args = append(args, "--permission-mode", "acceptEdits")
+			return false
 		}
-	} else {
+		args = append(args, "--mcp-config", cfgPath,
+			"--permission-prompt-tool", "mcp__mindport__check_permission")
+		return true
+	}
+	switch {
+	case mode == ModePlan:
+		// Plan：CLI 原生只读规划，绝不执行写操作；回调在役也一并挂上兜底。
+		args = append(args, "--permission-mode", ModePlan)
+		if b.srv.permReady() {
+			attachPrompt()
+		}
+	case b.srv.permReady() && attachPrompt():
+		// 回调挂成功：yolo 用 manual（每次都问→回调即时全 allow，等同放手）；
+		// 其余走 auto（低风险自动干，真正危险的才问手机）。
+		if mode == ModeYolo {
+			args = append(args, "--permission-mode", "manual")
+		} else {
+			args = append(args, "--permission-mode", ModeAuto)
+		}
+	default:
+		// 审批通道没起（测试/精简装配）或配置写失败：维持 acceptEdits，不打扰。
 		args = append(args, "--permission-mode", "acceptEdits")
 	}
 	if resume {

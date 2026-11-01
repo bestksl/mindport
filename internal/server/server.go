@@ -175,7 +175,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /sessions/{sid}/stop", s.handleFleetStop)
 	mux.HandleFunc("POST /sessions/{sid}/delete", s.handleFleetDelete)
 	mux.HandleFunc("POST /sessions/{sid}/perm/decide", s.handlePermDecide) // 手机批准/拒绝工具
-	mux.HandleFunc("POST /sessions/{sid}/autopilot", s.handleAutopilot)    // 本船队免审批开关
+	mux.HandleFunc("POST /sessions/{sid}/mode", s.handleMode)              // Auto/Plan/无人值守 模式切换
 	mux.HandleFunc("POST /sessions/{sid}/mark", s.handleSessionMark)
 	mux.HandleFunc("POST /sessions/{sid}/unmark", s.handleSessionUnmark)
 

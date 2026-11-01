@@ -254,7 +254,8 @@ type streamResp struct {
 	Bridge     bool               `json:"bridge,omitempty"`    // 这支船队由网页桥驱动
 	Perms      []PermView         `json:"perms,omitempty"`     // 等手机拍板的工具审批
 	PermOn     bool               `json:"perm_on,omitempty"`   // 审批通道在役
-	Autopilot  bool               `json:"autopilot,omitempty"` // 本船队免审批
+	Mode       string             `json:"mode,omitempty"`      // auto | plan | yolo
+	Autopilot  bool               `json:"autopilot,omitempty"` // = mode==yolo，兼容旧前端
 }
 
 func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
@@ -297,7 +298,8 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 	if s.perm != nil {
 		resp.PermOn = true
 		resp.Perms = s.perm.views(sid)
-		resp.Autopilot = s.perm.isAutopilot(sid)
+		resp.Mode = s.perm.Mode(sid)
+		resp.Autopilot = resp.Mode == ModeYolo
 	}
 	home, _ := os.UserHomeDir()
 	p := transcript.Path(home, info.dir, sid)

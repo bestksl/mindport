@@ -52,7 +52,7 @@ var serveCmd = &cobra.Command{
 		permOK := false
 		if permWanted {
 			if err := srvHandler.EnablePerms(); err != nil {
-				fmt.Fprintf(os.Stderr, "⚠️  手机审批通道没起来（船队仍以 acceptEdits 放手运行）：%v\n", err)
+				fmt.Fprintf(os.Stderr, "⚠️  手机审批通道没起来（船队将以 acceptEdits 运行）：%v\n", err)
 			} else {
 				permOK = true
 			}
@@ -88,9 +88,9 @@ var serveCmd = &cobra.Command{
 			fmt.Fprintln(w, "   （仅本机能访问；手机同 WiFi 访问请加 --host 0.0.0.0）")
 		}
 		if permOK {
-			fmt.Fprintln(w, "   工具审批: 已开启——写/执行操作先在手机上批准（只读自动放行；单船队可切放手模式）")
+			fmt.Fprintln(w, "   工具审批: 已开启——默认 Auto（低风险自动干、危险操作手机拍板），会话页可切 Plan / 无人值守")
 		} else if !permWanted {
-			fmt.Fprintln(w, "   工具审批: 关闭（PORT_PERM=0；船队以 acceptEdits 放手运行）")
+			fmt.Fprintln(w, "   工具审批: 关闭（PORT_PERM=0；船队以 acceptEdits 运行）")
 		}
 
 		sigCh := make(chan os.Signal, 1)

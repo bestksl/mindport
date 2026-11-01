@@ -200,11 +200,20 @@ func TestPermManagerFlow(t *testing.T) {
 		t.Fatal("批准后子进程没收到判定")
 	}
 
-	// 4) autopilot：危险工具也直接放行。
-	m.setAutopilot(sid, true)
+	// 4) yolo（无人值守，旧 autopilot/放手）：危险工具也直接放行。
+	m.setMode(sid, ModeYolo)
 	if !m.isAutopilot(sid) {
-		t.Fatal("autopilot 应已开")
+		t.Fatal("yolo 模式 isAutopilot 应为真")
 	}
+	if m.Mode(sid) != ModeYolo {
+		t.Fatal("模式应回读为 yolo")
+	}
+	// 默认/非法模式归一化为 auto
+	m.setMode(sid, "乱七八糟")
+	if m.Mode(sid) != ModeAuto {
+		t.Fatalf("非法模式应归一化为 auto，得到 %q", m.Mode(sid))
+	}
+	m.setMode(sid, ModeYolo)
 	_, autoCh := ask("Bash", "b2", map[string]any{"command": "ls"})
 	select {
 	case got := <-autoCh:

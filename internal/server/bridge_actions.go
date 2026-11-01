@@ -289,10 +289,15 @@ func (s *Server) handlePerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sid := r.URL.Query().Get("sid")
+	mode := ModeAuto
+	if sid != "" {
+		mode = s.perm.Mode(sid)
+	}
 	writeJSON(w, map[string]any{
 		"perms":     s.perm.views(sid),
 		"enabled":   true,
-		"autopilot": sid != "" && s.perm.isAutopilot(sid),
+		"mode":      mode,
+		"autopilot": mode == ModeYolo,
 	})
 }
 
@@ -321,10 +326,11 @@ func (s *Server) handlePermDecide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "decision": decision})
 }
 
-// handleAutopilot 开关一支船队的「本会话免审批」（等同 v0.8 的放手模式）。
-// 注意：仅对下一轮/重起生效到 CLI 行为——实际放行在我们这侧的回调里即时生效，
-// 不必重起桥（自动判定在 m.handleConn 内读 auto[sid]）。
-func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
+// handleMode 切换一支船队的权限模式（auto/plan/yolo），对齐 Claude Code 的 Mode。
+// mode 是 CLI 启动参数，常驻桥要换代才生效：中断旧代后以新 --permission-mode
+// --resume 起一个空闲桥（无点火句）；若桥本来就没起（冷态/已退役），只存模式，
+// 下次说话自然按新模式冷启。
+func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	if s.perm == nil {
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "手机审批通道未开启"})
 		return
@@ -335,9 +341,21 @@ func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	on := r.PostFormValue("on") == "1"
-	s.perm.setAutopilot(sid, on)
-	writeJSON(w, map[string]any{"ok": true, "autopilot": on})
+	mode := normMode(strings.TrimSpace(r.PostFormValue("mode")))
+	s.perm.setMode(sid, mode)
+	restarted := false
+	if s.bridge != nil {
+		if _, alive := s.bridge.stateOf(sid); alive {
+			// 纯中断→以新模式 --resume 待命。换代失败（如席位被终端占着）模式也已存下，
+			// 下轮冷启生效；不算硬错误，把情况作为 note 还给前端。
+			if err := s.bridge.ReplaceTurn(sid, ""); err != nil {
+				writeJSON(w, map[string]any{"ok": true, "mode": mode, "restarted": false, "note": err.Error()})
+				return
+			}
+			restarted = true
+		}
+	}
+	writeJSON(w, map[string]any{"ok": true, "mode": mode, "restarted": restarted})
 }
 
 // handleLive 是桥事件的统一 SSE 出口：船台收 state/partial（逐字直播），

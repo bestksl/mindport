@@ -16,7 +16,7 @@
 //
 // 安全默认：只读工具（Read/Grep/Glob/BashOutput 等）不必打扰手机直接放行；
 // 其余一律等人工，5 分钟无人应则默认拒绝；通道任何异常也默认拒绝（绝不静默放行）。
-// 想恢复「放手让它自己干」可对单支船队开 autopilot（等同 v0.8 的 acceptEdits）。
+// 想完全不被打扰可在会话页把模式切到「无人值守」(yolo)：回调对该 sid 全部 allow。
 //
 // 协议来自 CLI 2.1.310 实测（2026-10）：--permission-prompt-tool 取的是一个
 // MCP 工具全名（mcp__<server>__<tool>），回调入参
@@ -108,7 +108,27 @@ type permManager struct {
 
 	mu      sync.Mutex
 	pending map[string]*permAsk
-	auto    map[string]bool // sid → autopilot（本会话免审批）
+	mode    map[string]string // sid → 权限模式：auto(默认)/plan/yolo
+}
+
+// 权限模式，对齐 Claude Code：
+//   - ModeAuto：CLI 原生 auto，低风险操作自动干、真正危险的才弹手机（日常默认）；
+//   - ModePlan：CLI 原生 plan，只读探索+出计划，不动手改东西；
+//   - ModeYolo：CLI manual 但我们的回调对本会话全部 allow（旧「放手/无人值守」，不逐条请批）。
+const (
+	ModeAuto = "auto"
+	ModePlan = "plan"
+	ModeYolo = "yolo"
+)
+
+// normMode 归一化模式值，非法/空一律落回默认 auto。
+func normMode(m string) string {
+	switch m {
+	case ModePlan, ModeYolo:
+		return m
+	default:
+		return ModeAuto
+	}
 }
 
 // EnablePerms 由 serve 命令显式开启（测试/精简装配默认关，桥仍走 acceptEdits）。
@@ -146,7 +166,7 @@ func (s *Server) EnablePerms() error {
 	}
 	m := &permManager{
 		srv: s, sockPath: sock, token: tok, exe: exe, cfgDir: cfgDir,
-		ln: ln, pending: map[string]*permAsk{}, auto: map[string]bool{},
+		ln: ln, pending: map[string]*permAsk{}, mode: map[string]string{},
 	}
 	s.perm = m
 	go m.serveConns()
@@ -164,6 +184,15 @@ func randToken(n int) (string, error) {
 
 // permReady 报告审批通道是否在役；spawn 据此决定加不加 MCP 参数。
 func (s *Server) permReady() bool { return s.perm != nil && s.perm.ln != nil }
+
+// sessionMode 取一支船队当前权限模式；审批通道未装配（测试/精简）时返回空，
+// 由桥退化为 acceptEdits，不把模式判断散落到调用处。
+func (s *Server) sessionMode(sid string) string {
+	if s.perm == nil {
+		return ""
+	}
+	return s.perm.Mode(sid)
+}
 
 func (m *permManager) serveConns() {
 	for {
@@ -192,11 +221,11 @@ func (m *permManager) handleConn(c net.Conn) {
 
 	summary, detail := permSummarize(req.ToolName, req.Input)
 
-	// 自动放行：只读工具，或这支船队开了 autopilot。
+	// 自动放行：只读工具，或这支船队处于 yolo（无人值守/旧放手）模式。
 	m.mu.Lock()
-	autopilot := m.auto[req.SID]
+	yolo := normMode(m.mode[req.SID]) == ModeYolo
 	m.mu.Unlock()
-	if autopilot || permReadOnly[req.ToolName] {
+	if yolo || permReadOnly[req.ToolName] {
 		m.writeDecision(c, permDecision{Behavior: "allow"})
 		return
 	}
@@ -306,21 +335,28 @@ func (m *permManager) pendingCount(sid string) int {
 	return n
 }
 
-func (m *permManager) isAutopilot(sid string) bool {
+// Mode 返回一支船队当前的权限模式（默认 auto）。
+func (m *permManager) Mode(sid string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.auto[sid]
+	return normMode(m.mode[sid])
 }
 
-// setAutopilot 开关一支船队的「本会话免审批」。
-func (m *permManager) setAutopilot(sid string, on bool) {
+// setMode 设置一支船队的权限模式；auto 即恢复默认（不落多余键）。
+func (m *permManager) setMode(sid, mode string) {
+	mode = normMode(mode)
 	m.mu.Lock()
-	if on {
-		m.auto[sid] = true
+	if mode == ModeAuto {
+		delete(m.mode, sid)
 	} else {
-		delete(m.auto, sid)
+		m.mode[sid] = mode
 	}
 	m.mu.Unlock()
+}
+
+// isAutopilot 兼容旧口径：yolo（无人值守）即旧「放手/本会话免审批」。
+func (m *permManager) isAutopilot(sid string) bool {
+	return m.Mode(sid) == ModeYolo
 }
 
 // mcpConfig 是 --mcp-config 文件里我们要写的最小结构。
@@ -365,7 +401,7 @@ func (m *permManager) removeConfig(sid string) {
 	}
 	_ = os.Remove(filepath.Join(m.cfgDir, "mcp-"+sanitizeSID(sid)+".json"))
 	m.mu.Lock()
-	delete(m.auto, sid)
+	delete(m.mode, sid)
 	m.mu.Unlock()
 }
 

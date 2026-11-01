@@ -42,7 +42,6 @@ const sessionHTML = head + `
         <button type="button" class="markbtn cancel" id="s-mark-cancel" data-debug="mark cancel"{{if not .HasMark}} hidden{{end}}>撤结局</button>
       </span>
       <span class="s-actbtns" id="s-actbtns">
-        <button type="button" class="actbtn" id="btn-auto" hidden title="开启后这支船队的写/执行操作不再逐条请批（放手模式，随时可关）">🆗 放手</button>
         <button type="button" class="actbtn" id="btn-notify" title="完成、待你输入或待审批时，手机通知我">🔔 <span id="notify-word">通知</span></button>
         <button type="button" class="actbtn danger" id="btn-scuttle" title="把船队从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 拆船</button>
       </span>{{end}}
@@ -107,11 +106,39 @@ const sessionHTML = head + `
 
   <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
     <div class="say-note" id="say-note" hidden></div>
+    <div class="dock-mode">
+      <div class="mode-menu" id="mode-menu">
+        <button type="button" class="mode-chip" id="mode-chip" data-mode="auto" data-debug="mode chip"
+          title="切换船队的工作模式">
+          <span class="mode-ico" id="mode-ico">⚡</span><span class="mode-word" id="mode-word">Auto</span><span class="mode-caret">▾</span>
+        </button>
+        <div class="mode-pop" id="mode-pop" hidden>
+          <button type="button" class="mode-opt" data-mode="auto" data-debug="mode auto">
+            <span class="mo-ico">⚡</span><span class="mo-tx"><b>Auto</b><i>默认：能自动的自动干，危险操作才找你批</i></span><span class="mo-tick">✓</span>
+          </button>
+          <button type="button" class="mode-opt" data-mode="plan" data-debug="mode plan">
+            <span class="mo-ico">🗺️</span><span class="mo-tx"><b>Plan</b><i>只调研、出计划，不动手改任何东西</i></span><span class="mo-tick">✓</span>
+          </button>
+          <div class="mo-sep"></div>
+          <button type="button" class="mode-opt mo-yolo" data-mode="yolo" data-debug="mode yolo">
+            <span class="mo-ico">🔓</span><span class="mo-tx"><b>无人值守</b><i>不再逐条请批，放手让它一路做完（谨慎）</i></span><span class="mo-tick">✓</span>
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="say-row">
       <textarea name="msg" rows="1" maxlength="8000" enterkeyhint="send" autocomplete="off"
         placeholder="{{if .Busy}}船队正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队{{else}}说点什么…（Enter 发送）{{end}}"
         id="say-input"></textarea>
+      <button type="button" class="say-mic" id="say-mic" data-debug="voice" title="按住说话" hidden>🎤</button>
       <button type="submit" class="primary" id="say-btn" data-debug="send">📨 发送</button>
+    </div>
+    <div class="voice-overlay" id="voice-overlay" hidden>
+      <div class="vo-inner" id="vo-inner">
+        <span class="vo-wave"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="vo-tx" id="vo-tx">正在听…</span>
+        <span class="vo-hint">松开发送 · 上滑取消</span>
+      </div>
     </div>
   </form>
   {{end}}{{/* .Anon 分支结束 */}}
@@ -142,7 +169,8 @@ const sessionHTML = head + `
 (function () {
   var SID = "{{.SID}}";
   var DIR = {{.Dir}}; // html/template 在 JS 上下文自动输出带引号的转义字面量
-  function dirQS() { return DIR ? '&dir=' + encodeURIComponent(DIR) : ''; }
+  function dirQS() { return DIR ? '?dir=' + encodeURIComponent(DIR) : ''; }
+  function dirAmp() { return DIR ? '&dir=' + encodeURIComponent(DIR) : ''; }
   var cursor = {{.Cursor}};
   var oldest = {{.From}};
   var hasMore = {{if and .HasLog (gt .From 0)}}true{{else}}false{{end}};
@@ -388,14 +416,8 @@ const sessionHTML = head + `
       '<div class="perm-actions"><button type="button" class="perm-yes" data-dec="allow" data-debug="perm allow">✅ 批准执行</button>' +
       '<button type="button" class="perm-no" data-dec="deny" data-debug="perm deny">⛔ 拒绝</button></div></div>';
   }
-  function renderPerms(perms, autopilot, on) {
-    var box = document.getElementById('tl-perms'),
-      autoBtn = document.getElementById('btn-auto');
-    if (autoBtn) {
-      autoBtn.hidden = !on;
-      autoBtn.classList.toggle('on', !!autopilot);
-      autoBtn.textContent = autopilot ? '🔓 放手中·点关' : '🆗 放手模式';
-    }
+  function renderPerms(perms, on) {
+    var box = document.getElementById('tl-perms');
     if (!box) return;
     if (!on || !perms || !perms.length) { box.hidden = true; box.innerHTML = ''; return; }
     var stickNow = nearBottom();
@@ -430,24 +452,60 @@ const sessionHTML = head + `
       kickPoll();
     }).catch(function (er) { if (er) flash('⚠️ 审批没递出去', 'note-err'); });
   });
-  var autoBtn = document.getElementById('btn-auto');
-  if (autoBtn) autoBtn.addEventListener('click', function () {
-    var on = !autoBtn.classList.contains('on');
-    var body = new URLSearchParams(); body.set('on', on ? '1' : '0');
-    autoBtn.disabled = true;
-    fetch('/sessions/' + encodeURIComponent(SID) + '/autopilot' + dirQS(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body
-    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
-      .then(function (d) {
-        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
-        flash(on ? '🔓 这支船队已放手，操作不再逐条请批' : '🔒 已恢复逐操作请批', 'note-ok');
-        if (lastState) setStatus(Object.assign({}, lastState, { autopilot: on, perms: on ? [] : lastState.perms }));
-        kickPoll();
-      }).catch(function (er) { if (er) flash('⚠️ 没切成', 'note-err'); })
-      .finally(function () { autoBtn.disabled = false; });
-  });
+  // ---- Auto / Plan / 无人值守：输入坞上一颗不占地的模式芯片 ----
+  var MODE_META = {
+    auto: { ico: '⚡', word: 'Auto' },
+    plan: { ico: '🗺️', word: 'Plan' },
+    yolo: { ico: '🔓', word: '无人值守' }
+  };
+  var modeChip = document.getElementById('mode-chip'),
+      modePop = document.getElementById('mode-pop'),
+      modeMenu = document.getElementById('mode-menu');
+  function paintMode(mode) {
+    mode = MODE_META[mode] ? mode : 'auto';
+    if (!modeChip) return;
+    modeChip.setAttribute('data-mode', mode);
+    modeChip.classList.toggle('is-plan', mode === 'plan');
+    modeChip.classList.toggle('is-yolo', mode === 'yolo');
+    document.getElementById('mode-ico').textContent = MODE_META[mode].ico;
+    document.getElementById('mode-word').textContent = MODE_META[mode].word;
+    if (modePop) modePop.querySelectorAll('.mode-opt').forEach(function (b) {
+      b.classList.toggle('sel', b.getAttribute('data-mode') === mode);
+    });
+  }
+  if (modeChip) {
+    modeChip.addEventListener('click', function (e) {
+      e.stopPropagation();
+      modePop.hidden = !modePop.hidden;
+    });
+    modePop.addEventListener('click', function (e) {
+      var opt = e.target.closest('.mode-opt');
+      if (!opt) return;
+      var mode = opt.getAttribute('data-mode');
+      modePop.hidden = true;
+      var body = new URLSearchParams(); body.set('mode', mode);
+      modeChip.disabled = true;
+      fetch('/sessions/' + encodeURIComponent(SID) + '/mode' + dirQS(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body
+      }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
+        .then(function (d) {
+          if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+          paintMode(d.mode);
+          if (d.mode === 'plan') flash('🗺️ Plan 模式：只调研出计划，不会动手改东西', 'note-ok');
+          else if (d.mode === 'yolo') flash('🔓 无人值守：这轮起不再逐条请批，谨慎使用', 'note-ok');
+          else flash('⚡ Auto 模式：能自动的自动干，危险操作仍会请批', 'note-ok');
+          if (d.note) flash('ℹ️ ' + d.note, 'note-err');
+          kickPoll();
+        }).catch(function (er) { if (er) flash('⚠️ 模式没切成', 'note-err'); })
+        .finally(function () { modeChip.disabled = false; });
+    });
+    document.addEventListener('click', function (e) {
+      if (modeMenu && !modeMenu.contains(e.target)) modePop.hidden = true;
+    });
+    paintMode('auto');
+  }
 
   // ---- 手机通知：完成 / 待你输入 / 待审批（仅页面在后台时响）----
   var notifyBtn = document.getElementById('btn-notify'),
@@ -588,7 +646,8 @@ const sessionHTML = head + `
     renderLive(busy ? d.streaming : null);
     // 重连中排队话照样亮着：它们会由新桥原样重投，让人确认话没丢
     renderQueue((busy || restarting) ? d.queued : null);
-    renderPerms(d.perms, d.autopilot, d.perm_on);
+    renderPerms(d.perms, d.perm_on);
+    if (d.mode) paintMode(d.mode);
     if (typing) typing.hidden = !(busy && !(d.streaming && d.streaming.length));
     refreshDock();
     syncMsgActions(!busy && !restarting);
@@ -682,7 +741,7 @@ const sessionHTML = head + `
   function poll() {
     if (active) { requeue = true; return; }
     active = true;
-    fetch('/api/sessions/' + encodeURIComponent(SID) + '/stream?from=' + cursor + dirQS(), { headers: { 'Accept': 'application/json' } })
+    fetch('/api/sessions/' + encodeURIComponent(SID) + '/stream?from=' + cursor + dirAmp(), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })
       .then(function (d) {
         failStreak = 0; setBanner(false);
@@ -696,7 +755,7 @@ const sessionHTML = head + `
         setStatus({ online: d.online, status: d.status, mark: d.mark,
           waiting_for: d.waiting_for, pending: d.pending,
           streaming: d.streaming, queued: d.queued, bridge: !!d.bridge,
-          perms: d.perms, autopilot: d.autopilot, perm_on: d.perm_on });
+          perms: d.perms, mode: d.mode, perm_on: d.perm_on });
         checkNotify(d);
       }).catch(function (e) {
         if (e && e.message === 'auth') return;
@@ -749,7 +808,7 @@ const sessionHTML = head + `
     loadingOlder = true;
     var btn = document.getElementById('tl-more');
     if (btn) btn.disabled = true;
-    return fetch('/api/sessions/' + encodeURIComponent(SID) + '/history?before=' + oldest + dirQS())
+    return fetch('/api/sessions/' + encodeURIComponent(SID) + '/history?before=' + oldest + dirAmp())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.events) return;
@@ -812,6 +871,86 @@ const sessionHTML = head + `
         .finally(function () { btn.disabled = false; refreshDock(); });
     }
   });
+  // ---- 🎤 豆包式按住说话：短按照常打字/发送，麦克风按住说话、松开发送、上滑取消 ----
+  var mic = document.getElementById('say-mic'),
+      vOverlay = document.getElementById('voice-overlay'),
+      vTx = document.getElementById('vo-tx'),
+      vInner = document.getElementById('vo-inner');
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var voiceOK = !!SR && window.isSecureContext !== false;
+  if (mic) {
+    mic.hidden = false;
+    if (!SR) {
+      mic.classList.add('mic-na');
+      mic.title = '此浏览器不支持语音识别（建议手机 Chrome / iOS 14.5+ Safari）';
+    } else if (window.isSecureContext === false) {
+      mic.classList.add('mic-na');
+      mic.title = '语音识别要求 HTTPS 或本机 localhost（当前 http 地址会被浏览器禁用麦克风）';
+    }
+  }
+  var recog = null, recFinal = '', recActive = false, recCancelled = false, startY = 0;
+  function voiceTip() {
+    if (!SR) flash('🎤 这个浏览器不支持语音识别，建议手机 Chrome 或 iOS 14.5 以上 Safari', 'note-err');
+    else flash('🔒 语音识别要用 https 打开思港（当前 http 地址，浏览器禁用了麦克风）', 'note-err');
+  }
+  function setVoiceText(t) { if (vTx) vTx.textContent = t || '正在听…'; }
+  function startVoice(e) {
+    e.preventDefault();
+    if (!voiceOK) { voiceTip(); return; }
+    if (recActive) return;
+    try { mic.setPointerCapture(e.pointerId); } catch (x) {}
+    recog = new SR();
+    recog.lang = 'zh-CN'; recog.interimResults = true; recog.continuous = false; recog.maxAlternatives = 1;
+    recFinal = ''; recCancelled = false;
+    startY = e.clientY;
+    recog.onresult = function (ev) {
+      var interim = '';
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var tr = ev.results[i];
+        if (tr.isFinal) recFinal += tr[0].transcript; else interim += tr[0].transcript;
+      }
+      setVoiceText((recFinal + interim).replace(/\s+/g, ' ').trim());
+    };
+    recog.onerror = function (ev) {
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed')
+        flash('🎤 麦克风权限被拒，请在浏览器地址栏允许麦克风后重试', 'note-err');
+      else if (ev.error && ev.error !== 'aborted' && ev.error !== 'no-speech' && ev.error !== 'canceled')
+        flash('🎤 语音识别出错：' + ev.error, 'note-err');
+    };
+    recog.onend = function () { finishVoice(); };
+    try { recog.start(); recActive = true; mic.classList.add('recording'); if (vOverlay) { vOverlay.hidden = false; vInner.classList.remove('cancel'); } setVoiceText('正在听…'); }
+    catch (x) { recActive = false; }
+  }
+  function finishVoice() {
+    if (!recActive) return;
+    recActive = false;
+    mic.classList.remove('recording');
+    if (vOverlay) vOverlay.hidden = true;
+    if (vInner) vInner.classList.remove('cancel');
+    var text = (recFinal || '').replace(/\s+/g, ' ').trim();
+    if (!recCancelled && text) {
+      // 追加到已有文字后，松开即发（与豆包按住说话一致）
+      input.value = (input.value.trim() ? input.value.trim() + ' ' : '') + text;
+      input.dispatchEvent(new Event('input'));
+      form.requestSubmit();
+    }
+  }
+  if (mic) {
+    mic.addEventListener('pointerdown', startVoice);
+    mic.addEventListener('pointermove', function (e) {
+      if (!recActive) return;
+      if (startY - e.clientY > 50) { recCancelled = true; if (vInner) vInner.classList.add('cancel'); setVoiceText('松开取消'); }
+      else if (startY - e.clientY < 30) { recCancelled = false; if (vInner) vInner.classList.remove('cancel'); setVoiceText('松开发送 · 上滑取消'); }
+    });
+    mic.addEventListener('pointerup', function () {
+      if (!recActive) return;
+      if (recCancelled) { try { recog.abort(); } catch (x) {} finishVoice(); }
+      else { try { recog.stop(); } catch (x) {} }
+    });
+    mic.addEventListener('pointercancel', function () { if (recActive) { recCancelled = true; try { recog.abort(); } catch (x) {} finishVoice(); } });
+    mic.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
   function flash(msg, kind) {
     if (!note) return;
     note.textContent = msg;
