@@ -2924,9 +2924,8 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 .tl-live-blk .live-result { margin-top: 5px; }
 .tl-live-blk .live-result pre { max-height: 220px; overflow: auto; }
 
-/* 头部放手/通知按钮态 */
+/* 头部通知等动作按钮态 */
 .actbtn.on { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok-ink); }
-#btn-auto.on { border-color: var(--amber-line); background: var(--amber-soft); color: var(--amber); }
 
 /* 船队列表：待审批角标 + 行高亮（手机列表一眼看到哪艘船等批） */
 .st-perm {
