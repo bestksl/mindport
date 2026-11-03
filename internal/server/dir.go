@@ -1,5 +1,5 @@
-// 按目录翻会话（简单粗暴版）：不依赖心跳，给一个项目绝对路径，
-// 直接扫 ~/.claude/projects/<编码目录>/ 列出全部历史会话，点进船台。
+// 按目录翻会话（简单粗暴版）：不依赖在线状态，给一个项目绝对路径，
+// 直接扫 ~/.claude/projects/<编码目录>/ 列出全部历史会话，点进会话页。
 // 不给路径时聚合「全部项目的最近会话」（路径由 transcript cwd 自证），零输入即用。
 package server
 
@@ -49,14 +49,14 @@ type dirListPage struct {
 	Rows      []dirRow
 	Groups    map[string][]dirRow // working|waiting|idle|done|offline 单栏分组
 	KnownDirs []knownDir
-	Routes    []store.Record // 新建船队时可挂的在役航线
-	RecentDir []string       // 本机最近浏览（前端 localStorage 注入，服务端只给心跳目录）
+	Routes    []store.Record // 新建会话时可关联的在役目标线
+	RecentDir []string       // 本机最近浏览（前端 localStorage 注入，服务端只给在线状态目录）
 	NoDir     bool           // 没传 dir：展示输入框 + 已知目录 + 最近会话聚合
 	Error     string
 }
 
-// groupFleetRows 把会话行按「在航 / 待输入 / 待命 / 归港 / 历史」分五组，
-// 单栏表达全部在用会话；归港（圆满结束）默认折叠。
+// groupFleetRows 把会话行按「进行中 / 待输入 / 待命 / 完成 / 历史」分五组，
+// 单栏表达全部在用会话；完成（圆满结束）默认折叠。
 func groupFleetRows(rows []dirRow) map[string][]dirRow {
 	g := map[string][]dirRow{}
 	for _, r := range rows {
@@ -91,8 +91,8 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 	if err != nil && err != transcript.ErrNotFound {
 		return nil, err
 	}
-	// ErrNotFound 也继续：目录里可能正有一支还没说过话的匿名 TUI（extras 补上），
-	// 不能因为没有 transcript 文件就把实时船队整个 404 掉。
+	// ErrNotFound 也继续：目录里可能正有一个还没说过话的匿名 TUI（extras 补上），
+	// 不能因为没有 transcript 文件就把实时会话整个 404 掉。
 	var live map[string]cliSession
 	if s.poller != nil {
 		live = s.poller.snapshot()
@@ -116,7 +116,7 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 		rows = append(rows, row)
 	}
 
-	// 在线但扫盘没覆盖到的实时会话也要算船队：桌面 app 会话（--agent）、
+	// 在线但扫盘没覆盖到的实时会话也要算会话：桌面 app 会话（--agent）、
 	// 刚开还没说话的 TUI（匿名 proc-<pid>）、掉出最近窗口仍在线的老会话。
 	have := map[string]bool{}
 	for _, r := range rows {
@@ -127,7 +127,7 @@ func (s *Server) sessionRows(home, dir string) ([]dirRow, error) {
 		if have[sid] {
 			continue
 		}
-		// 目录视图只收本目录的船队：非匿名会话以 transcript 记录里自证的
+		// 目录视图只收本目录的会话：非匿名会话以 transcript 记录里自证的
 		// cwd 为准（桌面 app 的进程 cwd 不一定是项目目录），匿名行只能信进程 cwd。
 		if dir != "" {
 			eff := ls.CWD
@@ -245,7 +245,7 @@ type sessionRowJSON struct {
 	SID    string `json:"sid"`
 	Dir    string `json:"dir"`
 	Title  string `json:"title"`
-	Name   string `json:"name"` // 船名（-n「短码-需求」，名册优先）
+	Name   string `json:"name"` // 会话名（-n「短码-需求」，名册优先）
 	Proj   string `json:"proj"`
 	Events int    `json:"events"`
 	Online bool   `json:"online"`
@@ -285,7 +285,7 @@ func (s *Server) handleSessionListJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"rows": out})
 }
 
-// knownDirs 从心跳里收集去重后的项目目录，作为空态页的快捷入口。
+// knownDirs 从在线状态里收集去重后的项目目录，作为空态页的快捷入口。
 func (s *Server) knownDirs() []knownDir {
 	seen := map[string]bool{}
 	var out []knownDir

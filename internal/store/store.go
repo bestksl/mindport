@@ -31,14 +31,14 @@ type Meta struct {
 	Importance string  `yaml:"importance,omitempty" json:"importance,omitempty"` // critical|high|normal|someday
 	Goal       string  `yaml:"goal,omitempty" json:"goal,omitempty"`
 	Assignee   *string `yaml:"assignee,omitempty" json:"assignee,omitempty"`
-	AssignCwd  string  `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定船位：只有该项目目录的会话能接令；空=任意会话
-	// 挂船队：一个想法（任务）挂到一支具体船队（Claude 会话）上，与派船状态机正交。
+	AssignCwd  string  `yaml:"assign_cwd,omitempty" json:"assign_cwd,omitempty"` // 指定工作目录：只有该项目目录的会话能领取；空=任意会话
+	// 关联会话：一个任务挂到一个具体 Claude 会话上，与指派状态机正交。
 	Session    string `yaml:"session,omitempty" json:"session,omitempty"`
 	SessionDir string `yaml:"session_dir,omitempty" json:"session_dir,omitempty"`
-	// Route 是任务所属航线（R 编号）；空串=不属于任何航线。航线下的小任务
-	// 完成即收起，只在航线页内回看。
+	// Route 是任务所属目标线（R 编号）；空串=不属于任何目标线。目标线下的小任务
+	// 完成即收起，只在目标线页内回看。
 	Route string `yaml:"route,omitempty" json:"route,omitempty"`
-	// Code 是航线的短码（≤4 字），船队统一命名「短码-需求」时使用；只对 type=route 有意义。
+	// Code 是目标线的短码（≤4 字），会话统一命名「短码-需求」时使用；只对 type=route 有意义。
 	Code        string     `yaml:"code,omitempty" json:"code,omitempty"`
 	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Created     time.Time  `yaml:"created" json:"created"`
@@ -67,16 +67,16 @@ type Record struct {
 	Path string
 }
 
-// 任务状态（ADR-0003；v0.3 draft；v0.4 调度模型）。
-// 人在网页端把想法立成集装箱：任务先以 draft 打磨，可停在 anchored 锚地
-// 等待派船；派船（ready，指名 assignee）后只有被指派的船能接令。
+// 任务状态（ADR-0003；v0.3 draft；v0.4 指派模型）。
+// 人在网页端把想法建成任务：任务先以 draft 打磨，可停在 anchored 待命区
+// 等待指派；指派（ready，指名 assignee）后只有被指派的助手能领取。
 const (
-	StatusDraft      = "draft"       // 备货中：打磨描述与验收标准
-	StatusAnchored   = "anchored"    // 锚地：已就绪但未派船，船看不到
-	StatusReady      = "ready"       // 已派船待接令：assignee 必填且唯一可接令
-	StatusInProgress = "in_progress" // 出港中
+	StatusDraft      = "draft"       // 草稿：打磨描述与验收标准
+	StatusAnchored   = "anchored"    // 待命中：已就绪但未指派，助手看不到
+	StatusReady      = "ready"       // 已指派待领取：assignee 必填且唯一可领取
+	StatusInProgress = "in_progress" // 进行中
 	StatusBlocked    = "blocked"     // 受阻上浮
-	StatusDone       = "done"        // 归港（必须带结果，强制归港需理由）
+	StatusDone       = "done"        // 已完成（必须带结果，强制完成需理由）
 	StatusCancelled  = "cancelled"
 )
 
@@ -85,7 +85,7 @@ const (
 	ImpCritical = "critical" // 关键——对目标起决定作用
 	ImpHigh     = "high"     // 重要
 	ImpNormal   = "normal"   //普通
-	ImpSomeday  = "someday"  // 也许——漂流瓶里的事
+	ImpSomeday  = "someday"  // 也许——哪天想做的事
 )
 
 var (
@@ -95,14 +95,14 @@ var (
 	ErrInvalidTransition = errors.New("invalid status transition")
 	// ErrInvalidImportance 表示重要程度取值非法。
 	ErrInvalidImportance = errors.New("invalid importance")
-	// ErrNotAssignee 表示任务未指派给该执行者，无权接令/推进。
+	// ErrNotAssignee 表示任务未指派给该执行者，无权领取/推进。
 	ErrNotAssignee = errors.New("任务未指派给你")
-	// ErrWrongBerth 表示任务指定了船位（项目会话目录），当前目录的会话无权接令。
-	ErrWrongBerth = errors.New("这票货派给了别的船位")
-	// ErrNotDraft 表示只有未出港的任务（草稿/锚地）能删除，已派船的不能直接抹。
-	ErrNotDraft = errors.New("只有未出港的任务（草稿/锚地）能删除")
-	// ErrResultRequired 表示归港缺少交付结果（除非带理由强制归港）。
-	ErrResultRequired = errors.New("归港必须交付结果")
+	// ErrWrongBerth 表示任务指定了工作目录（项目会话目录），当前目录的会话无权领取。
+	ErrWrongBerth = errors.New("这个任务指派给了别的项目目录，请在对应目录领取")
+	// ErrNotDraft 表示只有未开始的任务（草稿/待命区）能删除，已指派的不能直接抹。
+	ErrNotDraft = errors.New("只有未开始的任务（草稿/待命区）能删除")
+	// ErrResultRequired 表示完成缺少交付结果（除非带理由强制完成）。
+	ErrResultRequired = errors.New("完成必须交付结果")
 )
 
 // importanceRank 越小越重要，看板与 next 按此排序。
@@ -181,7 +181,7 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 			imp = ImpNormal
 		}
 		status := StatusAnchored
-		createdNote := "created by port（锚地待派）"
+		createdNote := "created by port（待命中）"
 		if draft {
 			status = StatusDraft
 			createdNote = "created as draft by port"
@@ -206,8 +206,8 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 	return rec, err
 }
 
-// Claim 接令：ready → in_progress。只有被指派的船、且在指定船位
-// （项目目录会话）里才能接令；接令即把任务号写到该会话心跳上。
+// Claim 领取：ready → in_progress。只有被指派的助手、且在指定工作目录
+// （项目目录会话）里才能领取；领取即把任务号写到该会话在线心跳上。
 func (v *Vault) Claim(id, by, cwd string) (*Record, error) {
 	if r, err := v.GetTask(id); err == nil {
 		if err := requireBerth(r, cwd); err != nil {
@@ -218,14 +218,14 @@ func (v *Vault) Claim(id, by, cwd string) (*Record, error) {
 	if err != nil {
 		return rec, err
 	}
-	_ = v.SetActorSessionTask(by, id) // 心跳失败不影响接令本身
+	_ = v.SetActorSessionTask(by, id) // 心跳失败不影响领取本身
 	return rec, nil
 }
 
-// Done 归港：in_progress/blocked → done。
-// 归港必须带结果——有验收项时须全部勾选；没有验收项时 result 必填。
-// 死锁逃生门：force=true + 必填 reason 可强制归港，理由永久留痕。
-// 归港后清掉心跳上的任务号。
+// Done 完成：in_progress/blocked → done。
+// 完成必须带结果——有验收项时须全部勾选；没有验收项时 result 必填。
+// 死锁逃生门：force=true + 必填 reason 可强制完成，理由永久留痕。
+// 完成后清掉在线状态上的任务号。
 func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record, error) {
 	result = strings.TrimSpace(result)
 	reason = strings.TrimSpace(reason)
@@ -240,7 +240,7 @@ func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record,
 			return err
 		}
 		if r.Meta.Status != StatusInProgress && r.Meta.Status != StatusBlocked {
-			return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中/受阻的任务可归港", ErrInvalidTransition, id, r.Meta.Status)
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有进行中/受阻的任务可完成", ErrInvalidTransition, id, r.Meta.Status)
 		}
 		if err := requireAssignee(r, by); err != nil {
 			return err
@@ -249,25 +249,25 @@ func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record,
 
 		if force {
 			if reason == "" {
-				return errors.New("强制归港必须填写理由（留痕）")
+				return errors.New("强制完成必须填写理由（留痕）")
 			}
 		} else {
 			switch {
 			case total > 0 && doneN < total:
-				return fmt.Errorf("%w: 还有 %d/%d 项验收未完成；如确需归港，用 --force 并写明理由",
+				return fmt.Errorf("%w: 还有 %d/%d 项验收未完成；如确需完成，用 --force 并写明理由",
 					ErrResultRequired, total-doneN, total)
 			case total == 0 && result == "":
-				return fmt.Errorf("%w: 没有验收项时归港必须填写交付结果；特殊情况用 --force 并写明理由",
+				return fmt.Errorf("%w: 没有验收项时完成必须填写交付结果；特殊情况用 --force 并写明理由",
 					ErrResultRequired)
 			}
 		}
 
 		now := time.Now()
 		if result != "" {
-			r.Body = appendLog(r.Body, now, "归港结果（"+by+"）："+result)
+			r.Body = appendLog(r.Body, now, "交付结果（"+by+"）："+result)
 		}
 		if force {
-			r.Body = appendLog(r.Body, now, "⚠️ 强制归港（"+by+"），理由："+reason)
+			r.Body = appendLog(r.Body, now, "⚠️ 强制完成（"+by+"），理由："+reason)
 		}
 		r.Meta.Status = StatusDone
 		r.Meta.CompletedAt = &now
@@ -286,9 +286,9 @@ func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record,
 	return rec, nil
 }
 
-// Publish 发布草稿：assignee 为空 → anchored（锚地待派，船看不到）；
-// assignee 非空 → ready（直接派船，只有被指派者能接令）。
-// berth 非空时同时指定船位（项目目录），只有该目录的会话能接令。
+// Publish 发布草稿：assignee 为空 → anchored（待命中，助手看不到）；
+// assignee 非空 → ready（直接指派，只有被指派者能领取）。
+// berth 非空时同时指定工作目录（项目目录），只有该目录的会话能领取。
 func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
 	berth = strings.TrimSpace(berth)
@@ -310,13 +310,13 @@ func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 		if assignee == "" {
 			r.Meta.Status = StatusAnchored
 			r.Meta.AssignCwd = ""
-			note = "published to anchorage by " + by + "（锚地待派）"
+			note = "published to anchorage by " + by + "（待命中）"
 		} else {
 			a := assignee
 			r.Meta.Assignee = &a
 			r.Meta.Status = StatusReady
 			r.Meta.AssignCwd = berth
-			note = "dispatched by " + by + "，派船 → " + assignee + berthNote(berth)
+			note = "dispatched by " + by + "，指派 → " + assignee + berthNote(berth)
 		}
 		touch(&r.Meta)
 		r.Body = appendLog(r.Body, now, note)
@@ -329,15 +329,15 @@ func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 	return rec, err
 }
 
-// Assign 派船/改派：anchored → ready；ready 换船（重新待接令）；
-// blocked 可改派给别的船（原船受阻，货回码头待新船接令）。
-// in_progress 的货在海上，不能改派（先等它归港）。
-// berth 非空表示点名某个项目目录的会话（船位）；为空表示该船任意会话可接。
+// Assign 指派/改派：anchored → ready；ready 换助手（重新待领取）；
+// blocked 可改指派给别的助手（原助手受阻，任务回到待领取等新助手领取）。
+// in_progress 的任务正在进行，不能改派（先等它完成）。
+// berth 非空表示点名某个项目目录的会话；为空表示该助手在任意会话都可领取。
 func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
 	berth = strings.TrimSpace(berth)
 	if assignee == "" {
-		return nil, errors.New("派船必须指定执行者（或先发布到锚地）")
+		return nil, errors.New("指派必须指定执行者（或先放进待命区）")
 	}
 	var rec *Record
 	err := v.withLock(func() error {
@@ -356,7 +356,7 @@ func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 		case StatusBlocked:
 			wasBlocked = true
 		default:
-			return fmt.Errorf("%w: %s 当前状态为 %s，只有锚地/待接令/受阻的任务可派船改派",
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有待命中/待领取/受阻的任务可指派或改派",
 				ErrInvalidTransition, id, r.Meta.Status)
 		}
 		old := r.Meta.AssigneeValue()
@@ -370,9 +370,9 @@ func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 		bn := berthNote(berth)
 		switch {
 		case old == "":
-			r.Body = appendLog(r.Body, now, "dispatched by "+by+"，派船 → "+assignee+bn)
+			r.Body = appendLog(r.Body, now, "dispatched by "+by+"，指派 → "+assignee+bn)
 		case wasBlocked:
-			r.Body = appendLog(r.Body, now, "reassigned by "+by+"（原船受阻）："+old+" → "+assignee+bn)
+			r.Body = appendLog(r.Body, now, "reassigned by "+by+"（原助手受阻）："+old+" → "+assignee+bn)
 		default:
 			r.Body = appendLog(r.Body, now, "reassigned by "+by+"："+old+" → "+assignee+bn)
 		}
@@ -385,7 +385,7 @@ func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 	return rec, err
 }
 
-// Block 受阻上浮：in_progress → blocked，必须给原因；只有承担船可操作。
+// Block 受阻上浮：in_progress → blocked，必须给原因；只有承担助手可操作。
 func (v *Vault) Block(id, reason, by string) (*Record, error) {
 	if strings.TrimSpace(reason) == "" {
 		return nil, errors.New("阻塞原因不能为空")
@@ -398,20 +398,20 @@ func (v *Vault) Unblock(id, by string) (*Record, error) {
 	return v.transition(id, "unblock", "", by)
 }
 
-// requireAssignee 校验 by 是任务的承担船。
+// requireAssignee 校验 by 是任务的承担助手。
 func requireAssignee(r *Record, by string) error {
 	a := r.Meta.AssigneeValue()
 	if a == "" {
-		return fmt.Errorf("%w: %s 还在锚地未派船", ErrNotAssignee, r.Meta.ID)
+		return fmt.Errorf("%w: %s 还在待命区，尚未指派", ErrNotAssignee, r.Meta.ID)
 	}
 	if a != by {
-		return fmt.Errorf("%w: %s 派给了 %s，不是 %s", ErrNotAssignee, r.Meta.ID, a, by)
+		return fmt.Errorf("%w: %s 指派给了 %s，不是 %s", ErrNotAssignee, r.Meta.ID, a, by)
 	}
 	return nil
 }
 
-// requireBerth 校验当前会话目录就是派船时指定的船位。
-// 任务没指定船位（AssignCwd 为空）时任意会话可接；远程船 ssh 进对的目录即可。
+// requireBerth 校验当前会话目录就是指派时指定的工作目录。
+// 任务没指定项目目录（AssignCwd 为空）时任意会话可领取；远程会话 ssh 进对的目录即可。
 func requireBerth(r *Record, cwd string) error {
 	if r.Meta.AssignCwd == "" || r.Meta.AssignCwd == cwd {
 		return nil
@@ -420,16 +420,16 @@ func requireBerth(r *Record, cwd string) error {
 	if cur == "" {
 		cur = "未知目录"
 	}
-	return fmt.Errorf("%w: %s 指定由「%s」项目里的会话接令，当前会话在「%s」",
+	return fmt.Errorf("%w: %s 指定由「%s」项目里的会话领取，当前会话在「%s」",
 		ErrWrongBerth, r.Meta.ID, filepath.Base(r.Meta.AssignCwd), filepath.Base(cur))
 }
 
-// berthNote 是派船日志里的船位后缀。
+// berthNote 是指派日志里的工作目录后缀。
 func berthNote(berth string) string {
 	if berth == "" {
 		return ""
 	}
-	return "（船位：" + filepath.Base(berth) + "）"
+	return "（项目目录：" + filepath.Base(berth) + "）"
 }
 
 // acceptanceCount 数「验收标准」区内非空复选框的完成数/总数。
@@ -471,7 +471,7 @@ func (v *Vault) transition(id, action, arg, by string) (*Record, error) {
 		switch action {
 		case "claim":
 			if r.Meta.Status != StatusReady {
-				return fmt.Errorf("%w: %s 当前状态为 %s，只有待接令的任务可接令", ErrInvalidTransition, id, r.Meta.Status)
+				return fmt.Errorf("%w: %s 当前状态为 %s，只有待领取的任务可领取", ErrInvalidTransition, id, r.Meta.Status)
 			}
 			if err := requireAssignee(r, by); err != nil {
 				return err
@@ -591,9 +591,9 @@ func (v *Vault) UpdateTask(id, title, body, importance, goal string) (*Record, e
 		if err != nil {
 			return err
 		}
-		// 派船即封舱：草稿/锚地阶段可随意打磨，一旦派船，验收标准以开船时为准。
+		// 指派即锁定：草稿/待命区阶段可随意打磨，一旦指派，验收标准以指派时为准。
 		if r.Meta.Status != StatusDraft && r.Meta.Status != StatusAnchored {
-			return fmt.Errorf("%w: %s 已派船（%s），封舱后不能改单；要调整请批注或改派",
+			return fmt.Errorf("%w: %s 已指派（%s），锁定后不能改单；要调整请批注或改派",
 				ErrInvalidTransition, id, r.Meta.Status)
 		}
 		r.Meta.Title = title
@@ -622,12 +622,12 @@ func actorSuffix(by string) string {
 	return "（" + by + "）"
 }
 
-// Next 返回派给某艘船、待它接令的最重要一个任务（重要程度升序，同级按编号）。
-// 锚地里未派船的货对船不可见；指定了船位（assign_cwd）的货只在对应项目目录出现。
+// Next 返回指派给某个助手、待它领取的最重要一个任务（重要程度升序，同级按编号）。
+// 待命区里未指派的任务对助手不可见；指定了项目目录（assign_cwd）的任务只在对应项目目录出现。
 func (v *Vault) Next(actor, cwd string) (*Record, error) {
 	actor = strings.TrimSpace(actor)
 	if actor == "" {
-		return nil, errors.New("需要 --by 指定船名（谁在接令？）")
+		return nil, errors.New("需要 --by 指定执行者（谁在领取？）")
 	}
 	tasks, err := v.ListTasks(StatusReady)
 	if err != nil {
@@ -639,7 +639,7 @@ func (v *Vault) Next(actor, cwd string) (*Record, error) {
 			return &tasks[i], nil
 		}
 	}
-	return nil, fmt.Errorf("%w: 没有派给 %s 的待接令任务", ErrNotFound, actor)
+	return nil, fmt.Errorf("%w: 没有指派给 %s 的待领取任务", ErrNotFound, actor)
 }
 
 // GetTask 按编号取单个任务。
@@ -660,8 +660,8 @@ func (v *Vault) GetTask(id string) (*Record, error) {
 	return r, err
 }
 
-// DeleteTask 删除还没出港的任务文件（draft 备货中 / anchored 锚地待派可删；
-// ready 及以后有派船与流转历史，不能直接抹掉，要撤请批注/改派/归港）。
+// DeleteTask 删除还没开始的任务文件（draft 草稿 / anchored 待命区可删；
+// ready 及以后有指派与流转历史，不能直接抹掉，要撤销请批注/改派/完成）。
 func (v *Vault) DeleteTask(id string) error {
 	return v.withLock(func() error {
 		path, err := v.findTaskPath(id)
@@ -673,7 +673,7 @@ func (v *Vault) DeleteTask(id string) error {
 			return err
 		}
 		if rec.Meta.Status != StatusDraft && rec.Meta.Status != StatusAnchored {
-			return fmt.Errorf("%w: %s 当前为 %s，已派船出港的货不能直接删", ErrNotDraft, id, rec.Meta.Status)
+			return fmt.Errorf("%w: %s 当前为 %s，已开始流转的任务不能直接删", ErrNotDraft, id, rec.Meta.Status)
 		}
 		return os.Remove(path)
 	})
@@ -849,7 +849,7 @@ func canonicalize(m *Meta) {
 			m.Importance = ImpNormal
 		}
 	}
-	// v0.4 迁移：ready 必须有承担船；旧版「已发布、任领取」的货退回锚地待派。
+	// v0.4 迁移：ready 必须有承担助手；旧版「已发布、任领取」的任务退回待命区。
 	if m.Type == "task" && m.Status == StatusReady && m.AssigneeValue() == "" {
 		m.Status = StatusAnchored
 	}

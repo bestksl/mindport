@@ -50,7 +50,7 @@ func TestSessionMarkAPI(t *testing.T) {
 		t.Fatalf("标记未落盘: %+v ok=%v", mk, ok)
 	}
 
-	// 船台首屏：结局徽标覆盖实时状态
+	// 会话页首屏：结局徽标覆盖实时状态
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/"+testSID, nil))
 	body := rec.Body.String()
@@ -122,11 +122,11 @@ func TestSayClearsOutcomeMark(t *testing.T) {
 	}
 }
 
-// 任务挂船队：不卡状态机，挂上/换/取下都只动 Meta。
+// 任务关联会话：不卡状态机，关联/换/取下都只动 Meta。
 func TestTaskBindFleet(t *testing.T) {
 	s, _ := setupSession(t, testTranscript, nil)
 	h := s.Routes()
-	rec0, err := s.V.NewTask("挂船队的想法", "high", "", true)
+	rec0, err := s.V.NewTask("关联会话的想法", "high", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,15 +152,15 @@ func TestTaskBindFleet(t *testing.T) {
 		t.Fatalf("挂载字段未落: %+v", r.Meta)
 	}
 
-	// 任务页应显示已挂船队与「取下」
+	// 任务页应显示已关联会话与「取下」
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/tasks/"+id, nil))
 	body := rec.Body.String()
 	if !strings.Contains(body, "bound-fleet") || !strings.Contains(body, "/unbind") {
-		t.Fatalf("任务页应显示已挂船队与取下表单")
+		t.Fatalf("任务页应显示已关联会话与取下表单")
 	}
 
-	// 非法船队：不能挂上去
+	// 非法会话：不能关联
 	post("bind", url.Values{"fleet": {"evil.sid|/x"}})
 	r, _ = s.V.GetTask(id)
 	if r.Meta.Session != testSID {
@@ -178,12 +178,12 @@ func TestTaskBindFleet(t *testing.T) {
 	}
 }
 
-// 新开船队表单校验：相对路径 / 不存在的目录必须在调 CLI 之前拦下，
-// 且任务不能被挂到任何船队上。
+// 新开会话表单校验：相对路径 / 不存在的目录必须在调 CLI 之前拦下，
+// 且任务不能被关联到任何会话上。
 func TestTaskLaunchValidation(t *testing.T) {
 	s, _ := setupSession(t, testTranscript, nil)
 	h := s.Routes()
-	rec0, err := s.V.NewTask("新开船队校验", "high", "", true)
+	rec0, err := s.V.NewTask("新开会话校验", "high", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestLaunchPrompt(t *testing.T) {
 	}
 	rec.Body = "正文里的关键背景"
 	p := launchPrompt(rec)
-	for _, want := range []string{rec.Meta.ID, rec.Meta.Title, "服务的目标：把这事办成", "正文里的关键背景", "先看清这个想法"} {
+	for _, want := range []string{rec.Meta.ID, rec.Meta.Title, "服务的目标：把这事办成", "正文里的关键背景", "先看清这个任务"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("开场白缺 %q：\n%s", want, p)
 		}

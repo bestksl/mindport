@@ -59,7 +59,7 @@ func TestSessionMarkLifecycle(t *testing.T) {
 
 func TestBindSessionOrthogonalToStatus(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	r, err := v.NewTask("挂船队的想法", ImpHigh, "", true)
+	r, err := v.NewTask("关联会话的任务", ImpHigh, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestBindSessionOrthogonalToStatus(t *testing.T) {
 	const sid1 = "sess-fleet-aaaa"
 	const sid2 = "sess-fleet-bbbb"
 
-	// 草稿态也能挂（与派船状态机正交）
+	// 草稿态也能挂（与指派状态机正交）
 	got, err := v.BindSession(id, sid1, "/repo/proj", "web")
 	if err != nil {
 		t.Fatal(err)
@@ -75,22 +75,22 @@ func TestBindSessionOrthogonalToStatus(t *testing.T) {
 	if got.Meta.Session != sid1 || got.Meta.SessionDir != "/repo/proj" {
 		t.Fatalf("挂载字段错误: %+v", got.Meta)
 	}
-	if !strings.Contains(got.Body, "web：挂到船队 sess-fle（proj）") {
+	if !strings.Contains(got.Body, "web：关联到会话 sess-fle（proj）") {
 		t.Fatalf("挂载日志错误:\n%s", got.Body)
 	}
 	if bound, _ := v.TasksBySession(sid1); len(bound) != 1 || bound[0].Meta.ID != id {
 		t.Fatalf("TasksBySession 应找到 %s，得到 %+v", id, bound)
 	}
 
-	// 换船队：旧船队清空，新船队能查到
+	// 换会话：旧会话清空，新会话能查到
 	if _, err := v.BindSession(id, sid2, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := v.TasksBySession(sid1); len(b) != 0 {
-		t.Fatalf("换船队后旧船队不应再有，得到 %d", len(b))
+		t.Fatalf("换会话后旧会话不应再有，得到 %d", len(b))
 	}
 	if b, _ := v.TasksBySession(sid2); len(b) != 1 {
-		t.Fatalf("新船队应有 1 个，得到 %d", len(b))
+		t.Fatalf("新会话应有 1 个，得到 %d", len(b))
 	}
 
 	// 取下
@@ -101,11 +101,11 @@ func TestBindSessionOrthogonalToStatus(t *testing.T) {
 	if got.Meta.Session != "" || got.Meta.SessionDir != "" {
 		t.Fatalf("取下后字段应空: %+v", got.Meta)
 	}
-	if !strings.Contains(got.Body, "web：从船队取下") {
+	if !strings.Contains(got.Body, "web：取消关联会话") {
 		t.Fatalf("取下日志错误:\n%s", got.Body)
 	}
 	if b, _ := v.TasksBySession(sid2); len(b) != 0 {
-		t.Fatalf("取下后船队不应再挂，得到 %d", len(b))
+		t.Fatalf("取下后会话不应再挂，得到 %d", len(b))
 	}
 	// 幂等：本来没挂时取下不报错
 	if _, err := v.UnbindSession(id, ""); err != nil {

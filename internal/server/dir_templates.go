@@ -1,68 +1,68 @@
 package server
 
-// 船队页（v0.8 单栏套壳）：一栏表达全部在用会话——
-// 🌊 正在航行 / 🟡 待你输入 / ⚓ 待命 / 🏁 归港（折叠）/ 🕒 历史（折叠）。
-// 顶部一张「新建船队」表单，像 CLI 一样随时开一艘空船。
+// 助手页（v0.8 单栏套壳）：一栏表达全部在用会话——
+// 🌊 工作中 / 🟡 待你输入 / ⚓ 待命 / 🏁 已完成（折叠）/ 🕒 历史（折叠）。
+// 顶部一张「新建会话」表单，像 CLI 一样随时新开一个空会话。
 // 状态靠 /api/live SSE 即时翻灯（8s 轮询兜底），变化即按服务端数据全量重排。
 const dirListHTML = head + `
 {{template "topbar" .}}
 
 <main class="fleet-page" id="fleet-page">
   <details class="fleet-new-box" id="fleet-new-box" open>
-    <summary><span class="emo">⛵ </span>新建船队<i>选项目目录、起个名，第一句话可先说也可先不说</i></summary>
+    <summary><span class="emo">⛵ </span>新建会话<i>选项目目录、起个名，第一句话可先说也可先不说</i></summary>
     <form class="fleet-new-form" id="fleet-new-form" data-fleet-new action="/fleets/new">
       <div class="fn-grid">
         <input name="dir" list="known-dir-list" required spellcheck="false" autocomplete="off"
                placeholder="项目目录（绝对路径）" enterkeyhint="go" aria-label="项目目录">
         <input name="name" required maxlength="40" spellcheck="false" autocomplete="off"
-               placeholder="船名，如 数学-1加2（航线短码-需求，≤40 字）" aria-label="船名">
+               placeholder="会话名，如 数学-1加2（目标线短码-需求，≤40 字）" aria-label="会话名">
         {{if .Routes}}
-        <select name="route" aria-label="挂到哪条航线（可选）">
-          <option value="">不挂航线</option>
+        <select name="route" aria-label="挂到哪条目标线（可选）">
+          <option value="">不挂目标线</option>
           {{range .Routes}}<option value="{{.Meta.ID}}">{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
         </select>
         {{end}}
       </div>
       <datalist id="known-dir-list">{{range .KnownDirs}}<option value="{{.Dir}}">{{end}}</datalist>
       <textarea name="msg" rows="2" maxlength="8000"
-                placeholder="第一句话（可空——先开一艘空船，进去再说，和终端一样）"></textarea>
+                placeholder="第一句话（可空——先新开一个空会话，进去再说，和终端一样）"></textarea>
       <div class="fn-foot">
         <span class="fn-err" id="fn-err" data-fn-err role="alert" hidden></span>
-        <button type="submit" class="primary"><span class="emo">⛵ </span>开船</button>
+        <button type="submit" class="primary"><span class="emo">⛵ </span>新开会话</button>
       </div>
     </form>
   </details>
 
   {{if .Error}}<div class="dir-err" data-debug="error"><span class="dir-err-txt"><span class="emo">⚠️ </span>{{.Error}}</span><button type="button" class="dir-err-x" data-err-close aria-label="关掉报错">✕</button></div>
-  <p class="dir-back-recent"><a href="/sessions">← 看全部船队</a></p>{{end}}
+  <p class="dir-back-recent"><a href="/sessions">← 看全部会话</a></p>{{end}}
 
   {{if not .NoDir}}
   <section class="dir-list-head">
     <h2><span class="emo">📂 </span><b>{{.Short}}</b><code class="dir-full" title="{{.Path}}">{{.Path}}</code></h2>
-    <span><a class="dir-all-link" href="/sessions"><span class="emo">🕒 </span>全部船队</a></span>
+    <span><a class="dir-all-link" href="/sessions"><span class="emo">🕒 </span>全部会话</a></span>
   </section>
   {{end}}
 
   <div class="fleet-col" id="fleet-col" data-dir="{{.Path}}">
     <section class="fleet-seg" data-seg="working">
-      <h2 class="seg-head"><i class="dot"></i><span class="emo">🌊 </span>正在航行<b class="seg-n"></b></h2>
+      <h2 class="seg-head"><i class="dot"></i><span class="emo">🌊 </span>工作中<b class="seg-n"></b></h2>
       <div class="seg-body">{{range index .Groups "working"}}{{template "dirRow" .}}{{end}}</div>
-      <p class="seg-empty">没有正在航行的船队</p>
+      <p class="seg-empty">没有正在工作的会话</p>
     </section>
     <section class="fleet-seg" data-seg="waiting">
       <h2 class="seg-head"><i class="dot"></i><span class="emo">🟡 </span>待你输入<b class="seg-n"></b></h2>
       <div class="seg-body">{{range index .Groups "waiting"}}{{template "dirRow" .}}{{end}}</div>
-      <p class="seg-empty">没有卡住等你的船队</p>
+      <p class="seg-empty">没有卡住等你的会话</p>
     </section>
     <section class="fleet-seg" data-seg="idle">
       <h2 class="seg-head"><i class="dot"></i><span class="emo">⚓ </span>待命<b class="seg-n"></b></h2>
       <div class="seg-body">{{range index .Groups "idle"}}{{template "dirRow" .}}{{end}}</div>
-      <p class="seg-empty">没有待命船队</p>
+      <p class="seg-empty">没有待命会话</p>
     </section>
     <details class="fleet-seg seg-fold" data-seg="done">
-      <summary class="seg-head"><i class="dot"></i><span class="emo">🏁 </span>归港<b class="seg-n"></b></summary>
+      <summary class="seg-head"><i class="dot"></i><span class="emo">🏁 </span>已完成<b class="seg-n"></b></summary>
       <div class="seg-body">{{range index .Groups "done"}}{{template "dirRow" .}}{{end}}</div>
-      <p class="seg-empty">还没有圆满结束的船队</p>
+      <p class="seg-empty">还没有已完成的会话</p>
     </details>
     <details class="fleet-seg seg-fold" data-seg="offline">
       <summary class="seg-head"><i class="dot"></i><span class="emo">🕒 </span>历史会话<b class="seg-n"></b></summary>
@@ -93,7 +93,7 @@ const dirListHTML = head + `
 
 {{define "dirRow"}}
 {{if .Anon}}
-<div class="dir-row dir-row-anon is-waiting" data-sid="{{.SID}}" data-anon="1" title="进程开着但还没说话，说第一句后就能点进船台">
+<div class="dir-row dir-row-anon is-waiting" data-sid="{{.SID}}" data-anon="1" title="进程开着但还没说话，说第一句后就能点进会话页">
   <span class="dir-state"><i class="dot"></i></span>
   <span class="dir-main">
     <span class="dir-title">{{.Title}}</span>
@@ -121,7 +121,7 @@ const dirListHTML = head + `
 {{end}}
 {{end}}
 
-<script src="/static/fleet-new.js?v=21"></script>
+<script src="/static/fleet-new.js?v=22"></script>
 <script>
 (function () {
   // 报错条可一键关掉：视觉移除 + 清地址栏 ?dir=，避免刷新把错误带回来。
@@ -198,7 +198,7 @@ const dirListHTML = head + `
       var body = seg.querySelector('.seg-body');
       var empty = seg.querySelector('.seg-empty');
       var n = seg.querySelector('.seg-n');
-      // 组内：等审批的船队顶到最前（最该被看见），其余按更新时间倒序
+      // 组内：等审批的会话顶到最前（最该被看见），其余按更新时间倒序
       groups[key].sort(function (a, b) {
         if (!!a.perms !== !!b.perms) return (b.perms ? 1 : 0) - (a.perms ? 1 : 0);
         return (b.stamp || 0) - (a.stamp || 0);
@@ -237,7 +237,7 @@ const dirListHTML = head + `
     es.onmessage = function (e) {
       var ev;
       try { ev = JSON.parse(e.data); } catch (x) { return; }
-      // fleet=任何船队翻灯/新生死；perm=某船等审批；本页相关 state 也立刻拉
+      // fleet=任何会话翻灯/新生死；perm=某个会话等审批；本页相关 state 也立刻拉
       if (ev.type === 'fleet' || ev.type === 'perm' || (ev.type === 'state' && ev.sid)) {
         var now = Date.now();
         if (now < kickAt) return;
@@ -271,7 +271,7 @@ const dirListHTML = head + `
     }
   } catch (e) {}
 
-  // 新建表单首次开船成功后，折叠组自动展开待命组（落点在那里）
+  // 新建表单首次新开会话成功后，折叠组自动展开待命组（落点在那里）
   document.addEventListener('mp-fleet-born', function () { tick(); });
 })();
 </script>

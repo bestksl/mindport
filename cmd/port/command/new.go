@@ -14,7 +14,7 @@ var (
 
 var newCmd = &cobra.Command{
 	Use:   "new <标题>",
-	Short: "创建任务（默认进锚地待派；--draft 先存草稿打磨）",
+	Short: "创建任务（默认进待命区待指派；--draft 先存草稿打磨）",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()
@@ -25,9 +25,9 @@ var newCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		verb := "已进锚地待派"
+		verb := "已进待命区待指派"
 		if newDraft {
-			verb = "草稿已停泊（放行后可派船）"
+			verb = "草稿已存（放行后可指派）"
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "⚓ %s [%s] %s: %s\n",
 			r.Meta.ID, impZH(r.Meta.Importance), verb, r.Meta.Title)
@@ -41,7 +41,7 @@ var newCmd = &cobra.Command{
 func init() {
 	newCmd.Flags().StringVar(&newImp, "importance", "", "重要程度：critical(关键)/high(重要)/normal(普通)/someday(也许)，默认 normal")
 	newCmd.Flags().StringVar(&newGoal, "goal", "", "这个任务服务的目标（目标导向）")
-	newCmd.Flags().BoolVar(&newDraft, "draft", false, "先存草稿（打磨后用 port publish 放行到锚地）")
+	newCmd.Flags().BoolVar(&newDraft, "draft", false, "先存草稿（打磨后用 port publish 放行到待命区）")
 	rootCmd.AddCommand(newCmd)
 
 	rootCmd.AddCommand(&cobra.Command{

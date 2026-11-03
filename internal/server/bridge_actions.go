@@ -1,5 +1,5 @@
-// bridge_actions：网页船队的双向动作——即时说话、新建船队、中断、撤回、
-// 拆船，以及把桥事件实时推给浏览器的 /api/live SSE。
+// bridge_actions：网页会话的双向动作——即时说话、新建会话、中断、撤回、
+// 删除会话，以及把桥事件实时推给浏览器的 /api/live SSE。
 package server
 
 import (
@@ -18,11 +18,11 @@ import (
 	"github.com/bestksl/mindport/internal/transcript"
 )
 
-// maxFleetNameRunes 船名长度上限（短码-需求，保持列表一行放下）。
+// maxFleetNameRunes 会话名长度上限（短码-需求，保持列表一行放下）。
 const maxFleetNameRunes = 40
 
 // handleSessionSay 优先走常驻桥：活桥即时注入（忙时 CLI 自动排队），
-// 没桥就当场为这个会话续一座桥（--resume）。桥彻底不可用时才退回旧信箱。
+// 没桥就当场为这个会话续一座桥（--resume）。桥彻底不可用时才退回旧留言。
 func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
 	if !sidOK(sid) {
@@ -45,7 +45,7 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info.anon {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这支船队还没说过话；请在它自己的终端里开口，或新开一支船队"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这个会话还没说过话；请在它自己的终端里开口，或新开一个会话"})
 		return
 	}
 	// 又开口说话 = 结局翻篇：旧的「圆满结束/中途停止」标记自动撤掉。
@@ -68,9 +68,9 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 					n = len(q)
 				}
 			}
-			detail := "已送达，船队立刻接着跑"
+			detail := "已送达，会话立刻接着跑"
 			if queued {
-				detail = "船队正忙，话已排队，这轮跑完马上接着说"
+				detail = "会话正忙，话已排队，这轮跑完马上接着说"
 			}
 			writeJSON(w, sayResp{Delivered: "live", Pending: n, Detail: detail})
 			return
@@ -80,13 +80,13 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err := s.bridge.Start(info.dir, sid, "", msg)
 	if err != nil && !errors.Is(err, errBridgeWarming) {
-		// 会话正被终端/别的客户端占着：把原因原样还给用户，不能默默塞进信箱。
+		// 会话正被终端/别的客户端占着：把原因原样还给用户，不能默默塞进留言。
 		if errors.Is(err, errSessionHeldElsewhere) {
 			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
-		// 仅当 CLI 真的起不来（找不到可执行文件/登录态彻底坏）才退回信箱；
-		// 慢唤醒不算失败——话已在桥进程 stdin 里，不能再落信箱造成重复/黑洞。
+		// 仅当 CLI 真的起不来（找不到可执行文件/登录态彻底坏）才退回留言；
+		// 慢唤醒不算失败——话已在桥进程 stdin 里，不能再落留言造成重复/黑洞。
 		s.queueMail(w, sid, msg)
 		return
 	}
@@ -124,7 +124,7 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if info.anon {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这支船队还没说过话"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "这个会话还没说过话"})
 		return
 	}
 	p, ok := s.transcriptPath(info, sid)
@@ -144,7 +144,7 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 			writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "没停住当前轮，稍后重试：" + err.Error()})
 			return
 		}
-		writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "已让船队重新作答"})
+		writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "已让会话重新作答"})
 		return
 	}
 	// 桥不在（离线/已停）：resume 起一座新桥用原话点火。
@@ -154,7 +154,7 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "唤不起船队：" + err.Error()})
+		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "唤不起会话：" + err.Error()})
 		return
 	}
 	if _, ok := s.V.Fleet(sid); !ok {
@@ -163,17 +163,17 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 	if s.poller != nil {
 		go s.poller.poll()
 	}
-	writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "正在唤醒船队重新作答"})
+	writeJSON(w, regenResp{OK: "1", Regenerating: last, Detail: "正在唤醒会话重新作答"})
 }
 
-// handleFleetNew 一键新开船队：目录 + 船名（短码-需求）+ 首句话，
-// 可选挂航线/任务。返回 JSON 供前端就地报错与跳转，避免旧版 launch
-// 「失败踢回首页丢表单 + 双击开两支船」。
+// handleFleetNew 一键新开会话：目录 + 会话名（短码-需求）+ 首句话，
+// 可选挂目标线/任务。返回 JSON 供前端就地报错与跳转，避免旧版 launch
+// 「失败踢回首页丢表单 + 双击开出两个会话」。
 func (s *Server) handleFleetNew(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	dir := filepath.Clean(strings.TrimSpace(r.PostFormValue("dir")))
 	if !filepath.IsAbs(dir) {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给项目目录的绝对路径，船队才知道在哪儿开工"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给项目目录的绝对路径，会话才知道在哪儿开工"})
 		return
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
@@ -182,7 +182,7 @@ func (s *Server) handleFleetNew(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(r.PostFormValue("name"))
 	if name == "" || utf8.RuneCountInString(name) > maxFleetNameRunes || strings.ContainsAny(name, "\n\r") {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "船名必填，最多 " + fmt.Sprint(maxFleetNameRunes) + " 个字、不能换行"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "会话名必填，最多 " + fmt.Sprint(maxFleetNameRunes) + " 个字、不能换行"})
 		return
 	}
 	msg := strings.TrimSpace(r.PostFormValue("msg"))
@@ -207,18 +207,18 @@ func (s *Server) handleFleetNew(w http.ResponseWriter, r *http.Request) {
 
 	sid, _, err := s.bridge.Start(dir, "", name, msg)
 	if err != nil {
-		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "新开船队失败：" + err.Error()})
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "新开会话失败：" + err.Error()})
 		return
 	}
 	if err := s.V.SaveFleet(store.FleetInfo{
 		SID: sid, Name: name, Dir: dir, Task: taskID, Route: routeID,
 	}); err != nil {
-		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船队名册登记失败：" + err.Error()})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "会话名册登记失败：" + err.Error()})
 		return
 	}
 	if taskID != "" {
 		if _, err := s.V.BindSession(taskID, sid, dir, dispatcher); err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船已开但挂任务失败：" + err.Error()})
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "会话已开但关联任务失败：" + err.Error()})
 			return
 		}
 		if routeID != "" {
@@ -235,7 +235,7 @@ func (s *Server) handleFleetNew(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleFleetStop 中断船队当前轮（网页版 Esc）；cancel_all=1 连排队的话一起撤。
+// handleFleetStop 中断会话当前轮（网页版 Esc）；cancel_all=1 连排队的话一起撤。
 func (s *Server) handleFleetStop(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
 	if !sidOK(sid) {
@@ -245,17 +245,17 @@ func (s *Server) handleFleetStop(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	cancelAll := r.PostFormValue("cancel_all") == "1"
 	if _, alive := s.bridge.stateOf(sid); !alive {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "只有网页开的船队能在网页中断；终端里开的会话请回终端按 Esc"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "只有网页开的会话能在网页中断；终端里开的会话请回终端按 Esc"})
 		return
 	}
 	if err := s.bridge.Interrupt(sid, cancelAll); err != nil {
-		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "中断令没送进去：" + err.Error()})
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "中断指令没送进去：" + err.Error()})
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "cancel_all": cancelAll})
 }
 
-// handleFleetDelete 拆船（等效 CC 的 Ctrl-X）：停桥进程 + 从思港抹掉。
+// handleFleetDelete 删除会话（等效 CC 的 Ctrl-X）：停桥进程 + 从思港抹掉。
 // 不删 CC transcript——历史文件归 CC 自己管。
 func (s *Server) handleFleetDelete(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
@@ -282,7 +282,7 @@ func (s *Server) isHiddenFleet(sid string) bool {
 	return s.V.HiddenSIDs()[sid]
 }
 
-// handlePerms 列出待审批（?sid= 只看这支船队；省略=全部页面角标用）。
+// handlePerms 列出待审批（?sid= 只看这个会话；省略=全部页面角标用）。
 func (s *Server) handlePerms(w http.ResponseWriter, r *http.Request) {
 	if s.perm == nil {
 		writeJSON(w, map[string]any{"perms": []PermView{}, "enabled": false})
@@ -326,7 +326,7 @@ func (s *Server) handlePermDecide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "decision": decision})
 }
 
-// handleMode 切换一支船队的权限模式（auto/plan/yolo），对齐 Claude Code 的 Mode。
+// handleMode 切换一个会话的权限模式（auto/plan/yolo），对齐 Claude Code 的 Mode。
 // mode 是 CLI 启动参数，常驻桥要换代才生效：中断旧代后以新 --permission-mode
 // --resume 起一个空闲桥（无点火句）；若桥本来就没起（冷态/已退役），只存模式，
 // 下次说话自然按新模式冷启。
@@ -358,8 +358,8 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "mode": mode, "restarted": restarted})
 }
 
-// handleLive 是桥事件的统一 SSE 出口：船台收 state/partial（逐字直播），
-// 船队列表/角标收 fleet（翻灯即刷）。
+// handleLive 是桥事件的统一 SSE 出口：会话页收 state/partial（逐字直播），
+// 会话列表/角标收 fleet（翻灯即刷）。
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {

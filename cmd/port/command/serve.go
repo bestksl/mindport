@@ -7,9 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -38,8 +36,8 @@ var serveCmd = &cobra.Command{
 		authWanted := serveAuth || os.Getenv("PORT_AUTH") == "1"
 		addr := net.JoinHostPort(host, port)
 
-		// 默认内网免证敞开；--auth（或 PORT_AUTH=1）才强制入港证（ADR-0008）：
-		// 会话船台能看到 transcript（含命令/代码/思考），不可信网络加这把锁。
+		// 默认内网免验证敞开；--auth（或 PORT_AUTH=1）才强制鉴权：
+		// 网页能看到 transcript（含命令/代码/思考），不可信网络要加这把锁。
 		srvHandler := server.New(v)
 		if authWanted {
 			if err := srvHandler.EnableAuth(); err != nil {
@@ -47,12 +45,12 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		// 手机工具审批（v0.9）：默认开，桥养的 claude 遇写操作先在手机上请批；
-		// PORT_PERM=0 退回 v0.8 的 acceptEdits 放手模式。起不来不拖垮港口。
+		// PORT_PERM=0 退回 v0.8 的 acceptEdits 放手模式。起不来不拖垮服务。
 		permWanted := os.Getenv("PORT_PERM") != "0"
 		permOK := false
 		if permWanted {
 			if err := srvHandler.EnablePerms(); err != nil {
-				fmt.Fprintf(os.Stderr, "⚠️  手机审批通道没起来（船队将以 acceptEdits 运行）：%v\n", err)
+				fmt.Fprintf(os.Stderr, "⚠️  手机审批通道没起来（助手将以 acceptEdits 运行）：%v\n", err)
 			} else {
 				permOK = true
 			}
@@ -66,31 +64,44 @@ var serveCmd = &cobra.Command{
 			IdleTimeout:       120 * time.Second,
 		}
 
+		// 写运行状态，供 `port pair` 发现服务；退出时清理。
+		_ = server.WriteServeState(v.Root, server.ServeState{
+			Host: host, Port: port, Auth: authWanted,
+			PID: os.Getpid(), StartedAt: time.Now(),
+		})
+		defer server.RemoveServeState(v.Root)
+
 		errCh := make(chan error, 1)
 		go func() { errCh <- srv.ListenAndServe() }()
 
 		w := cmd.OutOrStdout()
-		fmt.Fprintf(w, "⚓ 思港港口已开\n")
+		fmt.Fprintf(w, "⚓ 思港已开\n")
 		fmt.Fprintf(w, "   本机:   http://127.0.0.1:%s\n", port)
-		fmt.Fprintf(w, "   vault:  %s\n", v.Root)
-		for _, ip := range lanIPs() {
+		primary, mesh := server.ListenAddresses()
+		for _, ip := range mesh {
+			fmt.Fprintf(w, "   组网:   http://%s:%s\n", ip, port)
+		}
+		for _, ip := range primary {
 			fmt.Fprintf(w, "   局域网: http://%s:%s\n", ip, port)
 		}
+		fmt.Fprintf(w, "   vault:  %s\n", v.Root)
 		if authWanted {
-			fmt.Fprintln(w, "   入港证: 已启用——浏览器首次打开需粘贴 port web-token 取得的密钥")
+			fmt.Fprintln(w, "   访问鉴权: 已启用")
+			fmt.Fprintln(w, "     手机接入：另开终端运行 port pair，扫码即完成配对（每台设备独立授权）")
+			fmt.Fprintln(w, "     兜底方式：port web-token 查看访问密钥，登录页粘贴")
 		} else {
-			fmt.Fprintln(w, "   入港证: 未启用（内网免证敞开；不可信网络请加 --auth 上锁）")
+			fmt.Fprintln(w, "   访问鉴权: 未启用（可信内网免验证；不可信网络请加 --auth）")
 			if host != "127.0.0.1" && host != "localhost" {
-				fmt.Fprintln(w, "   ⚠ 0.0.0.0 无鉴权：同网段任何人都能读全部任务与会话 transcript")
+				fmt.Fprintln(w, "   ⚠ 监听非本机地址且无鉴权：同网段任何人都能读全部任务与会话记录")
 			}
 		}
 		if host == "127.0.0.1" {
-			fmt.Fprintln(w, "   （仅本机能访问；手机同 WiFi 访问请加 --host 0.0.0.0）")
+			fmt.Fprintln(w, "   （仅本机能访问；手机访问请加 --host 0.0.0.0，或用组网地址）")
 		}
 		if permOK {
 			fmt.Fprintln(w, "   工具审批: 已开启——默认 Auto（低风险自动干、危险操作手机拍板），会话页可切 Plan / 无人值守")
 		} else if !permWanted {
-			fmt.Fprintln(w, "   工具审批: 关闭（PORT_PERM=0；船队以 acceptEdits 运行）")
+			fmt.Fprintln(w, "   工具审批: 关闭（PORT_PERM=0；助手以 acceptEdits 运行）")
 		}
 
 		sigCh := make(chan os.Signal, 1)
@@ -102,7 +113,7 @@ var serveCmd = &cobra.Command{
 			}
 			return err
 		case sig := <-sigCh:
-			fmt.Fprintf(w, "\n收到 %s，优雅停港（最多等 10s）…\n", sig)
+			fmt.Fprintf(w, "\n收到 %s，正在关闭（最多等 10s）…\n", sig)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
@@ -114,9 +125,9 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "监听地址（0.0.0.0 允许局域网访问）")
+	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "监听地址（0.0.0.0 允许局域网/组网访问）")
 	serveCmd.Flags().IntVar(&servePort, "port", 8787, "监听端口")
-	serveCmd.Flags().BoolVar(&serveAuth, "auth", false, "强制入港证鉴权（不可信网络用；密钥 port web-token）")
+	serveCmd.Flags().BoolVar(&serveAuth, "auth", false, "强制访问鉴权（不可信网络用；配对 port pair，密钥 port web-token）")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -125,20 +136,4 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
-}
-
-// lanIPs 通过 ipconfig 取常见物理网卡地址（macOS）。
-func lanIPs() []string {
-	var out []string
-	for _, iface := range []string{"en0", "en1", "en2"} {
-		b, err := exec.Command("ipconfig", "getifaddr", iface).Output()
-		if err != nil {
-			continue
-		}
-		ip := strings.TrimSpace(string(b))
-		if ip != "" {
-			out = append(out, ip)
-		}
-	}
-	return out
 }

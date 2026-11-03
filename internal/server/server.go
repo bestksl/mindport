@@ -30,11 +30,11 @@ import (
 //go:embed static/*
 var staticFS embed.FS
 
-// dispatcher 是人在网页端所有动作的署名：想法入港的人，不是执行者。
-// 接令/归港/受阻只属于干活的会话（船），只能从它自己的 CLI 发出。
+// dispatcher 是人在网页端所有动作的署名：录入任务的人，不是执行者。
+// 领取/完成/受阻只属于干活的会话，只能从它自己的 CLI 发出。
 const dispatcher = "jmzx@studio"
 
-// roster 是港里的船队花名册；在线状态由心跳补充，没报到的船也能被派活。
+// roster 是本机会话名册；在线状态由 presence 探测补充，没上线的会话也能被指派。
 var roster = []string{"claude@studio", "codex@studio"}
 
 // Server 持有 vault 与事件广播器。
@@ -42,9 +42,10 @@ type Server struct {
 	V         *store.Vault
 	broker    *broker
 	poller    *agentPoller // 可选：本机装了 claude CLI 时用官方发现口定在线生死
-	bridge    *fleetBridge // 网页船队的常驻 stream-json 桥（即时注入+逐字直播）
+	bridge    *fleetBridge // 网页会话的常驻 stream-json 桥（即时注入+逐字直播）
 	perm      *permManager // 可选：手机端工具权限审批（serve 经 EnablePerms 开启）
-	authToken string       // 非空即强制鉴权（ADR-0008）；serve 命令经 EnableAuth 设置
+	authToken string       // 非空即强制鉴权；serve 命令经 EnableAuth 设置
+	rate      *loginRate   // 登录/配对尝试限流（鉴权开启时初始化）
 
 	waitMu    sync.RWMutex
 	waitCache map[string]waitCacheEntry // sid → 尾部「等人回答」事实缓存（按文件签名失效）
@@ -148,9 +149,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/next", s.handleAPINext)
 	mux.HandleFunc("GET /api/agents", s.handleAPIAgents)
 	mux.HandleFunc("GET /api/live", s.handleLive)
-	mux.HandleFunc("GET /api/perms", s.handlePerms) // 手机端工具审批清单（?sid= 单船队）
+	mux.HandleFunc("GET /api/perms", s.handlePerms) // 手机端工具审批清单（?sid= 单个会话）
 
-	// 航线（v0.8）：既定目标 + 描述，下面挂临时任务与船队。
+	// 目标线（v0.8）：既定目标 + 描述，下面挂临时任务与会话。
 	mux.HandleFunc("GET /api/routes/summary", s.handleRoutesSummary)
 	mux.HandleFunc("GET /routes", s.handleRouteList)
 	mux.HandleFunc("POST /routes", s.handleRouteCreate)
@@ -160,16 +161,18 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /routes/{rid}/needs", s.handleRouteNeed)
 	mux.HandleFunc("POST /tasks/{id}/route", s.handleTaskSetRoute)
 
-	// 船队：一键新开（目录+船名+首句话），中断/拆船。
+	// 会话：一键新开（目录+会话名+首句话），中断/删除会话。
 	mux.HandleFunc("POST /fleets/new", s.handleFleetNew)
 
-	// 会话船台（ADR-0008）：实时 transcript 时间线 + 双向回话
+	// 会话页（ADR-0008）：实时 transcript 时间线 + 双向回话
 	mux.HandleFunc("GET /sessions", s.handleSessionList)         // ?dir=<绝对路径> 扫盘列全部会话
 	mux.HandleFunc("GET /api/sessions", s.handleSessionListJSON) // 列表状态轻量轮询
 	mux.HandleFunc("GET /login", s.handleLogin)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /logout", s.handleLogout)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("GET /pair", s.handlePair)
+	mux.HandleFunc("POST /api/pair", s.handlePairAPI)
 	mux.HandleFunc("GET /sessions/{sid}", s.handleSession)
 	mux.HandleFunc("GET /api/sessions/{sid}/stream", s.handleSessionStream)
 	mux.HandleFunc("GET /api/sessions/{sid}/history", s.handleSessionHistory)
@@ -209,10 +212,10 @@ type boardData struct {
 	ByTask map[string]store.Presence // 在线执行者 → 正在做的任务
 	Now    time.Time
 	Error  string
-	Auth   bool // 顶栏据此显示登出口；未启用入港证时隐藏
+	Auth   bool // 顶栏据此显示登出口；未启用访问密钥时隐藏
 }
 
-// ShipView 是调度台眼里的一艘船：花名册名字 + 它的各个项目会话（船位）。
+// ShipView 是任务台眼里的一个助手：名册名字 + 它的各个项目会话（工作目录）。
 type ShipView struct {
 	Name     string
 	Short    string
@@ -237,7 +240,7 @@ type taskView struct {
 	R               *store.Record
 	Agents          []store.Presence
 	Ships           []ShipView
-	Agent           *store.Presence // 承担船的实时心跳（可能为 nil）
+	Agent           *store.Presence // 承担会话的实时在线状态（可能为 nil）
 	DescriptionHTML template.HTML
 	Accept          []acceptItem
 	AcceptDone      int
@@ -245,19 +248,19 @@ type taskView struct {
 	Extra           template.HTML
 	Auth            bool
 
-	// 挂船队（集装箱挂到一支具体会话上）
+	// 关联会话（把任务关联到一个具体会话上）
 	BoundSID       string
 	BoundDir       string
 	BoundTitle     string
 	BoundStateText string
 	FleetOpts      []fleetOption
 
-	// 新开船队（在项目目录里起一支桥船队并挂上本任务）
+	// 新开会话（在项目目录里起一个桥接会话并关联本任务）
 	LaunchDirs       []knownDir
 	LaunchDirDefault string
 	LaunchPrompt     string
-	LaunchRoutes     []store.Record // 在役航线（launch 表单可挂）
-	LaunchName       string         // 默认船名（短码-需求）
+	LaunchRoutes     []store.Record // 在役目标线（launch 表单可关联）
+	LaunchName       string         // 默认会话名（短码-需求）
 }
 
 // ---------- 页面处理器 ----------
@@ -275,10 +278,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Error: r.URL.Query().Get("error"),
 		Auth:  s.authOn(),
 		Cols: []column{
-			{Key: "anchored", Title: "⚓ 锚地待派", Seg: "⚓ 锚地"},
-			{Key: "ready", Title: "🚢 待接令", Seg: "🚢 待接"},
-			{Key: "busy", Title: "🌊 出港中", Seg: "🌊 出海"},
-			{Key: "done", Title: "🏁 已归港", Seg: "🏁 归港"},
+			{Key: "anchored", Title: "⚓ 待命中", Seg: "⚓ 待命"},
+			{Key: "ready", Title: "🚢 待领取", Seg: "🚢 待领"},
+			{Key: "busy", Title: "🌊 进行中", Seg: "🌊 进行中"},
+			{Key: "done", Title: "🏁 已完成", Seg: "🏁 完成"},
 		},
 	}
 	for _, t := range all {
@@ -300,8 +303,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	render(w, http.StatusOK, boardTmpl, d)
 }
 
-// fleet 合并花名册与心跳：在册的船都列出（哪怕没报到），心跳里的外船补在末尾；
-// 每艘船挂着它在各项目目录里的会话（在线在前、最近在前）。
+// fleet 合并名册与 presence：在册的会话都列出（哪怕没上线），探测到的外部会话补在末尾；
+// 每个助手下列出它在各项目目录里的会话（在线在前、最近在前）。
 func fleet(agents []store.Presence) []ShipView {
 	byActor := map[string][]store.Presence{}
 	for _, p := range agents {
@@ -340,7 +343,7 @@ func fleet(agents []store.Presence) []ShipView {
 	return out
 }
 
-// splitTarget 解析派船表单值："actor"=任意会话；"actor|/项目目录"=指定船位。
+// splitTarget 解析指派表单值："actor"=任意会话；"actor|/项目目录"=指定工作目录。
 func splitTarget(v string) (actor, berth string) {
 	v = strings.TrimSpace(v)
 	if i := strings.Index(v, "|"); i >= 0 {
@@ -354,13 +357,13 @@ func splitTarget(v string) (actor, berth string) {
 func targetFromForm(v string) (actor, berth string, err error) {
 	actor, berth = splitTarget(v)
 	if berth == "NEW" {
-		return "", "", errors.New("请填写新项目的完整目录路径后再派船")
+		return "", "", errors.New("请填写新项目的完整目录路径后再指派")
 	}
 	return actor, berth, nil
 }
 
-// pickAgent 为承担船挑一条详情页要展示的心跳：优先正在做本票货的会话，
-// 否则最近活动的那条（可能在线做别的票，也可能已离线）。
+// pickAgent 为承担会话挑一条详情页要展示的在线状态：优先正在做本任务的会话，
+// 否则最近活动的那条（可能在线做别的任务，也可能已离线）。
 func pickAgent(agents []store.Presence, actor, task string) *store.Presence {
 	var fallback *store.Presence
 	for i := range agents {
@@ -399,7 +402,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	if a := rec.Meta.AssigneeValue(); a != "" {
 		v.Agent = pickAgent(agents, a, rec.Meta.ID)
 	}
-	// 集装箱挂船队：已挂则显示船队实时状态；下拉给最近活跃 + 在线船队。
+	// 任务关联会话：已关联则显示会话实时状态；下拉给最近活跃 + 在线会话。
 	if sid := rec.Meta.Session; sid != "" {
 		v.BoundSID = sid
 		v.BoundDir = rec.Meta.SessionDir
@@ -451,7 +454,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if imp == "" {
 		imp = store.ImpNormal
 	}
-	// 网页建任务一律先进草稿打磨：放行到锚地、派船都是后续显式命令。
+	// 网页建任务一律先进草稿打磨：放到待命区、指派都是后续显式命令。
 	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "", true)
 	if err != nil {
 		redirectErr(w, r, err.Error())
@@ -460,7 +463,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
 }
 
-// handlePublish 放行草稿：assignee 为空进锚地，非空直接派船（draft → anchored/ready）。
+// handlePublish 放行草稿：assignee 为空进待命区，非空直接指派（draft → anchored/ready）。
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
@@ -480,7 +483,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// handleAssign 派船/改派：锚地派船、待接令改派、受阻换船。
+// handleAssign 指派/改派：待命区指派、待领取改派、受阻换会话。
 func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
@@ -506,7 +509,7 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// listPresence 返回折叠、并用官方发现口校正过在线状态的全部船位心跳。
+// listPresence 返回折叠、并用官方发现口校正过的全部会话在线状态。
 func (s *Server) listPresence() []store.Presence {
 	agents, _ := s.V.ListPresence()
 	var live map[string]cliSession
@@ -535,9 +538,9 @@ func (s *Server) listPresence() []store.Presence {
 	return mergePresence(out)
 }
 
-// mergePresence 折叠同一艘船的重复心跳：该船已有会话级记录（带 session_id）
+// mergePresence 折叠同一个会话的重复在线状态：该会话已有会话级记录（带 session_id）
 // 时，扁平记录（旧版 port present / 嵌套目录里的旧钩子残留）不再单列，
-// 否则顶栏会出现两枚同一艘船的芯片。真正的会话无关客户端（远程 ssh 船）
+// 否则顶栏会出现两枚同一个会话的芯片。真正的会话无关客户端（远程 ssh 会话）
 // 通常使用不同 actor 名，不受影响。
 func mergePresence(in []store.Presence) []store.Presence {
 	haveSession := map[string]bool{}
@@ -556,7 +559,7 @@ func mergePresence(in []store.Presence) []store.Presence {
 	return out
 }
 
-// presenceIndex 返回全部心跳，以及「在线且正在做某任务」的 task→Presence 索引。
+// presenceIndex 返回全部 presence 记录，以及「在线且正在做某任务」的 task→Presence 索引。
 func (s *Server) presenceIndex() ([]store.Presence, map[string]store.Presence) {
 	agents := s.listPresence()
 	byTask := map[string]store.Presence{}
@@ -584,7 +587,7 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	n := atoiDefault(r.PostFormValue("n"), 0)
 	checked := r.PostFormValue("checked") == "1"
-	// 勾选 = 网页端验货留痕（干活的会话在 CLI 自勾是汇报，同一套痕迹）。
+	// 勾选 = 网页端验收留痕（干活的会话在 CLI 自勾是汇报，同一套痕迹）。
 	if _, _, _, err := s.V.CheckItem(id, n, checked, dispatcher); err != nil {
 		redirectErr(w, r, err.Error())
 		return
@@ -664,7 +667,7 @@ func (s *Server) handleAPINext(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIAgents(w http.ResponseWriter, r *http.Request) {
 	agents := s.listPresence()
-	// 直接返回各船位心跳（含 session_id/dir 等字段），前端按会话渲染芯片
+	// 直接返回各会话在线状态（含 session_id/dir 等字段），前端按会话渲染芯片
 	if agents == nil {
 		agents = []store.Presence{}
 	}
@@ -791,6 +794,7 @@ func toolEmoji(name string) string {
 var boardTmpl = template.Must(template.New("board").Funcs(funcMap).Parse(boardHTML))
 var taskTmpl = template.Must(template.New("task").Funcs(funcMap).Parse(taskHTML))
 var loginTmpl = template.Must(template.New("login").Funcs(funcMap).Parse(loginHTML))
+var pairTmpl = template.Must(template.New("pair").Funcs(funcMap).Parse(pairHTML))
 var sessionTmpl = template.Must(template.New("session").Funcs(funcMap).Parse(sessionHTML))
 var dirTmpl = template.Must(template.New("dir").Funcs(funcMap).Parse(dirListHTML))
 var routeListTmpl = template.Must(template.New("routeList").Funcs(funcMap).Parse(routeListHTML))
@@ -849,15 +853,15 @@ func statusZH(s string) string {
 	case store.StatusDraft:
 		return "草稿"
 	case store.StatusAnchored:
-		return "锚地"
+		return "待命中"
 	case store.StatusReady:
-		return "待接令"
+		return "待领取"
 	case store.StatusInProgress:
 		return "进行中"
 	case store.StatusBlocked:
 		return "受阻"
 	case store.StatusDone:
-		return "已归港"
+		return "已完成"
 	case store.StatusCancelled:
 		return "已取消"
 	}
@@ -878,7 +882,7 @@ func impZH(s string) string {
 
 func impClass(s string) string { return "imp-" + s }
 
-// agoText 渲染心跳的相对时间：刚刚 / x 分钟前 / x 小时前。
+// agoText 渲染在线状态的相对时间：刚刚 / x 分钟前 / x 小时前。
 func agoText(t time.Time) string {
 	d := time.Since(t)
 	switch {

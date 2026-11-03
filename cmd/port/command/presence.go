@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// present 是 agent 的心跳入口：网页顶栏据此显示在线灯。
+// present 是 agent 的在线状态入口：网页顶栏据此显示在线灯。
 // 用法：port present [T编号] [--note 正在做什么] [--by 身份]
 var (
 	presentBy   string
@@ -15,8 +15,8 @@ var (
 
 var presentCmd = &cobra.Command{
 	Use:   "present [T 编号]",
-	Short: "报到/刷新在线心跳（可选带任务号与正在做什么）",
-	Long: "向思港报告「我在」。心跳 2 分钟内有效，网页顶栏显示在线灯；\n" +
+	Short: "上线/刷新在线状态（可选带任务号与正在做什么）",
+	Long: "向思港报告「我在」。在线状态 2 分钟内有效，网页顶栏显示在线灯；\n" +
 		"带任务号时，对应任务卡上显示正在执行。相同内容 20s 内自动防抖，\n" +
 		"适合挂在会话钩子上高频调用。",
 	Args: cobra.MaximumNArgs(1),
@@ -36,7 +36,7 @@ var presentCmd = &cobra.Command{
 		if _, err := v.Present(by, task, presentNote); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "🟢 %s 已报到%s\n", by, taskSuffix(task, presentNote))
+		fmt.Fprintf(cmd.OutOrStdout(), "🟢 %s 已上线%s\n", by, taskSuffix(task, presentNote))
 		return nil
 	},
 }

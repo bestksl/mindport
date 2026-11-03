@@ -37,7 +37,7 @@ func TestListPresenceMergesOfficialSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 两个会话心跳 + 一条远程扁平心跳（不同 actor）
+	// 两个会话在线状态 + 一条远程扁平在线状态（不同 actor）
 	if _, err := v.PresentSession(store.Presence{Actor: "claude@studio", SessionID: "sid-a", Dir: "/repo/a"}); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestListPresenceMergesOfficialSnapshot(t *testing.T) {
 	}
 	remote := byKey["codex@vps"]
 	if remote.SessionID != "" || !remote.Online {
-		t.Fatalf("远程扁平心跳应保留且按 TTL 在线: %+v", remote)
+		t.Fatalf("远程扁平在线状态应保留且按 TTL 在线: %+v", remote)
 	}
 
 	// poller 缺席（机器没装 claude）时退回 TTL 模型：两个会话都在线
@@ -94,7 +94,7 @@ func TestMergePresence(t *testing.T) {
 	out := mergePresence(in)
 	for _, p := range out {
 		if p.Actor == "claude@studio" && p.SessionID == "" {
-			t.Fatalf("同船已有会话记录时扁平心跳应被折叠：%+v", out)
+			t.Fatalf("同会话已有记录时扁平在线状态应被折叠：%+v", out)
 		}
 	}
 	var foundRemote bool
@@ -104,7 +104,7 @@ func TestMergePresence(t *testing.T) {
 		}
 	}
 	if !foundRemote {
-		t.Fatalf("无会话记录的远程船扁平心跳不应被折叠：%+v", out)
+		t.Fatalf("无会话记录的远程会话扁平在线状态不应被折叠：%+v", out)
 	}
 	if len(out) != 3 {
 		t.Fatalf("期望保留 3 条，得到 %d：%+v", len(out), out)

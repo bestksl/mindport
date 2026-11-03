@@ -25,10 +25,10 @@ const pollTimeout = 12 * time.Second
 type cliSession struct {
 	PID        int    `json:"pid"`
 	ID         string `json:"id"`        // 短 id
-	CWD        string `json:"cwd"`       // 会话项目目录（船位）
+	CWD        string `json:"cwd"`       // 会话项目目录（工作目录）
 	Kind       string `json:"kind"`      // interactive | background
 	StartedAt  int64  `json:"startedAt"` // 毫秒 epoch
-	SessionID  string `json:"sessionId"` // UUID，与心跳文件名一致
+	SessionID  string `json:"sessionId"` // UUID，与在线状态文件名一致
 	Name       string `json:"name"`      // 会话简介（TUI 的 ai-title）
 	Status     string `json:"status"`    // busy | waiting | idle
 	State      string `json:"state"`     // working | blocked | done | failed | stopped
@@ -50,7 +50,7 @@ func (s cliSession) StartedAtTime() time.Time {
 // agentPoller 周期性从官方发现口拉全舰队会话快照：
 // 它是会话「在线/死亡」的权威来源，取代旧版每会话 45s pid 探活守护。
 type agentPoller struct {
-	actor string // 本机 claude 会话统一归属的船名
+	actor string // 本机 claude 会话统一归属的会话名
 	exe   string
 	v     *store.Vault
 
@@ -58,7 +58,7 @@ type agentPoller struct {
 	live map[string]cliSession // sessionId → 最新快照
 }
 
-// newAgentPoller 找不到 claude CLI 时返回 nil（调用方回退到 TTL 心跳模型）。
+// newAgentPoller 找不到 claude CLI 时返回 nil（调用方回退到 TTL 在线状态模型）。
 // serve 常由 nohup/launchd 类环境启动，PATH 未必含 ~/.local/bin，补查常见位置。
 func newAgentPoller(actor string, v *store.Vault) *agentPoller {
 	exe, err := exec.LookPath("claude")
@@ -91,7 +91,7 @@ func (p *agentPoller) run(ctx context.Context) {
 }
 
 // poll 拉一次快照：成功则整体替换（输出是全集，缺席即会话已死亡），
-// 并把会话简介/目录落一份心跳文件（新会话建档，离线后仍在派船下拉里可见）。
+// 并把会话简介/目录落一份在线状态文件（新会话建档，离线后仍在指派下拉里可见）。
 // 任何失败都保留上一次快照——CLI 升级中、preview 接口变动都不应让舰队瞬间全灰。
 func (p *agentPoller) poll() {
 	cctx, cancel := context.WithTimeout(context.Background(), pollTimeout)
@@ -117,7 +117,7 @@ func (p *agentPoller) poll() {
 		})
 	}
 	// 发现口在 2.1.x 只报 background 会话：桌面 app 与交互 TUI 从进程表补齐，
-	// 船队计数才对得上用户眼前开着的会话数。
+	// 会话计数才对得上用户眼前开着的会话数。
 	if home, herr := os.UserHomeDir(); herr == nil {
 		for _, ps := range scanProcessSessions(home, live) {
 			if _, exists := live[ps.SessionID]; exists {

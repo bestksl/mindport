@@ -1,6 +1,6 @@
 /* 思港 MindPort — 复古像素海港主题。
    夜港（默认）：深棕木舱 + 灯塔暖光；日港：羊皮纸海图。
-   v0.4 调度台：桌面四列（锚地/待接令/出港中/已归港）；
+   v0.4 任务台：桌面四列（待命中/待领取/进行中/已完成）；
    ≤1000px 两列；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。
    UI 走 Q 版像素极客风：硬边投影、方块状态灯、像素码头全景（帆船对开/吊机搬箱/灯塔摩尔斯闪）。 */
 
@@ -460,7 +460,7 @@ a { color: inherit; }
 .sw { display: inline-flex; border: 1.5px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
 .sw i { display: block; width: 12px; height: 22px; }
 
-/* 船队＝全部会话（v0.7 合并）：顶栏明面入口，一支船队就是一个 Claude 会话 */
+/* 助手＝全部会话（v0.7 合并）：顶栏明面入口，一个会话就是一个 Claude 会话 */
 .fleet-btn {
   display: inline-flex;
   align-items: center;
@@ -522,7 +522,7 @@ a { color: inherit; }
 .chip b { font-weight: 700; font-size: 12.5px; flex: none; }
 .chip em { font-style: normal; color: var(--muted); font-size: 11px; margin-left: auto; flex: none; }
 .chip .seen { font-style: normal; opacity: .65; font-size: 10px; margin-left: 2px; }
-/* 船位（项目会话）小标签 */
+/* 工作目录（项目会话）小标签 */
 .chip .proj, .detail-agent .proj {
   font-style: normal;
   font-size: 10.5px;
@@ -550,7 +550,7 @@ a { color: inherit; }
   background: var(--someday);
   flex: none;
 }
-/* 在线船：绿灯芯片 + 呼吸方块灯 */
+/* 在线会话：绿灯芯片 + 呼吸方块灯 */
 .chip.online {
   background: var(--ok-soft);
   border-color: var(--ok-line);
@@ -570,7 +570,7 @@ a { color: inherit; }
   50% { box-shadow: 0 0 0 5px var(--pulse-2); }
 }
 
-/* 草稿/锚地详情的显眼打磨入口 */
+/* 草稿/待命区详情的显眼打磨入口 */
 .btn-edit {
   display: inline-block;
   margin-top: 10px;
@@ -797,12 +797,12 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .publish-box select { min-width: 180px; }
 .hint { width: 100%; color: var(--muted); font-size: 12.5px; margin: 4px 0 0; }
 
-/* 派船/改派命令区：纵向排开，下拉占满宽 */
+/* 指派/改派命令区：纵向排开，下拉占满宽 */
 .dispatch-box { width: 100%; display: grid; gap: 8px; }
 .dispatch-box.publish-row { margin-top: 0; }
 .dispatch-box select { flex: 1; min-width: 0; }
 
-/* 调度台状态横幅（出港中/受阻/归港验货） */
+/* 任务台状态横幅（进行中/受阻/完成验收） */
 .banner {
   width: 100%;
   margin: 0;
@@ -894,7 +894,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 }
 .seg input { width: auto; }
 
-/* v0.7：想法（任务）挂船队（会话），与派船状态机正交 */
+/* v0.7：任务关联会话，与指派状态机正交 */
 .fleet-bind {
   margin-top: 18px;
   padding: 12px 16px;
@@ -926,7 +926,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .bind-row { display: flex; gap: 8px; align-items: center; }
 .bind-row select { flex: 1; min-width: 0; }
 
-/* 看板卡片上的船队别针 */
+/* 看板卡片上的会话别针 */
 .card-fleet {
   margin-left: auto;
   white-space: nowrap;
@@ -937,7 +937,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 }
 .card-fleet:hover { color: var(--amber); }
 
-/* ---------- 任务上新开船队（launch-box） ---------- */
+/* ---------- 任务上新开会话（launch-box） ---------- */
 .launch-box {
   margin-top: 12px;
   border: 1.5px dashed var(--line);
@@ -959,16 +959,16 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .launch-form label { font-size: 12px; color: var(--muted); }
 .launch-form button { justify-self: start; }
 
-/* 锚地待派任务详情：打磨 + 删除一排 */
+/* 待命任务详情：打磨 + 删除一排 */
 .anchored-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .anchored-tools .btn-edit { margin: 0; }
 .anchored-tools .detail-del { margin-top: 0; }
 
-/* 看板锚地卡片上的删除钮 */
+/* 看板待命卡片上的删除钮 */
 .card-del { margin-top: 6px; }
 .card-del button.mini { width: 100%; min-height: 30px; font-size: 12px; padding: 3px 10px; }
 
-/* ---------- 进程在跑但还没说话：船队列表匿名行 + 船台空态 ---------- */
+/* ---------- 进程在跑但还没说话：会话列表匿名行 + 会话页空态 ---------- */
 .dir-row-anon { border-style: dashed; opacity: .88; cursor: default; }
 .dir-row-anon:hover { border-color: var(--line); background: var(--panel); }
 .anon-note { color: var(--muted); font-size: 11.5px; }
@@ -1003,7 +1003,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   font-size: 13.5px;
 }
 
-/* ---------- 入港信条小字（行动区下方，不占页脚） ---------- */
+/* ---------- 快速记录小字提示（行动区下方，不占页脚） ---------- */
 .capture-hint {
   margin: 8px 0 0;
   text-align: center;
@@ -1141,7 +1141,7 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
 }
 
 /* ============================================================
-   类 app 导航：底部 tab bar（调度台 / 船队）+ 手机端看板分段
+   类 app 导航：底部 tab bar（任务台 / 助手）+ 手机端看板分段
    ============================================================ */
 
 .tabbar {
@@ -1271,7 +1271,7 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   body[data-seg] .done-fold-head { margin-top: 8px; }
 }
 
-/* 「已归港」列默认收起：标题做成与列标题一致的可折叠条，箭头展开时转向 */
+/* 「已完成」列默认收起：标题做成与列标题一致的可折叠条，箭头展开时转向 */
 .done-fold-head {
   list-style: none;
   display: flex;
@@ -1312,7 +1312,7 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   .brand-mark .px-lighthouse { width: 24px; height: 24px; }
   .top-right { flex: none; width: auto; gap: 7px; }
 
-  /* 390px 要塞下船队入口：装饰海景手机端撤场 */
+  /* 390px 要塞下助手入口：装饰海景手机端撤场 */
   .top-sea { display: none; }
   .mini-sea, .mini-port { display: none; }
   .fleet-btn { padding: 6px 9px; }
@@ -1331,7 +1331,7 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
   button { min-height: 44px; } /* 手机触控目标 */
   button.mini { min-height: 36px; }
 
-  /* 看板卡片里的派船行：select 与按钮上下排，绝不横向溢出 */
+  /* 看板卡片里的指派行：select 与按钮上下排，绝不横向溢出 */
   .card .publish-row { flex-wrap: wrap; }
   .card .publish-row select { flex: 1 1 100%; }
   .card .publish-row button { flex: 1 1 100%; }
@@ -1358,10 +1358,10 @@ button.danger:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var
 }
 
 /* ============================================================
-   会话船台（ADR-0008）：终端式 transcript 时间线 + 回话坞
+   会话页（ADR-0008）：终端式 transcript 时间线 + 输入区
    ============================================================ */
 
-/* 船队芯片改成链接后的小调整 */
+/* 会话芯片改成链接后的小调整 */
 .chip-link { text-decoration: none; cursor: pointer; }
 a.chip:hover { border-color: var(--amber-line); }
 .logout-btn {
@@ -1438,12 +1438,12 @@ a.chip:hover { border-color: var(--amber-line); }
 }
 .login-card .primary { justify-content: center; }
 
-/* 会话页：顶栏之下全高，时间线内滚、回话坞钉底 */
+/* 会话页：顶栏之下全高，时间线内滚、输入区钉底 */
 .session {
   width: min(900px, 100%);
   margin: 0 auto;
   box-sizing: border-box;
-  /* 底部预留悬浮 tab 坞的位置（bottom:18 + 高约 52 + 余量），别让它压住回话坞 */
+  /* 底部预留悬浮 tab 坞的位置（bottom:18 + 高约 52 + 余量），别让它压住输入区 */
   height: calc(100vh - 146px);
   height: calc(100dvh - 146px);
   display: flex;
@@ -1485,7 +1485,7 @@ a.chip:hover { border-color: var(--amber-line); }
   background: var(--panel);
 }
 .s-status .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-/* v0.7：船队状态直接复用 CC 原生三态（工作中/待你输入/已停止），离线也是已停止 */
+/* v0.7：会话状态直接复用 CC 原生三态（工作中/待你输入/已停止），离线也是已停止 */
 .badge.working {
   color: var(--busy);
   border-color: var(--busy);
@@ -1585,7 +1585,7 @@ a.chip:hover { border-color: var(--amber-line); }
 .tl-empty a { color: var(--amber); }
 
 /* ============================================================
-   对话流（对标豆包网页 / Codex：船队回复全宽富文本、不套气泡；
+   对话流（对标豆包网页 / Codex：助手回复全宽富文本、不套气泡；
    用户的话右侧紧凑气泡；思考与工具调用都是折叠状态卡）
    ============================================================ */
 .tl-ev { display: flex; flex-direction: column; margin: 15px 0; }
@@ -1602,7 +1602,7 @@ a.chip:hover { border-color: var(--amber-line); }
 .tl-ts { font-variant-numeric: tabular-nums; opacity: .7; }
 .tl-body { width: 100%; min-width: 0; }
 
-/* 谁在说话——头像分列（豆包式）：船队左栏 ⚓，我右栏「我」，
+/* 谁在说话——头像分列（豆包式）：助手左栏 ⚓，我右栏「我」，
    中间内容各归其列，不看气泡也能一眼分清左右。 */
 .tl-assistant {
   display: grid;
@@ -1652,7 +1652,7 @@ a.chip:hover { border-color: var(--amber-line); }
 .tl-user:not(.only-result) > .bub-acts { grid-column: 1; }
 .tl-user:not(.only-result) > .tl-meta { justify-self: end; }
 
-/* 船队回复：无气泡，直接在页面上铺正文（markdown 富排版见 .md） */
+/* 助手回复：无气泡，直接在页面上铺正文（markdown 富排版见 .md） */
 .tl-text {
   white-space: pre-wrap;
   word-break: break-word;
@@ -1773,7 +1773,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 .tl-text.md tr:nth-child(2n) td { background: color-mix(in srgb, var(--panel) 55%, transparent); }
 
 /* ---- 思考折叠卡：默认收起，直播中的那张实时展开 ----
-   思考是「船上自己的事」，不是给人看的正文：字号整体小一档。 */
+   思考是「助手自己的事」，不是给人看的正文：字号整体小一档。 */
 .tl-think {
   margin: 5px 0;
   border: 1px solid var(--line);
@@ -1877,7 +1877,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 .tl-sys.interrupt { color: #e08362; border-color: rgba(224,131,98,.5); background: rgba(224,131,98,.08); }
 .tl-sys.continue { color: var(--busy); }
 
-/* 「船队正在思考…」打字指示 */
+/* 「助手正在思考…」打字指示 */
 .tl-typing {
   display: flex;
   align-items: center;
@@ -1901,7 +1901,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 }
 .tl-typing[hidden] { display: none; }
 
-/* 船队上挂着的集装箱（船台头部） */
+/* 会话上关联的任务（会话页头部） */
 .s-cargo {
   margin-top: 7px;
   font-size: 12px;
@@ -1926,7 +1926,7 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
 }
 .cargo-tag:hover { border-color: var(--amber-line); }
 
-/* 回话坞 */
+/* 输入区 */
 .say-dock {
   flex: none;
   border-top: 1px solid var(--line);
@@ -2282,7 +2282,7 @@ html[data-stealth="1"] .chip .dot { border-radius: 0 !important; }
 html[data-stealth="1"] .banner { border: 1px solid #000 !important; }
 html[data-stealth="1"] ::placeholder { color: #777 !important; }
 
-/* 会话船台：整页黑白日志皮相，装饰图标撤场 */
+/* 会话页：整页黑白日志皮相，装饰图标撤场 */
 html[data-stealth="1"] .emo,
 html[data-stealth="1"] .logout-btn { display: none !important; }
 html[data-stealth="1"] .session { width: auto; margin: 0; padding: 0 10px; }
@@ -2513,7 +2513,7 @@ html[data-stealth="1"] .dir-err-x { display: none; }
 .dir-back-recent { margin: 0 2px 12px; font-size: 13px; }
 .dir-back-recent a { color: var(--amber); }
 
-/* 已知船位默认折叠，把首屏让给最近会话 */
+/* 已知工作目录默认折叠，把首屏让给最近会话 */
 .dir-known-fold { margin-top: 18px; }
 .dir-known-fold summary {
   cursor: pointer;
@@ -2543,10 +2543,10 @@ html[data-stealth="1"] .dir-err-x { display: none; }
 }
 
 /* ============================================================
-   v0.8 即时桥套壳：单栏船队页 / 逐字船台 / 航线
+   v0.8 即时桥套壳：单栏助手页 / 逐字会话页 / 目标线
    ============================================================ */
 
-/* —— 单栏船队页 —— */
+/* —— 单栏助手页 —— */
 .fleet-page { max-width: 880px; margin: 0 auto; padding: 16px 16px 70px; }
 .fleet-new-box {
   border: 1px solid var(--line);
@@ -2644,7 +2644,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 #recent-chips { margin-top: 12px; }
 .dir-known-fold .dir-bar { margin-top: 8px; }
 
-/* —— 船台：逐字直播 / 排队 / 动作 —— */
+/* —— 会话页：逐字直播 / 排队 / 动作 —— */
 .tl-live {
   padding: 8px 12px 2px;
   margin: 0 2px 0 39px; /* 与助手正文列对齐（头像列 30 + 间隙 9） */
@@ -2716,7 +2716,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
   background: var(--block); animation: pulseDot 1.2s infinite;
 }
 
-/* —— 航线页 —— */
+/* —— 目标线页 —— */
 .routes-page, .route-page { max-width: 880px; margin: 0 auto; padding: 16px 16px 70px; }
 .page-title { font-size: 20px; margin: 4px 0 6px; color: var(--amber); }
 .page-sub { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 16px; }
@@ -2847,7 +2847,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 }
 .ghost-btn:hover { color: var(--amber); border-color: var(--amber-line); }
 
-/* 任务页 launch 表单：船名 + 航线并排 */
+/* 任务页 launch 表单：会话名 + 目标线并排 */
 .launch-name-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; }
 .launch-name-cell { display: flex; flex-direction: column; gap: 4px; }
 .launch-name-cell input, .launch-name-cell select {
@@ -2869,7 +2869,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
   .s-actbtns { width: 100%; }
   #btn-scuttle { margin-left: auto; }
   /* 手机键盘弹起：visualViewport 脚本把可视高度写进 --vvh，输入坞不再被键盘盖住；
-     58 顶栏 + 50 全宽 tabbar + 6px 呼吸缝 + 底部安全区，回话坞始终在 tabbar 之上 */
+     58 顶栏 + 50 全宽 tabbar + 6px 呼吸缝 + 底部安全区，输入区始终在 tabbar 之上 */
   .session { height: calc(var(--vvh, 100dvh) - 114px - env(safe-area-inset-bottom)); }
 }
 
@@ -2927,7 +2927,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 /* 头部通知等动作按钮态 */
 .actbtn.on { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok-ink); }
 
-/* 船队列表：待审批角标 + 行高亮（手机列表一眼看到哪艘船等批） */
+/* 会话列表：待审批角标 + 行高亮（手机列表一眼看到哪个会话等批） */
 .st-perm {
   color: var(--amber); font-weight: 700; font-style: normal;
   white-space: nowrap; animation: perm-glow 1.8s ease-in-out infinite;

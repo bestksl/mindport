@@ -1,6 +1,6 @@
-// 会话船台（ADR-0008）：把单个 Claude Code 会话的 transcript jsonl 桥接成
-// 幂等、可全量滚动的实时时间线，并支持调度长继续输入——
-// 会话空闲时 `claude -p --resume <sid> --bg` 续跑，正忙时留言进信箱等钩子注入。
+// 会话会话页（ADR-0008）：把单个 Claude Code 会话的 transcript jsonl 桥接成
+// 幂等、可全量滚动的实时时间线，并支持用户继续输入——
+// 会话空闲时 `claude -p --resume <sid> --bg` 续跑，正忙时留言进留言等钩子注入。
 package server
 
 import (
@@ -22,7 +22,7 @@ import (
 // resumeTimeout：--bg 是「排队即返回」，正常秒回；30s 只兜 CLI 卡死。
 const resumeTimeout = 30 * time.Second
 
-// sessInfo 是定位一个会话所需的全部信息（官方快照 + 磁盘心跳合并）。
+// sessInfo 是定位一个会话所需的全部信息（官方快照 + 磁盘在线状态合并）。
 type sessInfo struct {
 	dir        string
 	name       string
@@ -33,9 +33,9 @@ type sessInfo struct {
 	anon       bool // 进程在跑但还没说话：无 transcript、sid 是 proc-<pid>
 }
 
-// resolveSession 在官方发现口快照与磁盘心跳里找会话；dirHint（URL ?dir=）
-// 是「扫盘模式」兜底——历史会话从不上心跳也定位得到，transcript 照读、可 --resume。
-// 离线会话（快照缺席、心跳还在）也找得到。
+// resolveSession 在官方发现口快照与磁盘在线状态里找会话；dirHint（URL ?dir=）
+// 是「扫盘模式」兜底——历史会话从不上在线状态也定位得到，transcript 照读、可 --resume。
+// 离线会话（快照缺席、在线状态还在）也找得到。
 func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 	var info sessInfo
 	found := false
@@ -72,7 +72,7 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 			info.online = true
 			switch st {
 			case bridgeIdle, bridgeCold:
-				info.status = "idle" // cold=空船进程待命，不是工作中
+				info.status = "idle" // cold=空会话进程待命，不是工作中
 			case bridgeWaiting:
 				info.status = "waiting"
 			case bridgeRestarting:
@@ -89,7 +89,7 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 			found = true
 		}
 	}
-	// 心跳/发现口都没有：相信 URL 带来的目录提示，但必须自证——
+	// 在线状态/发现口都没有：相信 URL 带来的目录提示，但必须自证——
 	// 绝对路径且对应 transcript 文件真实存在（防目录穿越与瞎编）。
 	if info.dir == "" && dirHint != "" && filepath.IsAbs(dirHint) {
 		if home, err := os.UserHomeDir(); err == nil && transcript.Exists(home, dirHint, sid) {
@@ -143,7 +143,7 @@ func (s *Server) transcriptPath(info sessInfo, sid string) (string, bool) {
 // ---------- 页面 ----------
 
 type sessionPage struct {
-	Agents   []store.Presence // 顶栏船队
+	Agents   []store.Presence // 顶栏会话
 	SID      string
 	ShortSID string
 	Name     string
@@ -160,11 +160,11 @@ type sessionPage struct {
 	HasMark    bool
 	Mark       store.SessionMark
 	MarkText   string
-	BoundTasks []store.Record // 挂在这支船队上的集装箱
+	BoundTasks []store.Record // 关联在这个会话上的任务
 
-	Found    bool   // 心跳/快照/目录提示里有此会话
+	Found    bool   // 在线状态/快照/目录提示里有此会话
 	HasLog   bool   // transcript 文件已落盘
-	Anon     bool   // 进程在跑但还没说话：只显示空态，船台不可交互
+	Anon     bool   // 进程在跑但还没说话：只显示空态，会话页不可交互
 	AnonPID  string // Anon 时展示进程 pid（sid 是 proc-<pid> 临时键）
 	Auth     bool   // 顶栏据此显示登出口
 	FromList bool   // 从 /sessions?dir= 列表点进来：返回键回目录列表
@@ -207,7 +207,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Pending, _ = s.V.MailPending(sid)
 	d.BoundTasks, _ = s.V.TasksBySession(sid)
-	// 历史会话没有心跳简介：用 transcript 首条真人发言当船台标题
+	// 历史会话没有在线状态简介：用 transcript 首条真人发言当会话页标题
 	if found && d.Name == "" && info.dir != "" {
 		if home, err := os.UserHomeDir(); err == nil {
 			d.Name = transcript.Meta(home, info.dir, sid).Title
@@ -253,7 +253,7 @@ type streamResp struct {
 	Pending    int                `json:"pending"`
 	Queued     []string           `json:"queued,omitempty"`    // 桥忙时排队中的消息
 	Streaming  []partialBlock     `json:"streaming,omitempty"` // 当前轮逐字块（未落 transcript）
-	Bridge     bool               `json:"bridge,omitempty"`    // 这支船队由网页桥驱动
+	Bridge     bool               `json:"bridge,omitempty"`    // 这个会话由网页桥驱动
 	Perms      []PermView         `json:"perms,omitempty"`     // 等手机拍板的工具审批
 	PermOn     bool               `json:"perm_on,omitempty"`   // 审批通道在役
 	Mode       string             `json:"mode,omitempty"`      // auto | plan | yolo
@@ -272,7 +272,7 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info.anon {
-		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "这支船队还没说过话，没有船台"})
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "这个会话还没说过话，没有会话页"})
 		return
 	}
 	resp := streamResp{
@@ -337,7 +337,7 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info.anon {
-		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "这支船队还没说过话，没有往事可翻"})
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "这个会话还没说过话，没有往事可翻"})
 		return
 	}
 	home, _ := os.UserHomeDir()
@@ -359,21 +359,21 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 // ---------- 继续输入 ----------
 
 type sayResp struct {
-	Delivered string `json:"delivered"` // resume=已唤醒续跑；mail=排队留言
+	Delivered string `json:"delivered"` // resume=已唤醒续跑；mail=留言已排队
 	Pending   int    `json:"pending,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 }
 
 // handleSessionSay 见 bridge_actions.go：常驻桥即时注入（忙时自动排队），
-// 信箱只在桥起不来时兜底。
+// 留言只在桥起不来时兜底。
 
 func (s *Server) queueMail(w http.ResponseWriter, sid, msg string) {
 	if _, err := s.V.AppendMail(sid, msg); err != nil {
-		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "留言入箱失败: " + err.Error()})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "留言保存失败: " + err.Error()})
 		return
 	}
 	n, _ := s.V.MailPending(sid)
-	writeJSON(w, sayResp{Delivered: "mail", Pending: n, Detail: "留言已排队，船队下一轮开工时自动收到"})
+	writeJSON(w, sayResp{Delivered: "mail", Pending: n, Detail: "留言已排队，会话下一轮开工时自动收到"})
 }
 
 // claudeExe 找官方 CLI：优先复用 poller 已定位的路径，再走 PATH 与常见安装位。
@@ -445,7 +445,7 @@ var bgAckRe = regexp.MustCompile(`backgrounded[^\n]*?\b([0-9a-f]{8})\b`)
 
 // runBackground 用 2.1.x 语法调起一个后台会话（`claude --bg [--resume sid]
 // --output-format json <prompt>`；旧语法 `-p --bg` 已被 CLI 明确拒绝）。
-// resumeSID 为空=新开船队，返回值是新会话 sid；非空=续话，返回值即原 sid。
+// resumeSID 为空=新开会话，返回值是新会话 sid；非空=续话，返回值即原 sid。
 func (s *Server) runBackground(dir, resumeSID, msg string) (string, error) {
 	exe := s.claudeExe()
 	if exe == "" {
@@ -490,7 +490,7 @@ func (s *Server) runBackground(dir, resumeSID, msg string) (string, error) {
 	if sid := waitAgentSID(exe, short, 8*time.Second); sid != "" {
 		return sid, nil
 	}
-	return "", fmt.Errorf("CLI 已排队（短 id %s），但发现口暂时没报出完整会话 id，稍等可从船队列表找到它再挂任务", short)
+	return "", fmt.Errorf("CLI 已排队（短 id %s），但发现口暂时没报出完整会话 id，稍等可从会话列表找到它再关联任务", short)
 }
 
 // waitAgentSID 用短 id 轮询 `claude agents --json` 反查完整 sessionId：

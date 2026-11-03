@@ -24,13 +24,13 @@ type hookPayload struct {
 }
 
 // heartbeat 由会话钩子（SessionStart / UserPromptSubmit）调用：
-// 从 stdin 的钩子 JSON 识别「哪艘船的哪个项目会话」并点卯（写心跳文件，
-// 供派船下拉展示船位与最后活动时间）。会话的在线/死亡判定不在本命令：
+// 从 stdin 的钩子 JSON 识别「哪个执行者的哪个项目会话」并登记上线（写在线状态文件，
+// 供指派下拉展示工作目录与最后活动时间）。会话的在线/死亡判定不在本命令：
 // serve 每 30s 经官方发现口 `claude agents --json` 获取活会话全集
 // （ADR-0007 A 档），所以这里不再 fork 探活守护、不写 pidfile。
 var heartbeatCmd = &cobra.Command{
 	Use:    "heartbeat",
-	Short:  "会话点卯（钩子用；在线状态由调度台经官方发现口判定）",
+	Short:  "会话上线登记（钩子用；在线状态由任务台经官方发现口判定）",
 	Args:   cobra.NoArgs,
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,7 +63,7 @@ var heartbeatCmd = &cobra.Command{
 			return err
 		}
 		if wrote {
-			fmt.Fprintf(cmd.OutOrStdout(), "🟢 %s 已点卯船位：%s\n", by, filepath.Base(dir))
+			fmt.Fprintf(cmd.OutOrStdout(), "🟢 %s 已上线，工作目录：%s\n", by, filepath.Base(dir))
 		}
 		return nil
 	},
@@ -99,6 +99,6 @@ func readHookStdin() *hookPayload {
 }
 
 func init() {
-	heartbeatCmd.Flags().StringVar(&hbBy, "by", "", "船名（默认 $PORT_ACTOR 或 <user>@<host>）")
+	heartbeatCmd.Flags().StringVar(&hbBy, "by", "", "执行者（默认 $PORT_ACTOR 或 <user>@<host>）")
 	rootCmd.AddCommand(heartbeatCmd)
 }

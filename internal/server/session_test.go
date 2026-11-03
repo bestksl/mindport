@@ -18,7 +18,7 @@ const (
 	testCWD = "/repo/a"
 )
 
-// setupSession 造一个带磁盘心跳与 transcript 文件的会话；home 与 vault 各自临时目录。
+// setupSession 造一个带磁盘在线状态与 transcript 文件的会话；home 与 vault 各自临时目录。
 func setupSession(t *testing.T, transcriptLines string, live map[string]cliSession) (*Server, string) {
 	t.Helper()
 	home := t.TempDir()
@@ -138,10 +138,10 @@ func TestSessionHistoryAnd404(t *testing.T) {
 		t.Fatalf("历史窗口里工具卡也应带结果: %+v", d.Events[1].Blocks)
 	}
 
-	// 心跳里没有的会话：页面友好提示
+	// 在线状态里没有的会话：页面友好提示
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/nope-0000", nil))
-	if !strings.Contains(rec.Body.String(), "没查到这支船队") {
+	if !strings.Contains(rec.Body.String(), "没查到这个会话") {
 		t.Fatalf("未知会话应显示友好态")
 	}
 	// API 直接 404
@@ -175,7 +175,7 @@ func TestSessionSayBusyGoesToMailbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d.Delivered != "mail" || d.Pending != 1 {
-		t.Fatalf("忙碌会话应进信箱，得到 %+v", d)
+		t.Fatalf("忙碌会话应进留言队列，得到 %+v", d)
 	}
 	got, err := s.V.PullMail(testSID)
 	if err != nil || len(got) != 1 || got[0].Text != "先别停，顺手把鉴权也做了" {
@@ -185,7 +185,7 @@ func TestSessionSayBusyGoesToMailbox(t *testing.T) {
 
 func TestSessionSayResumeFailureFallsBack(t *testing.T) {
 	// 离线会话（live 缺席）→ 尝试 resume；但 PATH 无 claude 且 HOME 是临时目录，
-	// 找不到 CLI 时必须兜底进信箱，指令不丢。
+	// 找不到 CLI 时必须兜底进留言队列，指令不丢。
 	t.Setenv("PATH", t.TempDir())
 	s, _ := setupSession(t, testTranscript, nil)
 	h := s.Routes()
@@ -200,7 +200,7 @@ func TestSessionSayResumeFailureFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d.Delivered != "mail" {
-		t.Fatalf("resume 不可用时应兜底信箱，得到 %+v", d)
+		t.Fatalf("resume 不可用时应兜底留言队列，得到 %+v", d)
 	}
 
 	// 空消息 400、未知会话 404

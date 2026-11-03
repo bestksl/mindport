@@ -1,10 +1,10 @@
 // fleet bridge（v0.8）：网页与 Claude Code 原生体验之间的桥。
 //
 // 旧链路（v0.7）每说一句话 spawn 一次 `claude --bg --resume`：会话正忙时
-// 官方拒绝并发续跑，话只能落进信箱等一个默认没装的钩子注入，留言经常永久
+// 官方拒绝并发续跑，话只能落进留言等一个默认没装的钩子注入，留言经常永久
 // 卡死；思考/回答也只有整轮写进 transcript 后才看得见。
 //
-// bridge 给每支「网页开出去的船队」养一个常驻
+// bridge 给每支「网页开出去的会话」养一个常驻
 //
 //	claude -p --input-format stream-json --output-format stream-json \
 //	       --include-partial-messages --verbose
@@ -40,14 +40,14 @@ import (
 // 继续等，readLoop 一起就跑，真崩了由 waitGen 自愈。
 var errBridgeWarming = errors.New("桥正在唤醒这个会话")
 
-// guard 兜住桥后台 goroutine 的 panic：一支船队的意外绝不能崩掉整个 serve。
+// guard 兜住桥后台 goroutine 的 panic：一个会话的意外绝不能崩掉整个 serve。
 func (b *fleetBridge) guard(fp *fleetProc, where string) {
 	if x := recover(); x != nil {
 		log.Printf("fleet bridge panic sid=%s where=%s: %v", fp.sid, where, x)
 		fp.mu.Lock()
 		if !fp.killed && fp.state != bridgeDead {
 			fp.state = bridgeDead
-			fp.errMsg = fmt.Sprintf("桥内部异常（%s）：%v；刷新后可重新开船", where, x)
+			fp.errMsg = fmt.Sprintf("桥内部异常（%s）：%v；刷新后可重新开会话", where, x)
 		}
 		fp.mu.Unlock()
 		b.publishState(fp)
@@ -57,12 +57,12 @@ func (b *fleetBridge) guard(fp *fleetProc, where string) {
 // 桥进程状态。
 const (
 	bridgeStarting   = "starting"   // 子进程已起，带着首条消息等 system/init
-	bridgeCold       = "cold"       // 空船：CLI 收到第一条消息前不发 init，进程待命
+	bridgeCold       = "cold"       // 空会话：CLI 收到第一条消息前不发 init，进程待命
 	bridgeWaiting    = "waiting"    // 等用户补充/确认（黄灯）
 	bridgeWorking    = "working"    // 一轮请求在跑（等同官方 busy）
 	bridgeIdle       = "idle"       // 上一轮 result 已回，等下一句
 	bridgeRestarting = "restarting" // 中断/掉线收束中，新代 --resume 桥接续
-	bridgeDead       = "dead"       // 子进程退出且不再重起（拆船/熔断）
+	bridgeDead       = "dead"       // 子进程退出且不再重起（删除会话/熔断）
 )
 
 // maxAutoRestarts 是桥进程意外死亡时连续自动重起的熔断阈值。
@@ -79,7 +79,7 @@ type partialBlock struct {
 	Err     bool   `json:"err,omitempty"` // result：工具回报失败
 }
 
-// fleetProc 是一支船队的常驻桥。CLI 进程可换代（中断/意外退出后 --resume
+// fleetProc 是一个会话的常驻桥。CLI 进程可换代（中断/意外退出后 --resume
 // 重起），sid 与本结构不变；gen 标识代数，旧代 goroutine 凭它静默退场。
 type fleetProc struct {
 	sid   string
@@ -95,7 +95,7 @@ type fleetProc struct {
 	mu       sync.Mutex
 	gen      uint64 // 进程代数，每 spawn 一代 +1
 	deaths   int    // 连续意外死亡数（成功收到 init 清零）
-	killed   bool   // 拆船：本次退出不要重起
+	killed   bool   // 删除会话：本次退出不要重起
 	procDone chan struct{}
 	state    string
 	idleAt   time.Time // 进入 idle/cold 的时刻；收割器据此给终端让出会话席位
@@ -171,7 +171,7 @@ const (
 
 // errSessionHeldElsewhere 标记「同一会话正被别的 claude 客户端占着」：
 // 此时不能再起桥双写同一份 transcript，handler 要把人话原样还给用户而不是
-// 默默塞进留言信箱。
+// 默默塞进留言留言。
 var errSessionHeldElsewhere = errors.New("会话在别处开着")
 
 // reaperLoop 周期收割空闲桥。
@@ -210,8 +210,8 @@ func (b *fleetBridge) reapOnce() {
 	}
 }
 
-// retire 收掉一支空闲桥：宣告旧代作废、状态置 dead（网页退回 transcript 视图）、
-// 协议中断 + SIGKILL 收进程。与拆船的区别：killed 不置位，下一句话照常
+// retire 收掉一座空闲桥：宣告旧代作废、状态置 dead（网页退回 transcript 视图）、
+// 协议中断 + SIGKILL 收进程。与删除会话的区别：killed 不置位，下一句话照常
 // --resume 复活。两阶段（先挂 restarting 宽限 300ms）避免杀掉「刚好在
 // TTL 点上注入、CLI 已读但 status 事件还没到」的新轮。
 func (b *fleetBridge) retire(fp *fleetProc) {
@@ -326,7 +326,7 @@ func (b *fleetBridge) publishState(fp *fleetProc) {
 	fp.mu.Unlock()
 	ev := bridgeEvent{Type: "state", SID: fp.sid, State: state, Blocks: blocks, Queued: queued, Err: errMsg}
 	b.publish(ev)
-	b.publish(bridgeEvent{Type: "fleet"}) // 船队列表/角标也要跟着翻灯
+	b.publish(bridgeEvent{Type: "fleet"}) // 会话列表/角标也要跟着翻灯
 }
 
 // stateOf 返回某 sid 的桥状态；没有桥（CLI 会话/离线）返回 ok=false。
@@ -345,7 +345,7 @@ func (b *fleetBridge) stateOf(sid string) (state string, alive bool) {
 	return fp.state, fp.state != bridgeDead
 }
 
-// dirOf/nameOf 取桥进程登记的项目目录与船名。
+// dirOf/nameOf 取桥进程登记的项目目录与会话名。
 func (b *fleetBridge) dirOf(sid string) string {
 	if b == nil {
 		return ""
@@ -372,7 +372,7 @@ func (b *fleetBridge) nameOf(sid string) string {
 	return fp.name
 }
 
-// snapshot 给船台 stream 端点带上当前流式块与队列。
+// snapshot 给会话页 stream 端点带上当前流式块与队列。
 func (b *fleetBridge) snapshot(sid string) (state string, blocks []partialBlock, queued []string, alive bool) {
 	if b == nil {
 		return "", nil, nil, false
@@ -389,7 +389,7 @@ func (b *fleetBridge) snapshot(sid string) (state string, blocks []partialBlock,
 	return state, blocks, queued, fp.state != bridgeDead
 }
 
-// Start 为一支船队起桥。resumeSID 非空=续旧会话；为空=新开（sid 由我们
+// Start 为一个会话起桥。resumeSID 非空=续旧会话；为空=新开（sid 由我们
 // 生成、--session-id 指定，立刻可绑定/跳转）。起桥后送入第一句话。
 func (b *fleetBridge) Start(dir, resumeSID, name, firstMsg string) (string, *fleetProc, error) {
 	if b == nil {
@@ -438,7 +438,7 @@ func (b *fleetBridge) Start(dir, resumeSID, name, firstMsg string) (string, *fle
 
 // spawn 启动 fp 的新一代 CLI 进程（第一代由 Start 调；中断/掉线后的换代也走
 // 这里）。resume=true 用 --resume <sid>，false 用 --session-id <sid>。
-// firstMsg 非空时点火并等 init；空船置 cold 即返回。
+// firstMsg 非空时点火并等 init；空会话置 cold 即返回。
 //
 // CLI 2.1.310 实测：result 后进程常驻可接下一句；但 control_request/interrupt
 // 会让 -p 进程立刻退出（无回执）——所以「中断」=旧代收束后 spawn 新一代。
@@ -455,7 +455,7 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 	killed := fp.killed
 	fp.mu.Unlock()
 	if killed {
-		return fmt.Errorf("船队已拆，不再重起")
+		return fmt.Errorf("会话已删除，不再重起")
 	}
 	if oldProc != nil && oldDone != nil {
 		select {
@@ -477,7 +477,7 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 	// （全新 sid 不可能有人占；探测本身任何故障都 fail-open。）
 	if resume {
 		if pid, who, held := b.externalHolder(fp.sid); held {
-			return fmt.Errorf("%w：这个会话还在%s里开着（PID %d）。请先在那边退出（终端按 Ctrl-C/关掉窗口），再回船队说话——两边不能同时写同一份记录",
+			return fmt.Errorf("%w：这个会话还在%s里开着（PID %d）。请先在那边退出（终端按 Ctrl-C/关掉窗口），再回会话说话——两边不能同时写同一份记录",
 				errSessionHeldElsewhere, who, pid)
 		}
 	}
@@ -494,7 +494,7 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		"--verbose",
 	}
 	// 权限模式对齐 Claude Code（Auto/Plan/无人值守），默认 auto：
-	// 审批通道在役时挂上每船队的 MCP 回调，CLI 认为有风险的操作仍走手机拍板。
+	// 审批通道在役时挂上每会话的 MCP 回调，CLI 认为有风险的操作仍走手机拍板。
 	mode := b.srv.sessionMode(fp.sid)
 	attachPrompt := func() bool {
 		cfgPath, perr := b.srv.perm.configFor(fp.sid)
@@ -570,12 +570,12 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 
 	// CLI 在 stream-json 下收到第一条 user 消息前不会吐 system/init（实测
 	// 2.1.310：空 stdin 只发 hook/title 事件）。所以首条消息必须先写进 stdin，
-	// 再等 init；不开口的空船则标 cold 直接返回，第一句 Say 时 CLI 才点火。
+	// 再等 init；不开口的空会话则标 cold 直接返回，第一句 Say 时 CLI 才点火。
 	if firstMsg == "" {
 		fp.mu.Lock()
 		if fp.gen == gen && fp.state == bridgeStarting {
 			fp.state = bridgeCold
-			fp.idleAt = time.Now() // 空船同样占席位，到点也退役
+			fp.idleAt = time.Now() // 空会话同样占席位，到点也退役
 		}
 		fp.mu.Unlock()
 		b.publishState(fp)
@@ -644,7 +644,7 @@ func (b *fleetBridge) writeUser(fp *fleetProc, msg string) error {
 	return nil
 }
 
-// Say 向船队注入一句话。桥正忙时 CLI 自动排队（等价终端抢话），返回 queued=true。
+// Say 向会话注入一句话。桥正忙时 CLI 自动排队（等价终端抢话），返回 queued=true。
 func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 	if b == nil {
 		return false, fmt.Errorf("即时桥未启用")
@@ -653,9 +653,9 @@ func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 	fp := b.procs[sid]
 	b.mu.Unlock()
 	if fp == nil {
-		return false, fmt.Errorf("这支船队没有桥")
+		return false, fmt.Errorf("这个会话没有桥")
 	}
-	// 中断收束/掉线重起中：等新一代就位（spawn 空船是毫秒级，给 8s 兜底）。
+	// 中断收束/掉线重起中：等新一代就位（spawn 空会话是毫秒级，给 8s 兜底）。
 	if st := fp.curGenState(); st == bridgeRestarting || st == bridgeStarting {
 		deadline := time.Now().Add(8 * time.Second)
 		for time.Now().Before(deadline) {
@@ -721,12 +721,12 @@ func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 	fp := b.procs[sid]
 	b.mu.Unlock()
 	if fp == nil {
-		return fmt.Errorf("这支船队没有桥")
+		return fmt.Errorf("这个会话没有桥")
 	}
 	fp.mu.Lock()
 	if fp.killed || fp.state == bridgeDead {
 		fp.mu.Unlock()
-		return fmt.Errorf("船队已经拆了")
+		return fmt.Errorf("会话已经删除")
 	}
 	fp.gen++ // 提前宣告旧代作废：旧 waitGen/readLoop 凭代数不等静默退场，不会误判「意外死亡」重复重起
 	oldDone := fp.procDone
@@ -797,7 +797,7 @@ func (b *fleetBridge) reinject(fp *fleetProc, pending []string) {
 	}
 }
 
-// Kill 硬停桥进程（拆船）：标记 killed，waitGen 见标记不再重起。
+// Kill 硬停桥进程（删除会话）：标记 killed，waitGen 见标记不再重起。
 func (b *fleetBridge) Kill(sid string) bool {
 	if b == nil {
 		return false
@@ -830,7 +830,7 @@ func (b *fleetBridge) Kill(sid string) bool {
 	return true
 }
 
-// waitGen 收束一代进程：拆船→dead；换代→静默；意外退出→有界自动 --resume。
+// waitGen 收束一代进程：删除会话→dead；换代→静默；意外退出→有界自动 --resume。
 func (b *fleetBridge) waitGen(fp *fleetProc, cmd *exec.Cmd, stderrBuf *limitedBuffer, gen uint64, done chan struct{}) {
 	defer b.guard(fp, "wait")
 	err := cmd.Wait()
@@ -865,7 +865,7 @@ func (b *fleetBridge) waitGen(fp *fleetProc, cmd *exec.Cmd, stderrBuf *limitedBu
 		fp.mu.Lock()
 		fp.state = bridgeDead
 		if fp.errMsg == "" {
-			fp.errMsg = "桥进程反复退出，已停止自动重连；刷新页面可重新开船"
+			fp.errMsg = "桥进程反复退出，已停止自动重连；刷新页面可重新开会话"
 		}
 		fp.mu.Unlock()
 		b.publishState(fp)
@@ -1043,7 +1043,7 @@ func (b *fleetBridge) applyStreamEvent(fp *fleetProc, raw json.RawMessage) bool 
 			}
 		}
 	case "message_stop":
-		// 不清空：权威 transcript 行到船台有秒级轮询延迟，留到 result 再清，
+		// 不清空：权威 transcript 行到会话页有秒级轮询延迟，留到 result 再清，
 		// 避免回答在气泡里闪一下消失。
 	}
 	return changed
@@ -1128,8 +1128,8 @@ func (b *fleetBridge) bridgeStatus(sid string) (status string, online bool) {
 	}
 }
 
-// enrichRows 用桥的实时状态/船名覆盖扫盘行，并补入「桥已起、transcript
-// 还没落盘、发现口也没刷出」的全新船队。archived 名册行打归档标。
+// enrichRows 用桥的实时状态/会话名覆盖扫盘行，并补入「桥已起、transcript
+// 还没落盘、发现口也没刷出」的全新会话。archived 名册行打归档标。
 func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 	if s.bridge == nil {
 		return rows
@@ -1139,7 +1139,7 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 	kept := rows[:0]
 	for i := range rows {
 		if hidden[rows[i].SID] {
-			continue // 已拆船：从思港抹掉
+			continue // 已删除会话：从思港抹掉
 		}
 		kept = append(kept, rows[i])
 	}
@@ -1158,7 +1158,7 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 		row.Class = "is-" + fs.Key
 		row.StateText = fs.Text
 	}
-	// 名册里的船名（-n「短码-需求」）优先于首句标题。
+	// 名册里的会话名（-n「短码-需求」）优先于首句标题。
 	bySID := map[string]int{}
 	for i := range rows {
 		bySID[rows[i].SID] = i
@@ -1171,7 +1171,7 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 			rows[i].Name = f.Name
 		}
 	}
-	// 桥里有、列表没有（全新会话 transcript 未生）的船队补行。
+	// 桥里有、列表没有（全新会话 transcript 未生）的会话补行。
 	s.bridge.mu.Lock()
 	var fresh []*fleetProc
 	for _, fp := range s.bridge.procs {
@@ -1217,7 +1217,7 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 		row.StateText = fs.Text
 		rows = append(rows, row)
 	}
-	// 待审批角标：让人在船队列表一眼看到哪支船正等手机拍板，不必逐艘点进去。
+	// 待审批角标：让人在会话列表一眼看到哪个会话正等手机拍板，不必逐个点进去。
 	if s.perm != nil {
 		for i := range rows {
 			rows[i].Perms = s.perm.pendingCount(rows[i].SID)

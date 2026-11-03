@@ -19,15 +19,15 @@ func statusZH(s string) string {
 	case store.StatusDraft:
 		return "草稿  "
 	case store.StatusAnchored:
-		return "锚地  "
+		return "待命区"
 	case store.StatusReady:
-		return "待接令"
+		return "待领取"
 	case store.StatusInProgress:
 		return "进行中"
 	case store.StatusBlocked:
 		return "受阻  "
 	case store.StatusDone:
-		return "已归港"
+		return "已完成"
 	case store.StatusCancelled:
 		return "已取消"
 	default:

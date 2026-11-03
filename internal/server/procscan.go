@@ -1,7 +1,7 @@
 // 进程表补充发现（v0.7 补丁）：`claude agents --json` 在 2.1.x 上只报
 // background 会话；桌面 app 托管会话（命令行带 --session-id 的 --agent 进程）
 // 与交互 TUI（裸 claude 主进程，占着一个控制终端）都在发现口之外，
-// 但它们是用户眼前的实时会话，船队计数与列表必须算上。
+// 但它们是用户眼前的实时会话，会话计数与列表必须算上。
 //
 // 识别手段全部来自本机可见状态，不碰 daemon 私有协议：
 //   - 桌面会话：命令行 --session-id <uuid> 直接给 sid，transcript 给目录与标题；
@@ -27,7 +27,7 @@ import (
 // 但还没说过话」的空会话）。
 type procSession = cliSession
 
-// anonSID 是匿名 TUI 在合并快照里用的临时键（前缀 proc-），不可进船台/不可 resume。
+// anonSID 是匿名 TUI 在合并快照里用的临时键（前缀 proc-），不可进会话页/不可 resume。
 func anonSID(pid int) string { return "proc-" + strconv.Itoa(pid) }
 
 func isAnonSID(sid string) bool { return strings.HasPrefix(sid, "proc-") }

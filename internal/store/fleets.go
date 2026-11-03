@@ -1,7 +1,7 @@
-// 船队名册（v0.8）：记网页端开出去的船队（fleet bridge）的人给信息——
-// 船名（短码-需求）、项目目录、挂的任务与航线。生死与实时状态仍以 CC 官方
-// 发现口/桥进程为准，这里不复制。Archived=true 表示已从主列表折叠（归港），
-// Remove 是「拆船」（等效 CC 的 Ctrl-X）：只清思港侧记录，不碰 CC transcript。
+// 会话名册（v0.8）：记网页端新开的会话（fleet bridge）的人给信息——
+// 会话名（短码-需求）、项目目录、关联的任务与目标线。生死与实时状态仍以 CC 官方
+// 发现口/桥进程为准，这里不复制。Archived=true 表示已从主列表折叠（已结束），
+// Remove 是「删除会话」（等效 CC 的 Ctrl-X）：只清思港侧记录，不碰 CC transcript。
 package store
 
 import (
@@ -16,15 +16,15 @@ import (
 
 const fleetsFile = ".port/state/fleets.json"
 
-// FleetInfo 是一支网页船队的名册条目。
+// FleetInfo 是一支网页会话的名册条目。
 type FleetInfo struct {
 	SID    string    `json:"sid"`
-	Name   string    `json:"name"`           // 船名（如 数学-1加2），即 CC 会话 -n
+	Name   string    `json:"name"`           // 会话名（如 数学-1加2），即 CC 会话 -n
 	Dir    string    `json:"dir"`            // 项目目录（CC 的 cwd）
 	Task   string    `json:"task,omitempty"` // 挂的任务 T 编号（可空）
 	Route  string    `json:"route,omitempty"`
 	Born   time.Time `json:"born"`
-	Hidden bool      `json:"hidden,omitempty"` // 已拆船（Ctrl-X）：从思港列表隐藏，CC transcript 不动
+	Hidden bool      `json:"hidden,omitempty"` // 已删除会话（Ctrl-X）：从思港列表隐藏，CC transcript 不动
 }
 
 func (v *Vault) fleetsPath() string { return filepath.Join(v.Root, fleetsFile) }
@@ -57,7 +57,7 @@ func (v *Vault) writeFleets(m map[string]FleetInfo) error {
 	return os.Rename(tmp, v.fleetsPath())
 }
 
-// SaveFleet 登记/更新一支船队（按 sid upsert）。
+// SaveFleet 登记/更新一个会话（按 sid upsert）。
 func (v *Vault) SaveFleet(info FleetInfo) error {
 	info.SID = strings.TrimSpace(info.SID)
 	if len(info.SID) > 64 {
@@ -73,7 +73,7 @@ func (v *Vault) SaveFleet(info FleetInfo) error {
 			return err
 		}
 		if old, ok := m[info.SID]; ok {
-			// 只覆盖非空字段：任务页挂载等后到的更新不抹掉船名/目录。
+			// 只覆盖非空字段：任务页挂载等后到的更新不抹掉会话名/目录。
 			if info.Name == "" {
 				info.Name = old.Name
 			}
@@ -89,7 +89,7 @@ func (v *Vault) SaveFleet(info FleetInfo) error {
 			if info.Born.IsZero() {
 				info.Born = old.Born
 			}
-			info.Hidden = old.Hidden // 已拆船的会话不会因补登而复活
+			info.Hidden = old.Hidden // 已删除会话的会话不会因补登而复活
 		} else if info.Born.IsZero() {
 			info.Born = time.Now()
 		}
@@ -98,14 +98,14 @@ func (v *Vault) SaveFleet(info FleetInfo) error {
 	})
 }
 
-// Fleet 取一条名册（含已拆船的隐藏条目，调用方按 Hidden 判断）。
+// Fleet 取一条名册（含已删除会话的隐藏条目，调用方按 Hidden 判断）。
 func (v *Vault) Fleet(sid string) (FleetInfo, bool) {
 	m, _ := v.readFleets()
 	info, ok := m[sid]
 	return info, ok
 }
 
-// Fleets 返回全部未拆船名册条目（出生时间倒序，新的在前）。
+// Fleets 返回全部未删除会话名册条目（出生时间倒序，新的在前）。
 func (v *Vault) Fleets() []FleetInfo {
 	m, _ := v.readFleets()
 	out := make([]FleetInfo, 0, len(m))
@@ -118,7 +118,7 @@ func (v *Vault) Fleets() []FleetInfo {
 	return out
 }
 
-// hiddenSIDs 返回已拆船会话集合（列表过滤/船台 404 用）。
+// hiddenSIDs 返回已删除会话会话集合（列表过滤/会话页 404 用）。
 func (v *Vault) HiddenSIDs() map[string]bool {
 	m, _ := v.readFleets()
 	out := map[string]bool{}
@@ -130,7 +130,7 @@ func (v *Vault) HiddenSIDs() map[string]bool {
 	return out
 }
 
-// HideFleet 拆船（Ctrl-X）：名册条目标记隐藏，无名册则建一条隐藏占位
+// HideFleet 删除会话（Ctrl-X）：名册条目标记隐藏，无名册则建一条隐藏占位
 // （让 CLI 开的老会话也能从思港抹掉）。CC 进程与 transcript 不在此处理。
 func (v *Vault) HideFleet(sid, dir, name string) error {
 	sid = strings.TrimSpace(sid)

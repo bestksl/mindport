@@ -1,7 +1,7 @@
-// 船队维度（v0.7）：一支船队 = 一个 Claude Code 会话（session）。
-// 船队的实时生死在官方发现口里，思港不另造状态；这里只存两类人给的信息：
+// 会话维度（v0.7）：一个会话 = 一个 Claude Code 会话（session）。
+// 会话的实时生死在官方发现口里，思港不另造状态；这里只存两类人给的信息：
 //   - 结局标记：跑完了、达到预期 → 圆满结束；没跑完就停下 → 中途停止；
-//   - 集装箱挂船队：任务 Meta 上记 session/session_dir，想法跟着某支会话走。
+//   - 任务关联会话：任务 Meta 上记 session/session_dir，任务跟着某个会话走。
 package store
 
 import (
@@ -22,7 +22,7 @@ const (
 	MarkStop = "stop" // 中途停止：没跑完就停下了
 )
 
-// SessionMark 是人给一支船队的结局标记。状态本身（工作中/待输入/停止）
+// SessionMark 是人给一个会话的结局标记。状态本身（工作中/待输入/停止）
 // 以官方发现口为准，标记只表达「人怎么看这个结局」。
 type SessionMark struct {
 	Outcome string    `json:"outcome"` // good | stop
@@ -57,7 +57,7 @@ func (v *Vault) writeSessionMarks(m map[string]SessionMark) error {
 	return os.Rename(tmp, v.marksPath())
 }
 
-// MarkSession 给船队打结局标记（重复打即覆盖，时间刷新）。
+// MarkSession 给会话打结局标记（重复打即覆盖，时间刷新）。
 func (v *Vault) MarkSession(sid, dir, outcome string) error {
 	sid = strings.TrimSpace(sid)
 	if sid == "" || len(sid) > 64 {
@@ -95,13 +95,13 @@ func (v *Vault) SessionMarks() map[string]SessionMark {
 	return out
 }
 
-// SessionMark 取单支船队的标记。
+// SessionMark 取单个会话的标记。
 func (v *Vault) SessionMark(sid string) (SessionMark, bool) {
 	m, ok := v.readSessionMarks()[sid]
 	return m, ok
 }
 
-// TasksBySession 返回挂在指定船队上的全部任务（含已完成，按重要程度/编号排序）。
+// TasksBySession 返回挂在指定会话上的全部任务（含已完成，按重要程度/编号排序）。
 func (v *Vault) TasksBySession(sid string) ([]Record, error) {
 	all, err := v.ListTasks("")
 	if err != nil {
@@ -124,8 +124,8 @@ func shortSID(sid string) string {
 	return sid
 }
 
-// BindSession 把任务（集装箱）挂到一支船队（会话）上。不卡任务状态机：
-// 想法随时可以挂、随时可以换船队，底层只是两个字段 + 一条日志。
+// BindSession 把任务关联到一个具体会话上。不卡任务状态机：
+// 任务随时可以关联、随时可以换会话，底层只是两个字段 + 一条日志。
 func (v *Vault) BindSession(id, sid, dir, by string) (*Record, error) {
 	sid = strings.TrimSpace(sid)
 	if sid == "" || len(sid) > 64 {
@@ -145,7 +145,7 @@ func (v *Vault) BindSession(id, sid, dir, by string) (*Record, error) {
 		r.Meta.Session = sid
 		r.Meta.SessionDir = dir
 		touch(&r.Meta)
-		line := "挂到船队 " + shortSID(sid)
+		line := "关联到会话 " + shortSID(sid)
 		if dir != "" {
 			line += "（" + filepath.Base(dir) + "）"
 		}
@@ -162,7 +162,7 @@ func (v *Vault) BindSession(id, sid, dir, by string) (*Record, error) {
 	return rec, err
 }
 
-// UnbindSession 把任务从船队上取下。
+// UnbindSession 取消任务的会话关联。
 func (v *Vault) UnbindSession(id, by string) (*Record, error) {
 	var rec *Record
 	err := v.withLock(func() error {
@@ -178,7 +178,7 @@ func (v *Vault) UnbindSession(id, by string) (*Record, error) {
 			rec = r
 			return nil
 		}
-		line := "从船队取下"
+		line := "取消关联会话"
 		if by != "" {
 			line = by + "：" + line
 		}

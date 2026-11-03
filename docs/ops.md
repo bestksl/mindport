@@ -27,29 +27,36 @@ nohup env PORT_VAULT=$HOME/MindPort $HOME/.local/bin/port serve \
   >> $HOME/MindPort/.port/serve.log 2>&1 &
 ```
 
-- 监听 `0.0.0.0:8787`（局域网 + Tailscale）；
+- 监听 `0.0.0.0:8787`（局域网 + 组网地址），启动横幅分别打印两类地址；
 - 日志：`~/MindPort/.port/serve.log`；
 - 已知缺口：开机/登录不会自启，进程崩溃不会自动拉起；
   机器重启后需手动执行上面一行（后续上 Docker 解决）。
 
-### 入港证（Web 鉴权，ADR-0008）
+### 访问密钥与设备配对（Web 鉴权）
 
-**默认不启用，内网免证敞开**（Tailscale/家庭内网单用户模型，2026-10-27 拍板）。
-会话船台会展示 transcript（含命令/代码/思考），不可信网络（公共 WiFi、
+**默认不启用，内网免登录敞开**（组网/家庭内网单用户模型，2026-10-27 拍板）。
+会话页会展示 transcript（含命令/代码/思考），不可信网络（公共 WiFi、
 要把端口暴露出去等）用 `--auth` 上锁：
 
 ```bash
 port serve --host 0.0.0.0 --port 8787 --auth   # 或 PORT_AUTH=1
 ```
 
-- 上锁后：浏览器首次打开任意页 302 到 `/login`，粘贴密钥后写 HttpOnly cookie
-  （SameSite=Lax，30 天）；`/api/*` 未登录直接 401；顶栏出现登出口；
-- 密钥：`~/MindPort/.port/state/web.token`，32B 随机 hex，0600；
-  `port web-token` 查看/首建，密钥只存本机，不要外传；
-- 手机换机/丢 cookie：在本机再跑一次 `port web-token` 取同一把密钥；
+- 上锁后：浏览器首次打开任意页 302 到 `/login`；推荐电脑运行 `port pair`
+  生成 10 分钟一次性配对码，终端直接显示二维码，手机扫码即完成该设备配对。
+  每台设备持有独立的 30 天滑动会话（mp_sid cookie，HttpOnly、SameSite=Lax），
+  `/api/*` 未登录直接 401；顶栏出现登出口。
+- 设备管理：`port devices` 查看已配对设备（设备名取自 UA、带来源 IP 与
+  最近活跃时间），`port devices revoke <id前缀>` 单独吊销一台，不影响其他设备。
+- 兜底：`~/MindPort/.port/state/web.token` 是 32B 随机 hex 共享密钥（0600），
+  `port web-token` 查看/首建，在 `/login` 粘贴后同样签发设备会话
+  （浏览器不再保存密钥本体）；旧版直接把密钥写进 mp_key cookie 的方式仍兼容。
+- 配对码只存 SHA-256 哈希、10 分钟过期、用一次即作废，经 URL fragment 传递
+  （不进服务端日志）；登录/配对按 IP 限频（每分钟 10 次，本机豁免）。
+- 手机换机/丢 cookie：在本机重新 `port pair` 即可；旧设备可在 `port devices` 吊销。
 - ⚠ 无鉴权 + `--host 0.0.0.0` 时，同 WiFi 网段任何人都能读全部内容，
-  启动横幅会明示这一警告；Tailscale 网段（100.64/10，未开 Funnel）只有
-  自己的设备，日常默认模式即依赖这道网络边界，不做用户体系。
+  启动横幅会明示这一警告；组网网段（如 Tailscale 100.64/10、蒲公英 172.16/12，
+  未开公网中继）只有自己的设备，日常默认模式即依赖这道网络边界，不做用户体系。
 
 `deploy/com.bestksl.mindport.plist` 是**存档备用**的 launchd 方案
 （自启 + 崩溃拉起），等需要时再按文件头注释安装；当前不要启用。
@@ -66,31 +73,32 @@ serve 支持 SIGTERM/SIGINT 优雅退出（最多等 10s 在途请求），并�
 `ReadHeaderTimeout`（10s）与 `IdleTimeout`（120s）；`WriteTimeout`
 故意为 0——SSE（`/events`）是长连接流式响应。
 
-## 在线心跳（运行时状态）
+## 在线状态（运行时数据）
 
-心跳文件在 `~/MindPort/.port/state/agents/`：v0.4 起按
+在线状态文件在 `~/MindPort/.port/state/agents/`：v0.4 起按
 `<actor>/<session>.json` 每个项目会话一条（含 dir/name/kind/task/note/seen），
-旧版扁平 `<actor>.json` 仍兼容读取（同船已有会话记录时看板自动折叠，
+旧版扁平 `<actor>.json` 仍兼容读取（同一助手已有会话记录时看板自动折叠，
 避免旧钩子残留造成重复芯片）。属于运行时状态、不进 git 同步；20 秒防抖。
 v0.5 起**不再有探活守护循环与 pidfile**：会话生死由 serve 每 30 秒执行
 `claude agents --json` 的活会话全集判定（见 [ADR-0007](adr/0007-agent-integration.md)
 A 档），发现口缺席时退回 2 分钟 TTL。升级到 v0.5 后若残留 v0.4 的旧守护，
 `pkill -f 'heartbeat.*--loop'` 并清掉 `agents/*.hb.pid` 即可。详见
-[ADR-0004](adr/0004-presence-and-publish.md)、ADR-0007 与 agent-flow.md「在线心跳」。
+[ADR-0004](adr/0004-presence-and-publish.md)、ADR-0007 与 agent-flow.md「在线状态」。
 
-## 会话船台与信箱（ADR-0008）
+## 会话页与留言（ADR-0008）
 
 - 时间线是对 `~/.claude/projects/<编码cwd>/<sid>.jsonl` 的**只读**桥接：
   按字节偏移增量拉取（1.5s 轮询，页面隐藏暂停），首屏读最后 128KB，
   上翻 128KB/块，半行不解析、游标回退行首，uuid 去重——不丢不重、可全量滚动；
   思考与工具原文默认折叠。思港不 attach、不模拟键盘、不改写 transcript。
-- 回话：空闲/离线会话走 `claude -p <msg> --resume <sid> --bg` 后台续跑；
+- 留言：空闲/离线会话走 `claude -p <msg> --resume <sid> --bg` 后台续跑；
   会话正忙（官方拒绝并发 resume）时留言落 `~/MindPort/.port/state/mail/<sid>.jsonl`，
   UserPromptSubmit 钩子 `port mail-pull` 在下一轮以 `additionalContext` 幂等注入。
 - 仅 Claude Code 会话成立（Codex 无 transcript）。
 
 ## 远程访问
 
-见 [remote.md](remote.md)。Tailscale MagicDNS 域名走不通时，通常是代理软件的
+见 [remote.md](remote.md)。用 Tailscale 时若 MagicDNS 域名走不通，通常是代理软件的
 fake-ip 把 `*.ts.net` / `100.64.0.0/10` 劫持了：给代理加两条 DIRECT 规则，
-或直接用 Tailscale IP `http://100.x.y.z:8787`。
+或直接用 Tailscale IP `http://100.x.y.z:8787`。用蒲公英等其他组网时，
+直接以 `port serve` 横幅上的组网地址为准。

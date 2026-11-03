@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Presence 是一个「船位」的在线心跳：同一艘船（actor）可以同时在多个
+// Presence 是一个会话的在线心跳：同一个执行者（actor）可以同时在多个
 // 项目会话里在线（SessionID/Dir 区分），也可以是不区分会话的旧客户端/
 // 远程 CLI（SessionID 与 Dir 为空）。
 // 它是运行时状态而非任务数据，存放在 .port/state/agents/，与 vault 内容分离。
@@ -18,7 +18,7 @@ type Presence struct {
 	Actor     string    `json:"actor"`
 	SessionID string    `json:"session_id,omitempty"` // Claude Code 会话 id；空=不区分会话
 	PID       int       `json:"pid,omitempty"`        // 该会话的 CLI 主进程（守护循环精确探活用）
-	Dir       string    `json:"dir,omitempty"`        // 会话项目目录（船位）
+	Dir       string    `json:"dir,omitempty"`        // 会话所在项目目录
 	Name      string    `json:"name,omitempty"`       // 会话简介（官方 agents --json 的 name / ai-title）
 	Kind      string    `json:"kind,omitempty"`       // interactive | background（官方发现口）
 	RunState  string    `json:"run_state,omitempty"`  // working|blocked|done|failed|stopped（官方 state，仅在线时有意义）
@@ -82,7 +82,7 @@ func writePresenceLocked(dir, path string, p Presence) error {
 	return os.Rename(tmpName, path)
 }
 
-// Present 报到 / 刷新心跳（不区分会话的扁平文件：手动 present、远程 CLI）。
+// Present 上线 / 刷新心跳（不区分会话的扁平文件：手动 present、远程 CLI）。
 // 返回是否实际写盘（防抖命中时为 false）。
 func (v *Vault) Present(actor, task, note string) (bool, error) {
 	actor = strings.TrimSpace(actor)
@@ -113,7 +113,7 @@ func (v *Vault) Present(actor, task, note string) (bool, error) {
 	return wrote, err
 }
 
-// PresentSession 会话级报到（heartbeat 钩子用）：upsert 该会话的心跳文件。
+// PresentSession 会话级上线（heartbeat 钩子用）：upsert 该会话的心跳文件。
 // Task/Note 沿用文件里的现值（心跳不负责任务号），Dir/PID 以本次为准，
 // Seen 刷新（20s 防抖）。
 func (v *Vault) PresentSession(p Presence) (bool, error) {
@@ -171,15 +171,15 @@ func (v *Vault) KeepaliveSession(actor, sid string) error {
 		path := sessionPath(dir, actor, sid)
 		p, err := readPresenceFile(path)
 		if err != nil {
-			return err // 会话文件没了（可能被手动清），守护循环应重新报到
+			return err // 会话文件没了（可能被手动清），守护循环应重新上线
 		}
 		p.Seen = time.Now()
 		return writePresenceLocked(dir, path, p)
 	})
 }
 
-// SetActorSessionTask 把任务号写到该船最近活动的会话心跳上（claim 用）；
-// 该船没有任何会话文件时退化为扁平心跳（远程 ssh 场景）。
+// SetActorSessionTask 把任务号写到该执行者最近活动的会话心跳上（claim 用）；
+// 该执行者没有任何会话文件时退化为扁平心跳（远程 ssh 场景）。
 func (v *Vault) SetActorSessionTask(actor, task string) error {
 	actor = strings.TrimSpace(actor)
 	task = strings.TrimSpace(task)
@@ -199,7 +199,7 @@ func (v *Vault) SetActorSessionTask(actor, task string) error {
 	})
 }
 
-// ClearActorTask 清掉该船所有心跳上的任务号与状态行（归港用）。
+// ClearActorTask 清掉该执行者所有心跳上的任务号与状态行（完成用）。
 func (v *Vault) ClearActorTask(actor string) error {
 	actor = strings.TrimSpace(actor)
 	return v.withLock(func() error {
@@ -237,7 +237,7 @@ func (v *Vault) ClearActorTask(actor string) error {
 	})
 }
 
-// newestSessionPathLocked 返回该船最近 seen 的会话心跳文件（调用方持锁）。
+// newestSessionPathLocked 返回该执行者最近 seen 的会话心跳文件（调用方持锁）。
 func (v *Vault) newestSessionPathLocked(actor string) (string, Presence) {
 	dir := v.agentsDir()
 	sdir := filepath.Join(dir, slugName(actor))
@@ -278,7 +278,7 @@ func (v *Vault) AwaySession(actor, sid string) error {
 	})
 }
 
-// Away 显式下线（整船）：会话目录与扁平文件都删。
+// Away 显式下线（整个执行者）：会话目录与扁平文件都删。
 func (v *Vault) Away(actor string) error {
 	actor = strings.TrimSpace(actor)
 	if actor == "" {
@@ -295,7 +295,7 @@ func (v *Vault) Away(actor string) error {
 	})
 }
 
-// ListPresence 列出所有船位心跳：在线在前，再按最近出现时间倒序。
+// ListPresence 列出所有会话心跳：在线在前，再按最近出现时间倒序。
 // 兼容旧版扁平文件 agents/<actor>.json 与新版 agents/<actor>/<sid>.json。
 func (v *Vault) ListPresence() ([]Presence, error) {
 	dir := v.agentsDir()

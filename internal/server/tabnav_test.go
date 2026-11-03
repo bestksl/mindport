@@ -8,7 +8,7 @@ import (
 	"github.com/bestksl/mindport/internal/store"
 )
 
-// 类 app 底部 tab bar：看板 / 任务详情 / 船队列表三个主页面都要带，
+// 类 app 底部 tab bar：看板 / 任务详情 / 会话列表三个主页面都要带，
 // 高亮由前端按路径判定，这里只保证结构渲染。
 func TestTabbarOnMainPages(t *testing.T) {
 	home := t.TempDir()
@@ -50,7 +50,7 @@ func TestTabbarOnMainPages(t *testing.T) {
 	}
 }
 
-// 手机端看板分段：五个区（草稿/锚地/待接/出海/归港）都要渲染且带计数。
+// 手机端看板分段：五个区（草稿/待命/待领/进行中/完成）都要渲染且带计数。
 func TestBoardSegmentsRendered(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -76,7 +76,7 @@ func TestBoardSegmentsRendered(t *testing.T) {
 	if !strings.Contains(body, `data-seg="drafts" data-n="1"`) {
 		t.Fatalf("草稿分段计数应为 1，输出片段：%s", segSnippet(body))
 	}
-	for _, label := range []string{"📝 草稿", "⚓ 锚地", "🚢 待接", "🌊 出海", "🏁 归港"} {
+	for _, label := range []string{"📝 草稿", "⚓ 待命", "🚢 待领", "🌊 进行中", "🏁 完成"} {
 		if !strings.Contains(body, label) {
 			t.Fatalf("看板分段缺标签 %q", label)
 		}

@@ -1,5 +1,5 @@
-// 航线页（v0.8）：/routes 列全部航线；/routes/R0001 是一条航线的工作台——
-// 描述、临时需求（done 默认收起）、从这条航线开出去的船队。
+// 目标线页（v0.8）：/routes 列全部目标线；/routes/R0001 是一条目标线的工作台——
+// 描述、临时需求（done 默认收起）、从这条目标线开出去的会话。
 package server
 
 import (
@@ -16,7 +16,7 @@ type routeListItem struct {
 	OpenTasks  int
 	DoneTasks  int
 	FleetCount int
-	LiveCount  int // 在航船队数
+	LiveCount  int // 进行中会话数
 }
 
 type routeListPage struct {
@@ -89,7 +89,7 @@ func (s *Server) handleRouteList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleRoutesSummary 是航线 tab 角标的轻量数据源：在役航线数 + 未完成需求数。
+// handleRoutesSummary 是目标线 tab 角标的轻量数据源：在役目标线数 + 未完成需求数。
 func (s *Server) handleRoutesSummary(w http.ResponseWriter, r *http.Request) {
 	routes, _ := s.V.ListRoutes()
 	tasks, _ := s.V.ListTasks("")
@@ -206,7 +206,7 @@ func (s *Server) handleRouteArchive(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/routes/"+id, http.StatusSeeOther)
 }
 
-// handleRouteNeed 在航线下快速记一个临时需求（草稿任务，带上 route）。
+// handleRouteNeed 在目标线下快速记一个临时需求（草稿任务，带上 route）。
 func (s *Server) handleRouteNeed(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("rid")
 	_ = r.ParseForm()
@@ -224,7 +224,7 @@ func (s *Server) handleRouteNeed(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
 }
 
-// handleTaskSetRoute 任务详情页挂/摘航线。
+// handleTaskSetRoute 任务详情页挂/摘目标线。
 func (s *Server) handleTaskSetRoute(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_ = r.ParseForm()

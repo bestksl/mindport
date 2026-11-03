@@ -36,7 +36,7 @@ var listCmd = &cobra.Command{
 			return enc.Encode(metas)
 		}
 		if len(tasks) == 0 {
-			fmt.Fprintln(w, "港里没有匹配的任务")
+			fmt.Fprintln(w, "没有匹配的任务")
 			return nil
 		}
 		for _, t := range tasks {

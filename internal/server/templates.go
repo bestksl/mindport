@@ -29,7 +29,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       <span class="s-go">&lt;/&gt;</span><span class="s-back">✕</span>
     </button>
     <details class="themes pop" id="themes">
-      <summary class="themes-btn" role="button" aria-label="选择港口配色" title="选择港口配色">
+      <summary class="themes-btn" role="button" aria-label="选择配色主题" title="选择配色主题">
         <svg viewBox="0 0 8" height="17" width="17" shape-rendering="crispEdges" aria-hidden="true">
           <rect x="0" y="0" width="3" height="3" fill="#c06a45"/>
           <rect x="4" y="0" width="3" height="3" fill="#f0b23f"/>
@@ -58,8 +58,8 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       </div>
     </details>
     <a class="fleet-btn" id="fleet" href="/sessions" data-debug="fleet"
-       title="船队＝全部会话：一支船队就是一个 Claude 会话">
-      <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="fleet label">船队</span><b id="fleet-count"></b>
+       title="助手＝全部会话：每个 Claude 会话就是一位助手">
+      <i class="fleet-dot" id="fleet-dot"></i><span class="fleet-label" data-debug="fleet label">助手</span><b id="fleet-count"></b>
     </a>
     {{if .Auth}}<a class="logout-btn" href="/logout" title="登出" data-debug="x" aria-label="登出">⇥</a>{{end}}
   </div>
@@ -67,22 +67,22 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 {{end}}
 
 {{/* 16×16 像素灯塔：塔灯按摩尔斯节奏硬闪，夜港两束扫光，日港只亮灯 */}}
-{{/* 底部主导航（类 app tab bar）：调度台 / 船队。
-     高亮按路径本地判定，船队角标 20s 轻量轮询 /api/sessions。
+{{/* 底部主导航（类 app tab bar）：任务台 / 助手 / 目标线。
+     高亮按路径本地判定，助手角标 20s 轻量轮询 /api/sessions。
      登录页不调用此模板。 */}}
 {{define "tabbar"}}
 <nav class="tabbar" aria-label="主导航">
   <a class="tab tab-board" href="/" data-tab="board">
     <span class="tab-ic">⚓</span>
-    <span class="tab-tx" data-debug="board">调度台</span>
+    <span class="tab-tx" data-debug="board">任务台</span>
   </a>
   <a class="tab tab-fleet" href="/sessions" data-tab="fleet">
     <span class="tab-ic">⛵<i class="tab-badge" id="tab-fleet-badge" hidden></i></span>
-    <span class="tab-tx" data-debug="fleet">船队</span>
+    <span class="tab-tx" data-debug="fleet">助手</span>
   </a>
   <a class="tab tab-routes" href="/routes" data-tab="routes">
     <span class="tab-ic">🧭<i class="tab-badge" id="tab-route-badge" hidden></i></span>
-    <span class="tab-tx" data-debug="routes">航线</span>
+    <span class="tab-tx" data-debug="routes">目标线</span>
   </a>
 </nav>
 <script>
@@ -101,10 +101,10 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       var n = rows.filter(function (r) { return r.online; }).length;
       var b = document.getElementById('tab-fleet-badge');
       if (b) { b.textContent = n ? String(n) : ''; b.hidden = !n; }
-      // 顶栏船队灯（sseBoot）复用同一份轮询，不重复请求
+      // 顶栏助手灯（sseBoot）复用同一份轮询，不重复请求
       window.dispatchEvent(new CustomEvent('mp-sessions', { detail: { rows: rows, live: n } }));
     }).catch(function () {});
-    // 航线角标：在役航线下未完成的需求数
+    // 目标线角标：在役目标线下未完成的需求数
     fetch('/api/routes/summary').then(function (r) { return r.json(); }).then(function (d) {
       var b = document.getElementById('tab-route-badge');
       if (!b) return;
@@ -239,24 +239,24 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 </svg>
 {{end}}
 
-{{/* 单艘船的派船目标：任意会话 / 每个具体会话（带简介，在线与离线都列）/ 新项目新开 */}}
+{{/* 指派目标：任意会话 / 每个具体会话（带简介，在线与离线都列）/ 新项目新开 */}}
 {{define "berthoptions"}}
-<option value="{{.Name}}">{{.Short}} · 任意会话{{if .Online}}（有在线会话）{{else}}（当前未报到）{{end}}</option>
-{{range .Sessions}}{{if .Dir}}<option value="{{$.Name}}|{{.Dir}}">{{$.Short}} · {{if .Name}}「{{.Name}}」{{end}}📍{{baseName .Dir}}{{if .Online}}{{if .Task}} · 在忙 {{.Task}}{{else if eq .RunState "blocked"}} · 受阻{{else if eq .RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago .Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
-<option value="{{.Name}}|NEW" data-new="1">🆕 {{.Short}} · 在新项目里新开会话接令…</option>
+<option value="{{.Name}}">{{.Short}} · 任意会话{{if .Online}}（有在线会话）{{else}}（当前不在线）{{end}}</option>
+{{range .Sessions}}{{if .Dir}}<option value="{{$.Name}}|{{.Dir}}">{{$.Short}} · {{if .Name}}「{{.Name}}」{{end}}📍{{baseName .Dir}}{{if .Online}}{{if .Task}} · 在忙 {{.Task}}{{else if eq .RunState "blocked"}} · 受阻{{else if eq .RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次在线 {{ago .Seen}}（新开即领取）{{end}}</option>{{end}}{{end}}
+<option value="{{.Name}}|NEW" data-new="1">🆕 {{.Short}} · 在新项目里新开会话来做…</option>
 {{end}}
 
 {{define "shipoptions"}}
 {{range .}}{{template "berthoptions" .}}{{end}}{{end}}
 
-{{/* 改派下拉：排除当前船的「任意会话」与当前船位的会话，同船其他会话（含离线/新开）仍可改派 */}}
+{{/* 重新指派下拉：排除当前助手的「任意会话」与当前工作目录的会话，同助手其他会话（含离线/新开）仍可指派 */}}
 {{define "reassignoptions"}}
 {{$cur := .R.Meta.AssigneeValue}}
 {{$cwd := .R.Meta.AssignCwd}}
 {{range $ship := .Ships}}
-{{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线会话）{{else}}（当前未报到）{{end}}</option>{{end}}
-{{range $s := $ship.Sessions}}{{if and $s.Dir (or (ne $ship.Name $cur) (ne $s.Dir $cwd))}}<option value="{{$ship.Name}}|{{$s.Dir}}">{{$ship.Short}} · {{if $s.Name}}「{{$s.Name}}」{{end}}📍{{baseName $s.Dir}}{{if $s.Online}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else if eq $s.RunState "blocked"}} · 受阻{{else if eq $s.RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次报到 {{ago $s.Seen}}（新开即接）{{end}}</option>{{end}}{{end}}
-<option value="{{$ship.Name}}|NEW" data-new="1">🆕 {{$ship.Short}} · 在新项目里新开会话接令…</option>
+{{if ne $ship.Name $cur}}<option value="{{$ship.Name}}">{{$ship.Short}} · 任意会话{{if $ship.Online}}（有在线会话）{{else}}（当前不在线）{{end}}</option>{{end}}
+{{range $s := $ship.Sessions}}{{if and $s.Dir (or (ne $ship.Name $cur) (ne $s.Dir $cwd))}}<option value="{{$ship.Name}}|{{$s.Dir}}">{{$ship.Short}} · {{if $s.Name}}「{{$s.Name}}」{{end}}📍{{baseName $s.Dir}}{{if $s.Online}}{{if $s.Task}} · 在忙 {{$s.Task}}{{else if eq $s.RunState "blocked"}} · 受阻{{else if eq $s.RunState "working"}} · 工作中{{else}} · 在线{{end}}{{else}} · 上次在线 {{ago $s.Seen}}（新开即领取）{{end}}</option>{{end}}{{end}}
+<option value="{{$ship.Name}}|NEW" data-new="1">🆕 {{$ship.Short}} · 在新项目里新开会话来做…</option>
 {{end}}{{end}}
 
 {{/* 看板上一张任务卡：dot = dict("T" 任务记录, "Board" 看板根数据) */}}
@@ -268,20 +268,20 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
     <span class="imp">● {{impZH $t.Meta.Importance}}</span>
     {{if eq $t.Meta.Status "blocked"}}<span class="badge block">受阻</span>{{end}}
     {{if $t.Meta.Assignee}}<span class="assignee">🚢 {{actorName $t.Meta.AssigneeValue}}{{if $t.Meta.AssignCwd}} · 📍{{baseName $t.Meta.AssignCwd}}{{end}}</span>{{end}}
-    {{if $t.Meta.Session}}<a class="card-fleet" href="/sessions/{{$t.Meta.Session}}{{if $t.Meta.SessionDir}}?dir={{$t.Meta.SessionDir | urlquery}}{{end}}" title="挂在这支船队（会话）上">🧷 {{slice $t.Meta.Session 0 8}}</a>{{end}}
+    {{if $t.Meta.Session}}<a class="card-fleet" href="/sessions/{{$t.Meta.Session}}{{if $t.Meta.SessionDir}}?dir={{$t.Meta.SessionDir | urlquery}}{{end}}" title="关联在这个会话上">🧷 {{slice $t.Meta.Session 0 8}}</a>{{end}}
   </div>
   <a class="titlelink" href="/tasks/{{$t.Meta.ID}}">{{$t.Meta.Title}}</a>
   {{if $t.Meta.Goal}}<div class="goal">🎯 {{$t.Meta.Goal}}</div>{{end}}
   <div class="agent-line">{{with index .Board.ByTask $t.Meta.ID}}<i class="dot"></i>{{actorName .Actor}} 正在做{{if .Note}}：{{.Note}}{{end}}{{end}}</div>
   {{if eq $t.Meta.Status "anchored"}}
   <form method="post" action="/tasks/{{$t.Meta.ID}}/assign" class="publish-row">
-    <select name="assignee" aria-label="派给哪艘船">
+    <select name="assignee" aria-label="指派给谁">
       {{template "shipoptions" .Board.Ships}}
     </select>
-    <button class="mini" data-confirm="派船命令：{{$t.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">派船</button>
+    <button class="mini" data-confirm="指派：{{$t.Meta.ID}} 交给所选助手？只有它能领取" data-debug="dispatch">指派</button>
   </form>
   <form method="post" action="/tasks/{{$t.Meta.ID}}/delete" class="del-form card-del">
-    <button class="danger mini" data-confirm="删除任务 {{$t.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复">🗑 删掉</button>
+    <button class="danger mini" data-confirm="删除任务 {{$t.Meta.ID}}？它还在待命、还没开始，删除后不可恢复">🗑 删掉</button>
   </form>
   {{end}}
 </article>
@@ -336,7 +336,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
     if (lg) lg.placeholder = 'append log line …';
   }
 })();
-// 船队/配色弹层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换船队内部列表，不丢状态）
+// 助手/配色弹层：点外部或按 Esc 收起（展开状态由 details 持有，20s 轮询只换助手内部列表，不丢状态）
 document.addEventListener('click', function (e) {
   document.querySelectorAll('details.pop').forEach(function (d) {
     if (d.open && !d.contains(e.target)) d.open = false;
@@ -353,7 +353,7 @@ document.addEventListener('keydown', function (e) {
     location.reload();
   });
 })();
-// 调度命令类操作二次确认，防手机误触
+// 重要操作二次确认，防手机误触
 document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-confirm]');
   if (el && !window.confirm(el.getAttribute('data-confirm'))) e.preventDefault();
@@ -365,14 +365,14 @@ document.addEventListener('click', function (e) {
   var d = document.querySelector(a.getAttribute('href'));
   if (d) d.open = true;
 });
-// 派船选「🆕 新项目新开」：先问完整目录路径，再把占位值 actor|NEW 换成 actor|路径
+// 指派时选「🆕 新项目新开」：先问完整目录路径，再把占位值 actor|NEW 换成 actor|路径
 document.addEventListener('submit', function (e) {
   var f = e.target;
   if (!f || !f.querySelector) return;
   var sel = f.querySelector('select[name="assignee"]');
   var opt = sel && sel.selectedOptions && sel.selectedOptions[0];
   if (!opt || !opt.hasAttribute('data-new')) return;
-  var dir = window.prompt('新船位的完整项目目录路径，例如：\n/Users/jmzx/studio/xianyu\n\n派船后在该目录开一艘船（Claude Code 会话）即可接令');
+  var dir = window.prompt('新工作目录的完整项目路径，例如：\n/Users/jmzx/studio/xianyu\n\n指派后，在该目录开一个 Claude Code 会话即可领取');
   if (dir === null) { e.preventDefault(); return; }
   dir = dir.trim();
   if (!/^\//.test(dir) && !/^[A-Za-z]:[\\/]/.test(dir)) {
@@ -382,8 +382,8 @@ document.addEventListener('submit', function (e) {
   }
   sel.value = sel.value.replace(/\|NEW$/, '|' + dir);
 }, true);
-// 船队在线数由底部 tab bar 的统一轮询驱动（mp-sessions 事件），这里只负责点亮
-// 顶栏船队灯；/api/agents 20s 轮询给看板卡片显示「谁正在做哪票货」。本地刷新不 reload。
+// 助手在线数由底部 tab bar 的统一轮询驱动（mp-sessions 事件），这里只负责点亮
+// 顶栏助手灯；/api/agents 20s 轮询给看板卡片显示「谁正在做哪个任务」。本地刷新不 reload。
 (function () {
   function actorName(a) { var i = a.indexOf('@'); return i > 0 ? a.slice(0, i) : a; }
   window.addEventListener('mp-sessions', function (e) {
@@ -391,7 +391,7 @@ document.addEventListener('submit', function (e) {
     var fleet = document.getElementById('fleet');
     if (!fleet) return;
     fleet.classList.toggle('has-live', live > 0);
-    fleet.title = live + ' 支船队工作中 · 点开看全部会话';
+    fleet.title = live + ' 位助手工作中 · 点开看全部会话';
     var cnt = document.getElementById('fleet-count');
     if (cnt) cnt.textContent = live ? String(live) : '';
   });
@@ -421,10 +421,10 @@ const boardHTML = head + `
 
 <section class="capture">
   <form method="post" action="/tasks" class="capture-row">
-    <input name="title" placeholder="想到什么先扔下来…入港即立箱（草稿，随后补验收/派船）" autocomplete="off" autofocus required>
-    <button type="submit" class="primary" data-debug="add">入港</button>
+    <input name="title" placeholder="想到什么先记下来…自动建成任务草稿（随后补验收/指派）" autocomplete="off" autofocus required>
+    <button type="submit" class="primary" data-debug="add">记下</button>
   </form>
-  <p class="capture-hint" data-debug="ideas only">想到就先扔进来 · 集装箱可以挂到船队上跟着走 · 做完一起看结果 · 只问重要不谈紧急</p>
+  <p class="capture-hint" data-debug="ideas only">想到就先记下来 · 任务可以关联到具体会话跟着走 · 做完一起看结果 · 只问重要不谈紧急</p>
 </section>
 
 {{/* 手机端类 app 分段：一次只看一个区，取代四列纵向长滚动；桌面端隐藏，仍是看板 */}}
@@ -435,7 +435,7 @@ const boardHTML = head + `
 
 {{if .Drafts}}
 <section class="drafts">
-  <h2 data-debug="drafts">📝 草稿·备货中 <small>{{len .Drafts}}</small></h2>
+  <h2 data-debug="drafts">📝 草稿·准备中 <small>{{len .Drafts}}</small></h2>
   <div class="draft-grid">
   {{range .Drafts}}
     <article class="card draft-card {{impClass .Meta.Importance}}" data-task="{{.Meta.ID}}">
@@ -448,7 +448,7 @@ const boardHTML = head + `
       <div class="draft-actions">
         <form method="post" action="/tasks/{{.Meta.ID}}/publish" class="publish-row">
           <select name="assignee" aria-label="放行去向">
-            <option value="">⚓ 放进锚地</option>
+            <option value="">⏸ 放进待命区</option>
             {{template "shipoptions" $.Ships}}
           </select>
           <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？" data-debug="publish">放行</button>
@@ -511,7 +511,7 @@ const boardSegJS = `
     });
     if (persist) { try { localStorage.setItem('mindport-board-seg', k); } catch (e) {} }
   }
-  // 「已归港」折叠态记忆：默认收起，展开选择存本机（SSE 整页 reload 后保持）
+  // 「已完成」折叠态记忆：默认收起，展开选择存本机（SSE 整页 reload 后保持）
   (function () {
     var fold = document.querySelector('.done-fold');
     if (!fold) return;
@@ -542,7 +542,7 @@ const taskHTML = head + `
 
 <article class="detail">
   <div class="detail-head {{impClass .R.Meta.Importance}}">
-    <a class="back" href="/">← 回港口</a>
+    <a class="back" href="/">← 回首页</a>
     <h1><span class="id">{{.R.Meta.ID}}</span> {{.R.Meta.Title}}</h1>
     <div class="meta-line">
       <span class="status status-{{.R.Meta.Status}}" data-debug="{{.R.Meta.Status}}">{{statusZH .R.Meta.Status}}</span>
@@ -553,9 +553,9 @@ const taskHTML = head + `
     <div class="agent-line detail-agent {{if .Agent.Online}}online{{else}}offline{{end}}">
       <i class="dot"></i>{{actorName .Agent.Actor}}{{if .Agent.Dir}} <i class="proj">📍{{baseName .Agent.Dir}}</i>{{end}}
       {{if .Agent.Online}}
-        {{if eq .Agent.Task .R.Meta.ID}}正在做本票货{{if .Agent.Note}}：{{.Agent.Note}}{{end}}
-        {{else if .Agent.Task}}已在做别的票货（{{.Agent.Task}}）{{else}}在线待派{{end}}<i class="seen">· {{ago .Agent.Seen}}</i>
-      {{else}}上次报到 {{ago .Agent.Seen}}{{end}}
+        {{if eq .Agent.Task .R.Meta.ID}}正在做这个任务{{if .Agent.Note}}：{{.Agent.Note}}{{end}}
+        {{else if .Agent.Task}}已在做别的任务（{{.Agent.Task}}）{{else}}在线待指派{{end}}<i class="seen">· {{ago .Agent.Seen}}</i>
+      {{else}}上次在线 {{ago .Agent.Seen}}{{end}}
     </div>
     {{end}}
     {{if .R.Meta.Goal}}<div class="goal">🎯 {{.R.Meta.Goal}}</div>{{end}}
@@ -566,111 +566,111 @@ const taskHTML = head + `
     <div class="dispatch-box">
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
-        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进锚地？船在锚地看不到货" data-debug="anchor">⚓ 放进锚地</button>
+        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进待命区？助手看不到待命中的任务" data-debug="anchor">⏸ 放进待命区</button>
       </form>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
-        <select name="assignee" aria-label="直接派船">
+        <select name="assignee" aria-label="直接指派">
           {{template "shipoptions" .Ships}}
         </select>
-        <button class="primary" data-confirm="直接派船：{{.R.Meta.ID}} 将命令给所选船，只有它能接令" data-debug="dispatch">🚢 打磨完，直接派船</button>
+        <button class="primary" data-confirm="直接指派：{{.R.Meta.ID}} 将交给所选助手，只有它能领取" data-debug="dispatch">🚢 打磨完，直接指派</button>
       </form>
     </div>
-    <p class="hint">备货中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。进锚地的货船看不到；派船是命令，不可任领。</p>
+    <p class="hint">准备中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。待命中的任务助手看不到；指派是定向的，其他人不能领取。</p>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
       <button class="danger" data-confirm="删除草稿 {{.R.Meta.ID}}？删除后不可恢复" data-debug="del">🗑 删除草稿</button>
     </form>
 
     {{else if eq .R.Meta.Status "anchored"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
-      <select name="assignee" aria-label="派给哪艘船">
+      <select name="assignee" aria-label="指派给谁">
         {{template "shipoptions" .Ships}}
       </select>
-      <button class="primary" data-confirm="派船命令：{{.R.Meta.ID}} 派给所选船？只有这艘船能接令" data-debug="dispatch">🚢 派船</button>
+      <button class="primary" data-confirm="指派：{{.R.Meta.ID}} 交给所选助手？只有它能领取" data-debug="dispatch">🚢 指派</button>
     </form>
-    <p class="hint">锚地待派：船在自己的终端上看不到这票货。派船后进入「待接令」，船 port claim 接令出港。</p>
+    <p class="hint">待命中：助手在自己的终端上看不到这个任务。指派后进入「待领取」，助手用 port claim 领取后开始。</p>
     <div class="anchored-tools">
-      <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（派船前都能改）</a>
+      <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（指派前都能改）</a>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
-        <button class="danger mini" data-confirm="删除任务 {{.R.Meta.ID}}？它还在锚地、没有出港记录，删除后不可恢复" data-debug="del">🗑 删除</button>
+        <button class="danger mini" data-confirm="删除任务 {{.R.Meta.ID}}？它还在待命、还没开始，删除后不可恢复" data-debug="del">🗑 删除</button>
       </form>
     </div>
 
     {{else if eq .R.Meta.Status "ready"}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
-      <select name="assignee" aria-label="改派给哪个船位">
+      <select name="assignee" aria-label="重新指给谁">
         {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="改派 {{.R.Meta.ID}}？原船位将不能再接令" data-debug="reassign">改派</button>
+      <button data-confirm="重新指派 {{.R.Meta.ID}}？原助手将不能再领取" data-debug="reassign">重新指派</button>
     </form>
-    <p class="hint">已派船 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 接令。派船时可点名具体项目会话，防止别的项目里的会话接错票。网页不能代领。</p>
+    <p class="hint">已指派 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 领取。指派时可点名具体项目工作目录，防止别的项目会话领错任务。网页不能代领。</p>
 
     {{else if eq .R.Meta.Status "in_progress"}}
-    <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已接令出港。接令/归港/受阻只在船自己的 CLI 完成；你在这里看进展、验货、批注。</p>
+    <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已领取并开始。领取/完成/受阻只能由它在 CLI 操作；你在这里看进展、验收、批注。</p>
 
     {{else if eq .R.Meta.Status "blocked"}}
-    <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}}（📍{{baseName .R.Meta.AssignCwd}}）{{end}}上报受阻（见日志）。可批注指示，或把货改派给别的船/船位：</p>
+    <p class="banner block">⛔ <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}}（📍{{baseName .R.Meta.AssignCwd}}）{{end}}上报受阻（见日志）。可批注指示，或把任务重新指派给别的助手/工作目录：</p>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/assign" class="publish-row dispatch-box">
-      <select name="assignee" aria-label="改派给哪个船位">
+      <select name="assignee" aria-label="重新指给谁">
         {{template "reassignoptions" .}}
       </select>
-      <button data-confirm="受阻改派：{{.R.Meta.ID}} 从原船位改派给所选船位？" data-debug="reassign">受阻改派</button>
+      <button data-confirm="受阻后重新指派：{{.R.Meta.ID}} 从原助手改派给所选目标？" data-debug="reassign">受阻重新指派</button>
     </form>
 
     {{else if eq .R.Meta.Status "done"}}
-    <p class="banner done">🏁 已归港。对照验收标准验货，有问题在此批注，船下一票货会看到。</p>
+    <p class="banner done">🏁 已完成。对照验收标准逐项验收，有问题在此批注，助手做下一个任务时会看到。</p>
     {{end}}
   </div>
 
   <section class="fleet-bind">
-    <h2 data-debug="bind fleet">🧷 挂在哪支船队 <small>把这个想法挂到一支具体会话上，跟着它走</small></h2>
+    <h2 data-debug="bind fleet">🧷 关联到哪个会话 <small>把这个任务关联到一个具体会话，跟着它推进</small></h2>
     {{if .BoundSID}}
     <div class="bound-line">
       <a class="bound-fleet" href="/sessions/{{.BoundSID}}{{if .BoundDir}}?dir={{.BoundDir | urlquery}}{{end}}">
         <i class="dot"></i><b>{{.BoundTitle}}</b><em>{{.BoundStateText}}</em>
       </a>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/unbind" class="unbind-form">
-        <button class="mini" data-confirm="把 {{.R.Meta.ID}} 从这支船队取下？">取下</button>
+        <button class="mini" data-confirm="把 {{.R.Meta.ID}} 从这个会话取下？">取下</button>
       </form>
     </div>
     {{else if .FleetOpts}}
     <form method="post" action="/tasks/{{.R.Meta.ID}}/bind" class="bind-row">
-      <select name="fleet" aria-label="挂到哪支船队">
+      <select name="fleet" aria-label="关联到哪个会话">
         {{range .FleetOpts}}<option value="{{.SID}}|{{.Dir}}">{{if .Title}}{{.Title}}{{else}}{{.Short}}{{end}} · {{.StateText}}{{if .Proj}} · 📁{{.Proj}}{{end}}</option>{{end}}
       </select>
-      <button class="mini" data-debug="bind">🧷 挂上这支船队</button>
+      <button class="mini" data-debug="bind">🧷 关联到这个会话</button>
     </form>
     {{else}}
-    <p class="hint">本机还扫不到船队（Claude 会话）。在项目目录里开一个 Claude，或先去船队页贴目录扫一下。</p>
+    <p class="hint">本机还扫不到 Claude 会话。在项目目录里开一个 Claude，或先去助手页贴目录扫一下。</p>
     {{end}}
     <details class="launch-box" {{if not .BoundSID}}open{{end}}>
-      <summary>🆕 新开一支船队跑这个想法 <small>在项目目录里起一个新的 Claude 会话，自动挂上本任务</small></summary>
+      <summary>🆕 新开一个会话来做 <small>在项目目录里起一个新的 Claude 会话，自动关联本任务</small></summary>
       <form action="/tasks/{{.R.Meta.ID}}/launch" class="launch-form" data-fleet-new>
-        <label>船队开在哪个项目目录（绝对路径）</label>
+        <label>会话开在哪个项目目录（绝对路径）</label>
         <input name="dir" list="launch-dir-list" required spellcheck="false" autocomplete="off"
                value="{{.LaunchDirDefault}}" placeholder="/Users/jmzx/Documents/GitHub/xxx" enterkeyhint="go">
         <datalist id="launch-dir-list">{{range .LaunchDirs}}<option value="{{.Dir}}">{{end}}</datalist>
         <div class="launch-name-row">
           <span class="launch-name-cell">
-            <label>船名（留空用「{{.LaunchName}}」）</label>
+            <label>会话名（留空用「{{.LaunchName}}」）</label>
             <input name="name" maxlength="40" spellcheck="false" autocomplete="off" placeholder="{{.LaunchName}}">
           </span>
           {{if .LaunchRoutes}}
           <span class="launch-name-cell">
-            <label>挂在哪条航线</label>
-            <select name="route" aria-label="挂在哪条航线">
-              <option value="">不挂航线</option>
+            <label>挂到哪个目标线</label>
+            <select name="route" aria-label="挂到哪个目标线">
+              <option value="">不挂目标线</option>
               {{$cur := .R.Meta.Route}}
               {{range .LaunchRoutes}}<option value="{{.Meta.ID}}" {{if eq .Meta.ID $cur}}selected{{end}}>{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
             </select>
           </span>
           {{end}}
         </div>
-        <label>给新船队的第一句话（它一开工就看到，可改）</label>
+        <label>给新会话的第一句话（它一开工就看到，可改）</label>
         <textarea name="msg" rows="5" maxlength="8000">{{.LaunchPrompt}}</textarea>
         <div class="fn-foot">
           <span class="fn-err" data-fn-err role="alert" hidden></span>
-          <button class="primary mini" type="submit"><span class="emo">⛵ </span>新开船队并挂上</button>
+          <button class="primary mini" type="submit"><span class="emo">⛵ </span>新开会话并关联</button>
         </div>
       </form>
     </details>
@@ -678,7 +678,7 @@ const taskHTML = head + `
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
   <details class="edit" id="edit" {{if eq .R.Meta.Status "draft"}}open{{end}}>
-    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>派船后封舱（点此折叠）</small></summary>
+    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>指派后锁定（点此折叠）</small></summary>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
       <label>标题</label>
       <input name="title" value="{{.R.Meta.Title}}" required>
@@ -701,7 +701,7 @@ const taskHTML = head + `
 
   {{if and .Accept (ne .R.Meta.Status "draft") (ne .R.Meta.Status "anchored")}}
   <section>
-    <h2>验收标准 · 验货 <small>{{.AcceptDone}}/{{len .Accept}}</small></h2>
+    <h2>验收标准 <small>{{.AcceptDone}}/{{len .Accept}}</small></h2>
     <ul class="accept">
       {{range .Accept}}
       <li class="{{if .Checked}}done{{end}}">
@@ -729,7 +729,7 @@ const taskHTML = head + `
   <section>
     <h2>过程日志</h2>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/log" class="logform">
-      <input name="line" placeholder="批注一笔…（船用 port log 汇报进展）" autocomplete="off" required>
+      <input name="line" placeholder="批注一笔…（助手用 port log 汇报进展）" autocomplete="off" required>
       <button data-debug="append">批注</button>
     </form>
     <ul class="logs">
@@ -737,7 +737,7 @@ const taskHTML = head + `
     </ul>
   </section>
 </article>
-<script src="/static/fleet-new.js?v=21"></script>
+<script src="/static/fleet-new.js?v=22"></script>
 {{template "tabbar" .}}
 ` + sseBoot + `
 </body></html>`

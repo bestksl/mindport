@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// MigrateLegacyInbox 把 v0.4 之前 inbox/ 里的闪念批量立箱为草稿任务：
+// MigrateLegacyInbox 把 v0.4 之前 inbox/ 里的旧速记批量建成草稿任务：
 // 每条占一个新 T 编号（按捕获时间顺序），正文进「描述」，原文件移入
 // archive/inbox-legacy/ 而非删除。已是草稿任务模型的 vault 调用为空操作。
 // 返回迁移条数。
@@ -43,7 +43,7 @@ func (v *Vault) MigrateLegacyInbox() (int, error) {
 			src := filepath.Join(dir, name)
 			thought, err := parseFile(src)
 			if err != nil {
-				return fmt.Errorf("解析旧闪念 %s 失败: %w", name, err)
+				return fmt.Errorf("解析旧速记 %s 失败: %w", name, err)
 			}
 			id, err := v.nextID()
 			if err != nil {

@@ -3,11 +3,11 @@
 // 链路：网页桥养的 `claude -p` 以
 //
 //	--permission-mode manual
-//	--mcp-config <每船队一份配置>
+//	--mcp-config <每会话一份配置>
 //	--permission-prompt-tool mcp__mindport__check_permission
 //
-// 起。CLI 要执行任何「需要授权」的工具时，会回调我们随船起的一个 stdio MCP
-// server（`port _perm-mcp`，即本二进制再入港）。MCP 子进程把请求经 unix
+// 起。CLI 要执行任何「需要授权」的工具时，会回调我们随会话起的一个 stdio MCP
+// server（`port _perm-mcp`，即本二进制再进入）。MCP 子进程把请求经 unix
 // socket 报给 serve 主进程，主进程经 SSE 把审批卡片推到手机，阻塞等人工
 // 「批准/拒绝」：
 //
@@ -132,8 +132,8 @@ func normMode(m string) string {
 }
 
 // EnablePerms 由 serve 命令显式开启（测试/精简装配默认关，桥仍走 acceptEdits）。
-// 在 vault 的 .port/state 下监听 unix socket，生成一次性令牌，并准备每船队的
-// MCP 配置目录。返回错误仅用于打印警告——权限系统起不来不应拖垮整个港。
+// 在 vault 的 .port/state 下监听 unix socket，生成一次性令牌，并准备每会话的
+// MCP 配置目录。返回错误仅用于打印警告——权限系统起不来不应拖垮整个服务。
 func (s *Server) EnablePerms() error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -185,7 +185,7 @@ func randToken(n int) (string, error) {
 // permReady 报告审批通道是否在役；spawn 据此决定加不加 MCP 参数。
 func (s *Server) permReady() bool { return s.perm != nil && s.perm.ln != nil }
 
-// sessionMode 取一支船队当前权限模式；审批通道未装配（测试/精简）时返回空，
+// sessionMode 取一个会话当前权限模式；审批通道未装配（测试/精简）时返回空，
 // 由桥退化为 acceptEdits，不把模式判断散落到调用处。
 func (s *Server) sessionMode(sid string) string {
 	if s.perm == nil {
@@ -198,7 +198,7 @@ func (m *permManager) serveConns() {
 	for {
 		c, err := m.ln.Accept()
 		if err != nil {
-			return // 监听器关了（停港）
+			return // 监听器关了（停服）
 		}
 		go m.handleConn(c)
 	}
@@ -221,7 +221,7 @@ func (m *permManager) handleConn(c net.Conn) {
 
 	summary, detail := permSummarize(req.ToolName, req.Input)
 
-	// 自动放行：只读工具，或这支船队处于 yolo（无人值守/旧放手）模式。
+	// 自动放行：只读工具，或这个会话处于 yolo（无人值守/旧放手）模式。
 	m.mu.Lock()
 	yolo := normMode(m.mode[req.SID]) == ModeYolo
 	m.mu.Unlock()
@@ -335,14 +335,14 @@ func (m *permManager) pendingCount(sid string) int {
 	return n
 }
 
-// Mode 返回一支船队当前的权限模式（默认 auto）。
+// Mode 返回一个会话当前的权限模式（默认 auto）。
 func (m *permManager) Mode(sid string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return normMode(m.mode[sid])
 }
 
-// setMode 设置一支船队的权限模式；auto 即恢复默认（不落多余键）。
+// setMode 设置一个会话的权限模式；auto 即恢复默认（不落多余键）。
 func (m *permManager) setMode(sid, mode string) {
 	mode = normMode(mode)
 	m.mu.Lock()
@@ -369,8 +369,8 @@ type mcpServer struct {
 	Env     map[string]string `json:"env"`
 }
 
-// configFor 为某支船队写一份 MCP 配置（env 里带上 socket/令牌/sid），返回路径。
-// 每船队一份是为了让 MCP 子进程在请示帧里自带 sid，主进程才能对应到具体船队。
+// configFor 为某支会话写一份 MCP 配置（env 里带上 socket/令牌/sid），返回路径。
+// 每会话一份是为了让 MCP 子进程在请示帧里自带 sid，主进程才能对应到具体会话。
 func (m *permManager) configFor(sid string) (string, error) {
 	cfg := mcpConfig{MCPServers: map[string]mcpServer{
 		"mindport": {
@@ -394,7 +394,7 @@ func (m *permManager) configFor(sid string) (string, error) {
 	return p, nil
 }
 
-// removeConfig 拆船时清掉配置文件（best effort）。
+// removeConfig 删除会话时清掉配置文件（best effort）。
 func (m *permManager) removeConfig(sid string) {
 	if m == nil {
 		return
@@ -597,7 +597,7 @@ func rawID(id json.RawMessage) any {
 func askPermission(dial func(string) (net.Conn, error), sock, token, sid, tool, toolUseID string,
 	input json.RawMessage) permDecision {
 	safeDeny := permDecision{Behavior: "deny",
-		Message: "思港：审批通道连不上港口，已安全拒绝（请确认思港在运行）"}
+		Message: "思港：审批通道连不上思港服务，已安全拒绝（请确认思港在运行）"}
 	c, err := dial(sock)
 	if err != nil {
 		return safeDeny

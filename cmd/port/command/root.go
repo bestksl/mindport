@@ -14,8 +14,8 @@ var vaultFlag string
 
 var rootCmd = &cobra.Command{
 	Use:   "port",
-	Short: "思港 MindPort — 人与 AI 共用的本地任务调度港",
-	Long: "思港 MindPort：念头入港停泊，任务等待调度，agent 领走出港、做完归港。\n" +
+	Short: "思港 MindPort — 人与 AI 共用的本地任务台",
+	Long: "思港 MindPort：念头随手记下，任务等待指派，agent 领取开做、做完交付。\n" +
 		"数据是 vault 目录里的 Markdown 文件（ADR-0003）。",
 }
 

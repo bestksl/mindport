@@ -1,7 +1,7 @@
 package server
 
-// 登录页（ADR-0008 鉴权）：入港证 = `port web-token` 打出的共享密钥。
-// 刻意独立于顶栏/船队：未认证身份什么船位信息都看不到。
+// 登录页（鉴权兜底路径）：推荐在电脑上运行 `port pair` 扫码配对；
+// 也可粘贴 `port web-token` 打出的访问密钥。未认证时什么任务/会话都看不到。
 const loginHTML = head + `
 <main class="login-wrap">
   <form class="login-card" method="post" action="/login" data-debug="auth">
@@ -9,16 +9,16 @@ const loginHTML = head + `
       <span class="brand-mark">{{template "pxLighthouse" .}}</span>
       <span class="brand-text">思港 <i>MindPort</i></span>
     </div>
-    <p class="login-sub" data-debug="token required">请出示入港证（本机执行 <code>port web-token</code> 取得）</p>
+    <p class="login-sub" data-debug="token required">请输入访问密钥（电脑上执行 <code>port web-token</code> 查看；<code>port pair</code> 可扫码免输）</p>
     {{if .Error}}<div class="login-err">⚠️ {{.Error}}</div>{{end}}
-    <input type="password" name="key" placeholder="web token" autocomplete="current-password" autofocus required>
+    <input type="password" name="key" placeholder="访问密钥" autocomplete="current-password" autofocus required>
     <input type="hidden" name="next" value="{{.Next}}">
-    <button type="submit" class="primary" data-debug="submit">入港</button>
+    <button type="submit" class="primary" data-debug="submit">登录</button>
   </form>
 </main>
 </body></html>`
 
-// 会话船台页：终端式 transcript 时间线 + 底部回话坞。首批事件服务端渲染，
+// 会话页：终端式 transcript 时间线 + 底部输入区。首批事件服务端渲染，
 // 之后由内联脚本按字节游标幂等增量拉取，向上滚动按需翻更早历史。
 const sessionHTML = head + `
 {{template "topbar" .}}
@@ -26,13 +26,13 @@ const sessionHTML = head + `
 <main class="session" data-sid="{{.SID}}">
   <div class="conn-banner" id="conn-banner" role="status" hidden><span class="conn-dot"></span>实时连接断了，正在自动重连…</div>
   <div class="session-head st-{{.StateKey}}{{if .HasMark}} marked mark-{{.Mark.Outcome}}{{end}}" id="s-head">
-    <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}船队列表{{else}}回港口{{end}}</a>
+    <a class="back" href="{{if .FromList}}/sessions?dir={{.Dir | urlquery}}{{else}}/{{end}}" data-debug="back"><span class="emo">← </span>{{if .FromList}}助手列表{{else}}回首页{{end}}</a>
     <h1 data-debug="session">
-      {{if .Name}}<span class="emo">⛵ </span>{{.Name}}{{else}}<span class="emo">⛵ </span>船队 <code>{{.ShortSID}}</code>{{end}}
+      {{if .Name}}<span class="emo">⛵ </span>{{.Name}}{{else}}<span class="emo">⛵ </span>会话 <code>{{.ShortSID}}</code>{{end}}
       {{if .Dir}}<i class="s-dir" title="{{.Dir}}"><span class="emo">📍</span>{{.Short}}</i>{{end}}
     </h1>
     <div class="s-status" id="s-status">
-      {{if not .Found}}<span class="badge" id="s-badge" data-debug="state: unknown">没查到这支船队</span>
+      {{if not .Found}}<span class="badge" id="s-badge" data-debug="state: unknown">没查到这个会话</span>
       {{else if .HasMark}}<span class="badge mark mark-{{.Mark.Outcome}}" id="s-badge" data-debug="mark: {{.Mark.Outcome}}"><i class="dot"></i>{{.MarkText}}</span>
       {{else}}<span class="badge {{.StateKey}}" id="s-badge" data-debug="state: {{.StateKey}}"{{if .WaitingFor}} title="{{.WaitingFor}}"{{end}}><i class="dot"></i>{{.StateText}}{{if and (eq .StateKey "waiting") .WaitingFor}} · {{.WaitingFor}}{{end}}</span>{{end}}
       <code class="s-sid" title="{{if .Anon}}进程 pid{{else}}会话完整 id{{end}}">{{if .Anon}}PID {{.AnonPID}}{{else}}{{.ShortSID}}{{end}}</code>
@@ -43,12 +43,12 @@ const sessionHTML = head + `
       </span>
       <span class="s-actbtns" id="s-actbtns">
         <button type="button" class="actbtn" id="btn-notify" title="完成、待你输入或待审批时，手机通知我">🔔 <span id="notify-word">通知</span></button>
-        <button type="button" class="actbtn danger" id="btn-scuttle" title="把船队从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 拆船</button>
+        <button type="button" class="actbtn danger" id="btn-scuttle" title="把这个会话从思港抹掉（CC 历史文件保留），等同 Ctrl-X">🧨 删除会话</button>
       </span>{{end}}
     </div>
-    <div class="s-pending" id="s-pending" {{if not .Pending}}hidden{{end}}><span class="emo">📬 </span>有 <b id="s-pending-n">{{.Pending}}</b> 条留言排队中，船队下一轮开工自动收到</div>
+    <div class="s-pending" id="s-pending" {{if not .Pending}}hidden{{end}}><span class="emo">📬 </span>有 <b id="s-pending-n">{{.Pending}}</b> 条留言排队中，助手下一轮开工自动收到</div>
     {{if .BoundTasks}}
-    <div class="s-cargo"><span class="emo">🧷 </span><span>这支船队上挂着 {{len .BoundTasks}} 个集装箱：</span>
+    <div class="s-cargo"><span class="emo">🧷 </span><span>这个会话上关联着 {{len .BoundTasks}} 个任务：</span>
       {{range .BoundTasks}}<a class="cargo-tag" href="/tasks/{{.Meta.ID}}">{{.Meta.ID}} {{.Meta.Title}}</a>{{end}}
     </div>
     {{end}}
@@ -58,10 +58,10 @@ const sessionHTML = head + `
   {{if .Anon}}
   <div class="anon-card" data-debug="anon">
     <div class="anon-emo">🪝</div>
-    <h2>这支船队刚出船台，还没说过话</h2>
-    <p>思港在进程表里看到了一个开着的 Claude 终端（PID {{.AnonPID}}），但它还没有对话记录。第一句话得在它<b>自己的终端</b>里开口——说出口，这里就自动变成正常船台。</p>
+    <h2>这个会话刚开，还没说过话</h2>
+    <p>思港在进程表里看到了一个开着的 Claude 终端（PID {{.AnonPID}}），但它还没有对话记录。第一句话得在它<b>自己的终端</b>里开口——说出口，这里就自动变成正常会话页。</p>
     <p class="anon-dir" title="{{.Dir}}"><span class="emo">📍</span>{{.Dir}}</p>
-    <p class="anon-hint">不想切过去？<a href="/sessions?dir={{.Dir | urlquery}}">回列表</a>看全部船队，或从<a href="/#tasks">任务上</a>新开一支能直接说话的船队。</p>
+    <p class="anon-hint">不想切过去？<a href="/sessions?dir={{.Dir | urlquery}}">回列表</a>看全部会话，或从<a href="/#tasks">任务上</a>新开一个能直接说话的会话。</p>
   </div>
   <script>
   (function () {
@@ -89,7 +89,7 @@ const sessionHTML = head + `
     </div>
   </div>
 
-  <div class="tl-typing" id="tl-typing" hidden><span class="dots"><i></i><i></i><i></i></span><span>船队正在思考…</span></div>
+  <div class="tl-typing" id="tl-typing" hidden><span class="dots"><i></i><i></i><i></i></span><span>助手正在思考…</span></div>
   <div class="tl-live" id="tl-live" hidden></div>
   <div class="tl-perms" id="tl-perms" hidden></div>
   <div class="tl-queue" id="tl-queue" hidden>
@@ -101,7 +101,7 @@ const sessionHTML = head + `
 
   <div class="tl-actions" id="tl-actions" hidden>
     <button type="button" class="msgact" id="btn-regen" data-debug="regenerate" title="中断当前回答，就上一句话重新作答"><span class="emo">🔄</span> 重新生成</button>
-    <button type="button" class="msgact" id="btn-copy-last" data-debug="copy" title="复制船队最近一次回复"><span class="emo">📋</span> 复制</button>
+    <button type="button" class="msgact" id="btn-copy-last" data-debug="copy" title="复制助手最近一次回复"><span class="emo">📋</span> 复制</button>
   </div>
 
   <form class="say-dock" id="say-form" action="/sessions/{{.SID}}/say?dir={{.Dir | urlquery}}" method="post">
@@ -109,7 +109,7 @@ const sessionHTML = head + `
     <div class="dock-mode">
       <div class="mode-menu" id="mode-menu">
         <button type="button" class="mode-chip" id="mode-chip" data-mode="auto" data-debug="mode chip"
-          title="切换船队的工作模式">
+          title="切换助手的工作模式">
           <span class="mode-ico" id="mode-ico">⚡</span><span class="mode-word" id="mode-word">Auto</span><span class="mode-caret">▾</span>
         </button>
         <div class="mode-pop" id="mode-pop" hidden>
@@ -128,7 +128,7 @@ const sessionHTML = head + `
     </div>
     <div class="say-row">
       <textarea name="msg" rows="1" maxlength="8000" enterkeyhint="send" autocomplete="off"
-        placeholder="{{if .Busy}}船队正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队{{else}}说点什么…（Enter 发送）{{end}}"
+        placeholder="{{if .Busy}}助手正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队{{else}}说点什么…（Enter 发送）{{end}}"
         id="say-input"></textarea>
       <button type="button" class="say-mic" id="say-mic" data-debug="voice" title="按住说话" hidden>🎤</button>
       <button type="submit" class="primary" id="say-btn" data-debug="send">📨 发送</button>
@@ -143,7 +143,7 @@ const sessionHTML = head + `
   </form>
   {{end}}{{/* .Anon 分支结束 */}}
   {{else}}
-  <p class="tl-empty">心跳、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">回船队列表</a> · <a href="/">回港口</a></p>
+  <p class="tl-empty">在线探测、官方发现口和你给的目录里都没有这个会话文件。它可能已被清理，或 id/目录抄错了。<br><a href="/sessions">回助手列表</a> · <a href="/">回首页</a></p>
   {{end}}
 </main>
 
@@ -399,7 +399,7 @@ const sessionHTML = head + `
     }).join('');
   }
 
-  // ---- 手机端工具审批：卡片 + 批准/拒绝 + 本船队放手模式 ----
+  // ---- 手机端工具审批：卡片 + 批准/拒绝 + 本会话放手模式 ----
   function ageWord(sec) {
     sec = sec || 0;
     if (sec < 60) return '刚刚';
@@ -421,7 +421,7 @@ const sessionHTML = head + `
     if (!box) return;
     if (!on || !perms || !perms.length) { box.hidden = true; box.innerHTML = ''; return; }
     var stickNow = nearBottom();
-    box.innerHTML = '<div class="perm-banner"><span class="emo">🔐 </span>船队要执行操作，等你拍板（不批 5 分钟后自动拒绝）：</div>' +
+    box.innerHTML = '<div class="perm-banner"><span class="emo">🔐 </span>助手要执行操作，等你拍板（不批 5 分钟后自动拒绝）：</div>' +
       perms.map(permCardHTML).join('');
     box.hidden = false;
     if (stickNow) stick();
@@ -533,11 +533,11 @@ const sessionHTML = head + `
     if (Notification.permission === 'granted') {
       var turnOn = localStorage.getItem('mp-notify') !== '1';
       localStorage.setItem('mp-notify', turnOn ? '1' : '0');
-      if (turnOn) ping('思港通知已开', '船队完成或待你审批时会提醒你', 'mp-test');
+      if (turnOn) ping('思港通知已开', '助手完成或待你审批时会提醒你', 'mp-test');
       paintNotify();
     } else {
       Notification.requestPermission().then(function (p) {
-        if (p === 'granted') { localStorage.setItem('mp-notify', '1'); ping('思港通知已开', '以后船队完成会提醒你', 'mp-test'); }
+        if (p === 'granted') { localStorage.setItem('mp-notify', '1'); ping('思港通知已开', '以后助手完成会提醒你', 'mp-test'); }
         paintNotify();
       });
     }
@@ -559,9 +559,9 @@ const sessionHTML = head + `
       });
     }
     if (prevStatus === 'working' && s === 'idle') {
-      ping('✅ 船队跑完一轮', '回到待命，可以再派下一句', 'done-' + SID);
+      ping('✅ 助手跑完一轮', '回到待命，可以再发下一句', 'done-' + SID);
     } else if (prevStatus === 'working' && s === 'waiting') {
-      ping('⏸ 船队待你输入', d.waiting_for || '它停下等你说话', 'wait-' + SID);
+      ping('⏸ 助手待你输入', d.waiting_for || '它停下等你说话', 'wait-' + SID);
     }
     prevStatus = s;
     prevPermIds = idSet;
@@ -653,7 +653,7 @@ const sessionHTML = head + `
     syncMsgActions(!busy && !restarting);
     if (inp && document.documentElement.dataset.stealth !== '1') {
       inp.placeholder = busy
-        ? '船队正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队等它跑完'
+        ? '助手正忙：发送 = 停下这轮换跑你这句；Ctrl+Enter = 排队等它跑完'
         : restarting ? '♻️ 新桥接续中，马上就能继续说…'
         : '说点什么…（Enter 发送）';
     }
@@ -687,7 +687,7 @@ const sessionHTML = head + `
       btn.setAttribute('data-debug', 'send');
     }
   }
-  // 「重新生成 / 复制」操作条：待命且画面里有船队回复时才出现
+  // 「重新生成 / 复制」操作条：待命且画面里有助手回复时才出现
   function lastAssistantText() {
     var live = document.getElementById('tl-live');
     var nodes = (live && !live.hidden) ? live.querySelectorAll('.tl-text') : [];
@@ -837,7 +837,7 @@ const sessionHTML = head + `
   if (moreBtn) moreBtn.addEventListener('click', loadOlder);
   wrapEl.addEventListener('scroll', function () { if (wrapEl.scrollTop < 32) loadOlder(); });
 
-  // 回话坞：Enter 发送（Shift 换行、中文组词中不触发），自适应高度
+  // 输入区：Enter 发送（Shift 换行、中文组词中不触发），自适应高度
   var form = document.getElementById('say-form'), note = document.getElementById('say-note'),
       input = document.getElementById('say-input'), btn = document.getElementById('say-btn');
   if (input && document.documentElement.dataset.stealth === '1') {
@@ -865,7 +865,7 @@ const sessionHTML = head + `
       btn.disabled = true;
       postAction('stop', { cancel_all: '0' }).then(function (d) {
         if (d.error) flash('⚠️ ' + d.error, 'note-err');
-        else flash('✋ 已停止，船队就停在这里', 'note-ok');
+        else flash('✋ 已停止，助手就停在这里', 'note-ok');
         kickPoll();
       }).catch(function () { flash('⚠️ 停止令没送达', 'note-err'); })
         .finally(function () { btn.disabled = false; refreshDock(); });
@@ -986,13 +986,13 @@ const sessionHTML = head + `
         input.value = '';
         input.style.height = 'auto';
         if (d.delivered === 'mail') {
-          // 桥真起不来才落信箱：话也要挂出来（标待接收），绝不能像没发过一样消失
+          // 桥真起不来才落到待接收留言：话也要挂出来（标待接收），绝不能像没发过一样消失
           pendingMine.push(appendPendingUser(msg, '待终端接收'));
           flash('📬 ' + d.detail + '；你的话已留在画面上，终端会话下一轮会收到', 'note-mail');
         } else {
           // 即时桥：先挂乐观气泡，权威 transcript 行到了自动顶替
           pendingMine.push(appendPendingUser(msg, d.delivered === 'live' && d.detail && d.detail.indexOf('唤醒') >= 0 ? '唤醒中…' : '已送达'));
-          flash('⛵ ' + (d.detail || '已送达，船队立刻接着跑'), 'note-ok');
+          flash('⛵ ' + (d.detail || '已送达，助手立刻接着跑'), 'note-ok');
           // 重连中发的话：服务端会等新桥就位再注入，本地维持 restarting 态
           if (lastState && lastState.status !== 'restarting')
             setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
@@ -1016,7 +1016,7 @@ const sessionHTML = head + `
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
       input.focus();
       refreshDock();
-      flash('✏️ 已取回输入框：改完直接发送（船队正忙时会停下当前轮再发）', 'note-ok');
+      flash('✏️ 已取回输入框：改完直接发送（助手正忙时会停下当前轮再发）', 'note-ok');
     }
   });
   // 🔄 重新生成：中断当前轮，就上一句话重新作答
@@ -1030,13 +1030,13 @@ const sessionHTML = head + `
       .then(function (d) {
         if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
         supersedeLastTurn();
-        flash('🔄 ' + (d.detail || '已让船队重新作答'), 'note-ok');
+        flash('🔄 ' + (d.detail || '已让助手重新作答'), 'note-ok');
         if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
         kickPoll(); setTimeout(poll, 400);
       }).catch(function (e) { if (e) flash('⚠️ 重新生成没递出去', 'note-err'); })
       .finally(function () { regenBtn.disabled = false; });
   });
-  // 📋 复制船队最近一次回复
+  // 📋 复制助手最近一次回复
   var copyLastBtn = document.getElementById('btn-copy-last');
   if (copyLastBtn) copyLastBtn.addEventListener('click', function () {
     var t = lastAssistantText();
@@ -1072,7 +1072,7 @@ const sessionHTML = head + `
     }).catch(function () { flash('⚠️ 没撤成', 'note-err'); });
   });
 
-  // ---- 即时桥动作：中断这轮（Esc）/ 中断并清空排队（Ctrl-X）/ 拆船 ----
+  // ---- 即时桥动作：中断这轮（Esc）/ 中断并清空排队（Ctrl-X）/ 删除会话 ----
   function actionURL(act) {
     return '/sessions/' + encodeURIComponent(SID) + '/' + act + (DIR ? '?dir=' + encodeURIComponent(DIR) : '');
   }
@@ -1093,13 +1093,13 @@ const sessionHTML = head + `
   });
   var scuttle = document.getElementById('btn-scuttle');
   if (scuttle) scuttle.addEventListener('click', function () {
-    var name = document.querySelector('.session h1') ? document.querySelector('.session h1').textContent.trim() : '这支船队';
-    if (!window.confirm('拆船？「' + name + '」会从思港消失（CC 的历史文件保留，不在列表删除），不可撤销。')) return;
+    var name = document.querySelector('.session h1') ? document.querySelector('.session h1').textContent.trim() : '这个会话';
+    if (!window.confirm('删除会话？「' + name + '」会从思港消失（CC 的历史文件保留，不在列表删除），不可撤销。')) return;
     scuttle.disabled = true;
     postAction('delete', {}).then(function (d) {
       if (d.error) { flash('⚠️ ' + d.error, 'note-err'); scuttle.disabled = false; return; }
       location.href = '/sessions';
-    }).catch(function () { flash('⚠️ 拆船令没送达', 'note-err'); scuttle.disabled = false; });
+    }).catch(function () { flash('⚠️ 删除指令没送达', 'note-err'); scuttle.disabled = false; });
   });
 })();
 {{end}}

@@ -1,4 +1,4 @@
-// 调度长信箱（ADR-0008）：会话正在忙、官方拒绝并发 resume 时，网页上的追加指令
+// 待接收留言（ADR-0008）：会话正在忙、官方拒绝并发 resume 时，网页上的追加指令
 // 不丢弃，落进 .port/state/mail/<sid>.jsonl；该会话下一轮提交（UserPromptSubmit）
 // 时由 `port mail-pull` 钩子幂等拉走、以 additionalContext 注入，并回标 delivered。
 package store
@@ -57,7 +57,7 @@ func newMailID() string {
 	return "m-" + hex.EncodeToString(b[:])
 }
 
-// AppendMail 追加一条未投递留言（0600，信箱内容等同调度指令，不外泄）。
+// AppendMail 追加一条未投递留言（0600，留言内容等同工作指令，不外泄）。
 func (v *Vault) AppendMail(sid, text string) (*Mail, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -162,7 +162,7 @@ func (v *Vault) PullMail(sid string) ([]Mail, error) {
 	return pending, nil
 }
 
-// DropMail 删掉某会话的全部留言（拆船时清舱；文件不存在不算错）。
+// DropMail 删掉某会话的全部留言（删除会话时清空；文件不存在不算错）。
 func (v *Vault) DropMail(sid string) error {
 	p, err := mailPath(v.mailDir(), sid)
 	if err != nil {

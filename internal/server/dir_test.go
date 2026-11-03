@@ -12,8 +12,8 @@ import (
 	"github.com/bestksl/mindport/internal/transcript"
 )
 
-// 简单粗暴扫盘：不依赖心跳/发现口，?dir= 绝对路径直接翻全部会话，
-// 早已离港（无心跳）的会话也能进船台、读实时流接口。
+// 简单粗暴扫盘：不依赖在线状态/发现口，?dir= 绝对路径直接翻全部会话，
+// 早已离线（无在线状态）的会话也能进会话页、读实时流接口。
 func TestSessionListByDir(t *testing.T) {
 	s, home := setupSession(t, testTranscript, nil)
 	h := s.Routes()
@@ -28,7 +28,7 @@ func TestSessionListByDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 再造一艘「无心跳」历史船：只有 transcript 文件
+	// 再造一个「无在线状态」历史会话：只有 transcript 文件
 	const oldSID = "sess-hist-00002"
 	oldBody := `{"type":"user","uuid":"h1","timestamp":"2026-10-20T09:00:00.000Z","message":{"role":"user","content":"历史会话也能打开"}}
 {"type":"assistant","uuid":"h2","timestamp":"2026-10-20T09:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"在的。"}]}}
@@ -46,10 +46,10 @@ func TestSessionListByDir(t *testing.T) {
 		t.Fatalf("空态应 200 且带目录输入框，code=%d", rec.Code)
 	}
 	if !strings.Contains(emptyBody, `class="fleet-btn"`) {
-		t.Fatalf("顶栏应有明面的船队（会话）入口")
+		t.Fatalf("顶栏应有明面的会话入口")
 	}
 
-	// 扫盘列表：两艘船都在，标题与带 dir 的回链都在
+	// 扫盘列表：两个会话都在，标题与带 dir 的回链都在
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions?dir="+enc, nil))
 	body := rec.Body.String()
@@ -80,12 +80,12 @@ func TestSessionListByDir(t *testing.T) {
 		t.Fatalf("无会话目录应 404，得到 %d", rec.Code)
 	}
 
-	// 无心跳历史船：凭 ?dir= 自证进船台，返回键回列表
+	// 离线历史会话：凭 ?dir= 自证进会话页，返回键回列表
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/"+oldSID+"?dir="+enc, nil))
 	page := rec.Body.String()
 	if rec.Code != 200 || !strings.Contains(page, "历史会话也能打开") {
-		t.Fatalf("历史会话船台应 200 且含首句，code=%d", rec.Code)
+		t.Fatalf("历史会话页应 200 且含首句，code=%d", rec.Code)
 	}
 	if !strings.Contains(page, "/sessions?dir="+enc) {
 		t.Fatalf("从列表进来应给回列表的返回键")
@@ -106,11 +106,11 @@ func TestSessionListByDir(t *testing.T) {
 		t.Fatalf("应读到 2 个事件，得到 %d", len(d.Events))
 	}
 
-	// 没有 dir 自证、心跳里也查无此船：404
+	// 没有 dir 自证、在线状态里也查无此会话：404
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sessions/"+oldSID+"/stream", nil))
 	if rec.Code != 404 {
-		t.Fatalf("无 dir 提示的历史船应 404，得到 %d", rec.Code)
+		t.Fatalf("无 dir 提示的历史会话应 404，得到 %d", rec.Code)
 	}
 }
 
@@ -174,7 +174,7 @@ func TestSessionRecentAggregateAndAPI(t *testing.T) {
 	}
 }
 
-// 进程表补发现的船队在目录视图里不得串目录：只显示属于该目录的行；
+// 进程表补发现的会话在目录视图里不得串目录：只显示属于该目录的行；
 // 从无 transcript 的全新目录里开着的匿名 TUI 也要能显示（不被 404 挡掉）。
 func TestSessionListExtrasDirScoping(t *testing.T) {
 	projA := t.TempDir()
@@ -235,14 +235,14 @@ func TestSessionListExtrasDirScoping(t *testing.T) {
 	if rec.Code != 200 ||
 		!strings.Contains(rec.Body.String(), "proc-777") ||
 		!strings.Contains(rec.Body.String(), desktopSID) {
-		t.Fatalf("聚合视图应含全部在线船队：%s", rec.Body.String())
+		t.Fatalf("聚合视图应含全部在线会话：%s", rec.Body.String())
 	}
 
-	// 匿名空态船台可打开，stream/history/say 全部拒绝
+	// 匿名空态会话页可打开，stream/history/say 全部拒绝
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sessions/proc-777?dir="+url.QueryEscape(projA), nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `data-debug="anon"`) {
-		t.Fatalf("匿名船台应 200 渲染空态，code=%d", rec.Code)
+		t.Fatalf("匿名会话页应 200 渲染空态，code=%d", rec.Code)
 	}
 	sayReq := httptest.NewRequest("POST", "/sessions/proc-777/say?dir="+url.QueryEscape(projA),
 		strings.NewReader(url.Values{"msg": {"hi"}}.Encode()))
@@ -250,6 +250,6 @@ func TestSessionListExtrasDirScoping(t *testing.T) {
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, sayReq)
 	if rec.Code != 400 {
-		t.Fatalf("匿名船队不可代说话，应 400，得到 %d", rec.Code)
+		t.Fatalf("匿名会话不可代说话，应 400，得到 %d", rec.Code)
 	}
 }

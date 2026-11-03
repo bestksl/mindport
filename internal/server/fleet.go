@@ -1,5 +1,5 @@
-// 船队视图模型（v0.7）：一支船队 = 一个 Claude Code 会话。
-// 船队状态直接复用官方发现口（claude agents）原生三态，思港不另造：
+// 会话视图模型（v0.7）：一个会话 = 一个 Claude Code 会话。
+// 会话状态直接复用官方发现口（claude agents）原生三态，思港不另造：
 //   - busy    → 工作中
 //   - waiting → 待你输入（等权限确认/等补充信息）
 //   - idle    → 已停止（进程还在，随时能再说话）
@@ -60,7 +60,7 @@ func markText(outcome string) string {
 	return ""
 }
 
-// fleetOption 是任务页「挂到哪支船队」下拉里的一支船队。
+// fleetOption 是任务页「关联到哪个会话」下拉里的一个会话。
 type fleetOption struct {
 	SID       string
 	Dir       string
@@ -72,7 +72,7 @@ type fleetOption struct {
 	StateText string
 }
 
-// fleetOptions 返回最近活跃船队 + 当前在线船队，供任务页挂船队选择。
+// fleetOptions 返回最近活跃会话 + 当前在线会话，供任务页关联会话选择。
 // boundSID 非空时确保它排在第一位（哪怕已掉出最近列表）。
 func (s *Server) fleetOptions(boundSID, boundDir, boundTitle string) []fleetOption {
 	home, _ := os.UserHomeDir()
@@ -105,7 +105,7 @@ func (s *Server) fleetOptions(boundSID, boundDir, boundTitle string) []fleetOpti
 	return out
 }
 
-// fleetOptionTitle 从任务页已知信息尽量还原船队显示名。
+// fleetOptionTitle 从任务页已知信息尽量还原会话显示名。
 func boundFleetTitle(sid, dir, fallback string) string {
 	if fallback != "" {
 		return fallback
@@ -128,7 +128,7 @@ func (s *Server) handleSessionMark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info, ok := s.resolveSession(sid, r.URL.Query().Get("dir")); ok && info.anon {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "船队还没说过话，先没有结局可标记"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "会话还没说过话，先没有结局可标记"})
 		return
 	}
 	dir := strings.TrimSpace(r.PostFormValue("dir"))
@@ -157,20 +157,20 @@ func (s *Server) handleSessionUnmark(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// ---------- 任务挂船队 ----------
+// ---------- 任务关联会话 ----------
 
 func (s *Server) handleTaskBind(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_ = r.ParseForm()
-	// 表单值 sid|dir，与派船下拉同构；dir 可空（历史会话建议带上）。
+	// 表单值 sid|dir，与指派下拉同构；dir 可空（历史会话建议带上）。
 	sid, dir := splitTarget(r.PostFormValue("fleet"))
 	sid, dir = strings.TrimSpace(sid), strings.TrimSpace(dir)
 	if !sidOK(sid) {
-		redirectErr(w, r, "要选一支船队（会话）再挂")
+		redirectErr(w, r, "要先选一个会话再关联")
 		return
 	}
 	if isAnonSID(sid) {
-		redirectErr(w, r, "这支船队还没说过话，挂不住——等它在自己终端开口，或直接新开一支")
+		redirectErr(w, r, "这个会话还没说过话，无法关联——等它在自己终端开口，或直接新开一个")
 		return
 	}
 	if _, err := s.V.BindSession(id, sid, dir, dispatcher); err != nil {
@@ -189,27 +189,27 @@ func (s *Server) handleTaskUnbind(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 }
 
-// ---------- 新开船队跑任务 ----------
+// ---------- 新开会话跑任务 ----------
 
-// launchPrompt 是新船队的默认开场白：任务单里最有用的信息一次带上，
+// launchPrompt 是新会话的默认开场白：任务单里最有用的信息一次带上，
 // 新会话一开口就知道要干什么。用户可在表单里改。
 func launchPrompt(rec *store.Record) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "思港挂来一个想法（%s）：%s", rec.Meta.ID, rec.Meta.Title)
+	fmt.Fprintf(&b, "思港发来一个任务（%s）：%s", rec.Meta.ID, rec.Meta.Title)
 	if rec.Meta.Goal != "" {
 		b.WriteString("\n服务的目标：" + rec.Meta.Goal)
 	}
 	if body := strings.TrimSpace(rec.Body); body != "" {
 		b.WriteString("\n\n" + body)
 	}
-	b.WriteString("\n\n先看清这个想法、给出你的理解和打算，需要我确认的地方先问我。")
+	b.WriteString("\n\n先看清这个任务、给出你的理解和打算，需要我确认的地方先问我。")
 	if r := []rune(b.String()); len(r) > 6000 {
 		return string(r[:6000])
 	}
 	return b.String()
 }
 
-// fleetDefaultName 给任务派生默认船名：挂航线用「短码-需求」，否则用任务标题。
+// fleetDefaultName 给任务派生默认会话名：关联目标线用「短码-需求」，否则用任务标题。
 func (s *Server) fleetDefaultName(rec *store.Record) string {
 	title := strings.TrimSpace(rec.Meta.Title)
 	if rec.Meta.Route != "" {
@@ -230,14 +230,14 @@ func clipRunes(s string, n int) string {
 	return string(r[:n])
 }
 
-// handleTaskLaunch 在指定项目目录新开一支桥船队，把任务挂上去。
-// 前端用 fetch 提交：成功返 JSON 跳转船台，失败错误就地显示（不再踢回首页）。
+// handleTaskLaunch 在指定项目目录新开一个桥接会话，把任务关联上去。
+// 前端用 fetch 提交：成功返 JSON 跳转会话页，失败错误就地显示（不再踢回首页）。
 func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_ = r.ParseForm()
 	dir := filepath.Clean(strings.TrimSpace(r.PostFormValue("dir")))
 	if !filepath.IsAbs(dir) {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给项目目录的绝对路径，船队才知道在哪儿开工"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "要给项目目录的绝对路径，会话才知道在哪儿开工"})
 		return
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
@@ -262,10 +262,10 @@ func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 		name = s.fleetDefaultName(rec)
 	}
 	if len([]rune(name)) > maxFleetNameRunes || strings.ContainsAny(name, "\n\r") {
-		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "船名太长或含换行"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "会话名太长或含换行"})
 		return
 	}
-	// 航线可在 launch 表单里现挂：校验通过后先落到任务上，再随船队登记。
+	// 目标线可在 launch 表单里现关联：校验通过后先落到任务上，再随会话登记。
 	routeID := strings.TrimSpace(r.PostFormValue("route"))
 	if routeID != "" {
 		if _, err := s.V.GetRoute(routeID); err != nil {
@@ -284,7 +284,7 @@ func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 
 	sid, _, err := s.bridge.Start(dir, "", name, msg)
 	if err != nil || !looksLikeSID(sid) {
-		detail := "新开船队失败"
+		detail := "新开会话失败"
 		if err != nil {
 			detail += "：" + err.Error()
 		}
@@ -294,14 +294,14 @@ func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 	if err := s.V.SaveFleet(store.FleetInfo{
 		SID: sid, Name: name, Dir: dir, Task: id, Route: routeID,
 	}); err != nil {
-		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船队已开（" + shortSid(sid) + "）但名册登记失败：" + err.Error()})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "会话已开（" + shortSid(sid) + "）但名册登记失败：" + err.Error()})
 		return
 	}
 	if _, err := s.V.BindSession(id, sid, dir, dispatcher); err != nil {
-		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "船队已开但挂载失败：" + err.Error()})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "会话已开但关联任务失败：" + err.Error()})
 		return
 	}
-	// 立即拉一次发现口，新船队秒进列表（不必等 30s 轮询）。
+	// 立即拉一次发现口，新会话秒进列表（不必等 30s 轮询）。
 	if s.poller != nil {
 		go s.poller.poll()
 	}
