@@ -331,9 +331,16 @@ const sessionHTML = head + `
     if (d.status === 'restarting') return 'restarting';
     return 'idle'; // 进程在线、轮次已停，随时能再说话
   }
+  // 文案对齐 t3 状态语：Working / Pending Approval / Awaiting Input /
+  // Connecting / Idle·resumable / Stopped
   function stateText(k) {
-    return k === 'working' ? '工作中' : k === 'waiting' ? '待你输入'
-      : k === 'restarting' ? '♻️ 重连中' : k === 'idle' ? '空闲' : '已停止';
+    return k === 'working' ? '工作中'
+      : k === 'approval' ? '待审批'
+      : k === 'input' ? '待输入'
+      : k === 'waiting' ? '待你输入'
+      : k === 'restarting' ? '连接中…'
+      : k === 'idle' ? '空闲 · 可续跑'
+      : '已停止';
   }
 
   // ---- 逐字直播：当前轮还没落进 transcript 的 thinking/text/tool 块 ----
@@ -386,17 +393,47 @@ const sessionHTML = head + `
     try { return esc(JSON.stringify(JSON.parse(t), null, 2)); } catch (e) { return esc(t); }
   }
 
-  // ---- 忙时排队：CLI 自动排队续跑，这里让人看见队里有几句、可一键全撤 ----
+  // ---- 忙时排队（对标 t3 queued runs）：消息在服务端队列、还没交给 agent，
+  //      每条都能撤回 / 取回编辑 / 插队立即发送；超过 3 条折叠 ----
+  var queuedItems = [];
+  var queueExpanded = false;
   function renderQueue(queued) {
     var box = document.getElementById('tl-queue');
     if (!box) return;
-    var n = queued ? queued.length : 0;
+    queuedItems = Array.isArray(queued) ? queued.slice() : [];
+    var n = queuedItems.length;
     box.hidden = n === 0;
-    if (!n) return;
+    if (!n) { queueExpanded = false; return; }
     document.getElementById('q-n').textContent = String(n);
-    document.getElementById('q-list').innerHTML = queued.map(function (q) {
-      return '<div class="q-item"><span class="emo">🧭 </span>' + esc(q) + '</div>';
+    // 折叠时只露前 3 条；显示的始终是前缀，data-idx 即真实队列下标
+    var shown = (queueExpanded || n <= 3) ? queuedItems : queuedItems.slice(0, 3);
+    var html = shown.map(function (q, i) {
+      return '<div class="q-item" data-idx="' + i + '">' +
+        '<div class="q-text" title="' + esc(q.replace(/\n/g, ' ↵ ')) + '">' + esc(q) + '</div>' +
+        '<div class="q-acts">' +
+        '<button type="button" class="q-act q-go" data-qact="promote" data-debug="queue promote"' +
+        ' title="停下当前轮，让这句立刻先发；其余排队句保留">⏩ 立即发送</button>' +
+        '<button type="button" class="q-act q-edit" data-qact="edit" data-debug="queue edit"' +
+        ' title="取回输入框修改，排队里同时撤掉这句">✏️ 编辑</button>' +
+        '<button type="button" class="q-act q-rm" data-qact="remove" data-debug="queue remove"' +
+        ' title="从排队撤回（不影响正在跑的这轮）">✕ 撤回</button>' +
+        '</div></div>';
     }).join('');
+    if (n > 3) {
+      html += queueExpanded
+        ? '<button type="button" class="q-more" data-qact="fold" data-debug="queue fold">收起 ▴</button>'
+        : '<button type="button" class="q-more" data-qact="expand" data-debug="queue expand">展开全部 ' + n + ' 句 ▾</button>';
+    }
+    document.getElementById('q-list').innerHTML = html;
+  }
+  function queuePost(op, idx) {
+    var body = new URLSearchParams();
+    body.set('idx', String(idx));
+    return fetch('/sessions/' + encodeURIComponent(SID) + '/queue/' + op + dirQS(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); });
   }
 
   // ---- 手机端工具审批：卡片 + 批准/拒绝 + 本会话放手模式 ----
@@ -633,9 +670,17 @@ const sessionHTML = head + `
       var cls, txt, title = '';
       if (d.mark) { cls = 'badge mark mark-' + d.mark; txt = MARK_TEXT[d.mark]; }
       else {
-        cls = 'badge ' + key;
-        txt = stateText(key);
-        if (key === 'waiting' && d.waiting_for) { title = d.waiting_for; txt += ' · ' + d.waiting_for; }
+        // 子态优先级对齐 t3：待审批 > 待输入 > 工作中 > 连接中 > 待你输入 > 空闲
+        var badgeKey = key;
+        if (d.perms && d.perms.length) {
+          badgeKey = 'approval';
+          title = d.perms.map(function (p) { return (p.tool || '') + '：' + (p.summary || ''); }).join('\n');
+        } else if (key === 'waiting') {
+          badgeKey = d.waiting_for ? 'input' : 'waiting';
+          if (d.waiting_for) title = d.waiting_for;
+        }
+        cls = 'badge ' + badgeKey;
+        txt = stateText(badgeKey);
       }
       badge.outerHTML = '<span class="' + cls + '" id="s-badge"' + (title ? ' title="' + esc(title) + '"' : '') +
         ' data-debug="state: ' + (d.mark ? 'mark-' + d.mark : key) + '"><i class="dot"></i>' + esc(txt) + '</span>';
@@ -644,8 +689,8 @@ const sessionHTML = head + `
     var busy = d.online && d.status === 'busy' && !d.mark;
     var restarting = d.online && d.status === 'restarting' && !d.mark;
     renderLive(busy ? d.streaming : null);
-    // 重连中排队话照样亮着：它们会由新桥原样重投，让人确认话没丢
-    renderQueue((busy || restarting) ? d.queued : null);
+    // 排队卡任何状态都亮：waiting 时先前忙时排的话仍在等轮间投递，重连中也由新桥原样续投
+    renderQueue(d.queued && d.queued.length ? d.queued : null);
     renderPerms(d.perms, d.perm_on);
     if (d.mode) paintMode(d.mode);
     if (typing) typing.hidden = !(busy && !(d.streaming && d.streaming.length));
@@ -664,6 +709,7 @@ const sessionHTML = head + `
   var dockMode = 'send';
   function refreshDock() {
     if (!btn || !input) return;
+    if (stopPending) return; // 停止中：按钮文案/禁用态由停止流程自己管，别被轮询刷掉
     var busyNow = !!(lastState && stateKey(lastState) === 'working');
     var hasText = input.value.trim() !== '';
     var mode = busyNow ? (hasText ? 'stopfirst' : 'stop') : 'send';
@@ -858,18 +904,60 @@ const sessionHTML = head + `
       refreshDock();
     });
   }
-  // 忙且输入框空时，主按钮是「■ 停止」：点击只停，不发空消息
-  if (btn) btn.addEventListener('click', function (e) {
-    if (dockMode === 'stop') {
-      e.preventDefault();
-      btn.disabled = true;
-      postAction('stop', { cancel_all: '0' }).then(function (d) {
-        if (d.error) flash('⚠️ ' + d.error, 'note-err');
-        else flash('✋ 已停止，助手就停在这里', 'note-ok');
-        kickPoll();
-      }).catch(function () { flash('⚠️ 停止令没送达', 'note-err'); })
-        .finally(function () { btn.disabled = false; refreshDock(); });
+  // 忙且输入框空时，主按钮是「■ 停止」：点击只停，不发空消息。
+  // 停止令发出后按钮变「停止中 n s」；8 秒还没停（对标 t3：agent 不响应 Stop）
+  // 露出「⚡ 强制结束」，点它走服务端 SIGKILL 通道。
+  var stopPending = null; // null | 'waiting' | 'forcing'
+  var stopTimer = null, stopForceTimer = null, stopT0 = 0;
+  function stopTick() {
+    if (!stopPending) return;
+    var sec = ((Date.now() - stopT0) / 1000);
+    btn.innerHTML = stopPending === 'forcing'
+      ? '<span class="emo">⚡ </span>强制结束中 ' + sec.toFixed(1) + 's'
+      : '<span class="emo">⏳ </span>停止中 ' + sec.toFixed(1) + 's';
+  }
+  function clearStopTimers() {
+    if (stopTimer) { clearInterval(stopTimer); stopTimer = null; }
+    if (stopForceTimer) { clearTimeout(stopForceTimer); stopForceTimer = null; }
+  }
+  function finishStop() {
+    stopPending = null;
+    clearStopTimers();
+    btn.classList.remove('is-force');
+    btn.disabled = false;
+    refreshDock();
+  }
+  function sendStop(force) {
+    stopPending = force ? 'forcing' : 'waiting';
+    btn.disabled = !force; // 等强制阶段才重新可点
+    stopT0 = Date.now();
+    clearStopTimers();
+    stopTimer = setInterval(stopTick, 200);
+    stopTick();
+    if (!force) {
+      // 正常协议取消约 1~3 秒；8 秒还没回来，认为 agent 对停止无响应
+      stopForceTimer = setTimeout(function () {
+        if (stopPending !== 'waiting') return;
+        btn.disabled = false;
+        btn.innerHTML = '<span class="emo">⚡ </span>强制结束';
+        btn.title = '助手没有响应停止，点这里直接结束进程（会话记录保留）';
+        btn.classList.add('is-force');
+        flash('⚠️ 助手没有响应停止，可点「⚡ 强制结束」直接收掉进程', 'note-err');
+      }, 8000);
     }
+    var params = { cancel_all: '0' };
+    if (force) params.force = '1';
+    postAction('stop', params).then(function (d) {
+      if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+      flash(force ? '⚡ 已强制结束，助手就停在这里' : '✋ 已停止，助手就停在这里', 'note-ok');
+      kickPoll();
+    }).catch(function () { flash('⚠️ 停止令没送达', 'note-err'); })
+      .finally(finishStop);
+  }
+  if (btn) btn.addEventListener('click', function (e) {
+    if (stopPending === 'waiting') { e.preventDefault(); sendStop(true); return; }
+    if (stopPending) { e.preventDefault(); return; }
+    if (dockMode === 'stop') { e.preventDefault(); sendStop(false); }
   });
   // ---- 🎤 豆包式按住说话：短按照常打字/发送，麦克风按住说话、松开发送、上滑取消 ----
   var mic = document.getElementById('say-mic'),
@@ -1093,6 +1181,56 @@ const sessionHTML = head + `
       flash('✋ 已中断，排队的话全部撤回', 'note-ok');
       kickPoll();
     }).catch(function () { flash('⚠️ 没撤成', 'note-err'); });
+  });
+  // 排队虚线卡：撤回 / 取回编辑 / 立即发送（事件委托，inner rebuild 不丢监听）
+  var queueBox = document.getElementById('tl-queue');
+  if (queueBox) queueBox.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-qact]');
+    if (!btn) return;
+    var act = btn.getAttribute('data-qact');
+    if (act === 'expand') { queueExpanded = true; renderQueue(queuedItems); return; }
+    if (act === 'fold') { queueExpanded = false; renderQueue(queuedItems); return; }
+    var item = btn.closest('.q-item');
+    var idx = parseInt(item && item.getAttribute('data-idx'), 10);
+    if (isNaN(idx)) return;
+    var text = queuedItems[idx] || '';
+    // 操作期间锁住全部队列按钮：成功后服务端按新快照重渲染，避免下标漂移误删
+    var acts = queueBox.querySelectorAll('button[data-qact]');
+    acts.forEach(function (b) { b.disabled = true; });
+    var unlock = function () { acts.forEach(function (b) { b.disabled = false; }); };
+    if (act === 'remove') {
+      queuePost('remove', idx).then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        flash('🧭 ' + (d.detail || '已从排队撤回'), 'note-ok');
+        renderQueue(d.queued);
+      }).catch(function () { flash('⚠️ 撤回没递出去', 'note-err'); })
+        .finally(unlock);
+    } else if (act === 'edit') {
+      // t3「Edit in the composer」：队列里撤掉、原文取回输入框，改完正常发送
+      queuePost('remove', idx).then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        input.value = text;
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        input.focus();
+        renderQueue(d.queued);
+        refreshDock();
+        flash('✏️ 已取回输入框，改完发送即可', 'note-ok');
+      }).catch(function () { flash('⚠️ 没取回来', 'note-err'); })
+        .finally(unlock);
+    } else if (act === 'promote') {
+      queueBox.querySelectorAll('button[data-qact]').forEach(function (b) { b.disabled = true; });
+      queuePost('promote', idx).then(function (d) {
+        if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        flash('⏩ ' + (d.detail || '已插队，会话按这句先跑'), 'note-ok');
+        renderQueue(d.queued);
+        if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));
+        kickPoll(); setTimeout(poll, 400);
+      }).catch(function () { flash('⚠️ 插队令没送达', 'note-err'); })
+        .finally(function () {
+          queueBox.querySelectorAll('button[data-qact]').forEach(function (b) { b.disabled = false; });
+        });
+    }
   });
   var scuttle = document.getElementById('btn-scuttle');
   if (scuttle) scuttle.addEventListener('click', function () {

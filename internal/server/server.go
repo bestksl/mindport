@@ -179,6 +179,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /sessions/{sid}/say", s.handleSessionSay)
 	mux.HandleFunc("POST /sessions/{sid}/regenerate", s.handleSessionRegenerate)
 	mux.HandleFunc("POST /sessions/{sid}/stop", s.handleFleetStop)
+	mux.HandleFunc("POST /sessions/{sid}/queue/remove", s.handleQueueRemove)   // 排队句撤回
+	mux.HandleFunc("POST /sessions/{sid}/queue/edit", s.handleQueueEdit)       // 排队句取回编辑
+	mux.HandleFunc("POST /sessions/{sid}/queue/promote", s.handleQueuePromote) // 排队句插队立即发送
 	mux.HandleFunc("POST /sessions/{sid}/delete", s.handleFleetDelete)
 	mux.HandleFunc("POST /sessions/{sid}/perm/decide", s.handlePermDecide) // 手机批准/拒绝工具
 	mux.HandleFunc("POST /sessions/{sid}/mode", s.handleMode)              // Auto/Plan/无人值守 模式切换

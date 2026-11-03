@@ -16,3 +16,4 @@
 | [0008](0008-session-transcript-bridge.md) | 会话船台：transcript 全量桥接与双向回话 | Accepted | 2026-10-26 |
 | [0009](0009-fleet-is-session.md) | 船队即会话：三态复用、结局标记、任务挂船队 | Accepted | 2026-10-28 |
 | [0010](0010-device-pairing-and-plain-words.md) | 设备配对与大众话术：一次性配对码、设备级会话、去航海化文案 | Accepted | 2026-11-03 |
+| [0011](0011-server-queue-no-refuse.md) | 永不拒话：服务端权威排队、席位留言 watcher、强制结束 | Accepted | 2026-11-04 |

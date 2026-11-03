@@ -111,7 +111,7 @@ const dirListHTML = head + `
     <span class="dir-title">{{if .Name}}{{.Name}}{{else if .Title}}{{.Title}}{{else}}<code>{{slice .SID 0 8}}</code><span data-debug="(untitled)">（无题首句）</span>{{end}}</span>
     <span class="dir-meta">
       {{if .Perms}}<em class="st-perm" data-debug="perm">🔐 待批准 {{.Perms}}<b>·</b></em>{{end}}
-      <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
+      <span class="row-state">{{if .MarkText}}<em class="st-mark st-mark-{{.Mark}}" data-debug="mark {{.Mark}}">{{.MarkText}}</em>{{end}}<em class="st-working" data-debug="working">工作中</em><em class="st-restarting">连接中…</em><em class="st-waiting" data-debug="waiting">待你输入</em><em class="st-idle">空闲</em><em class="st-stopped" data-debug="stopped">已停止</em><b>·</b></span>
       {{if .ShowProj}}<i class="dir-proj"><span class="emo">📁 </span>{{.Proj}}</i><b>·</b>{{end}}
       {{if not .HideCount}}<span class="row-events">{{.Events}}</span> 条消息<b>·</b>{{end}}<span class="row-stamp">更新 {{if .LastTS.IsZero}}刚刚{{else}}{{.LastTS.Format "01-02 15:04"}}{{end}}</span>
     </span>
@@ -176,7 +176,7 @@ const dirListHTML = head + `
     var permTag = r.perms ? '<em class="st-perm" data-debug="perm">🔐 待批准 ' + r.perms + '<b>·</b></em>' : '';
     var meta = permTag + '<span class="row-state">' +
       (mk ? '<em class="st-mark st-mark-' + esc(r.mark) + '">' + mk + '</em>' : '') +
-      '<em class="st-working">工作中</em><em class="st-restarting">♻️ 重连中</em><em class="st-waiting">待你输入</em><em class="st-stopped">已停止</em><b>·</b></span>';
+      '<em class="st-working">工作中</em><em class="st-restarting">连接中…</em><em class="st-waiting">待你输入</em><em class="st-idle">空闲</em><em class="st-stopped">已停止</em><b>·</b></span>';
     if (r.proj) meta += '<i class="dir-proj"><span class="emo">📁 </span>' + esc(r.proj) + '</i><b>·</b>';
     if (r.events) meta += '<span class="row-events">' + r.events + '</span> 条消息<b>·</b>';
     var st = fmtStamp(r.stamp);

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -244,15 +245,111 @@ func (s *Server) handleFleetStop(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	cancelAll := r.PostFormValue("cancel_all") == "1"
+	force := r.PostFormValue("force") == "1"
 	if _, alive := s.bridge.stateOf(sid); !alive {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "只有网页开的会话能在网页中断；终端里开的会话请回终端按 Esc"})
 		return
 	}
-	if err := s.bridge.Interrupt(sid, cancelAll); err != nil {
+	if err := s.bridge.Interrupt(sid, cancelAll, force); err != nil {
 		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "中断指令没送进去：" + err.Error()})
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "cancel_all": cancelAll})
+	writeJSON(w, map[string]any{"ok": true, "cancel_all": cancelAll, "force": force})
+}
+
+// queueResp 排队操作后回传最新队列快照，前端就地重渲染虚线卡。
+type queueResp struct {
+	OK      bool     `json:"ok"`
+	Queued  []string `json:"queued"`
+	Pending int      `json:"pending"`
+	State   string   `json:"state,omitempty"`
+	Detail  string   `json:"detail,omitempty"`
+}
+
+func (s *Server) queueSnapshot(w http.ResponseWriter, sid, detail string) {
+	_, _, q, _ := s.bridge.snapshot(sid)
+	if q == nil {
+		q = []string{}
+	}
+	writeJSON(w, queueResp{OK: true, Queued: q, Pending: len(q), Detail: detail})
+}
+
+// handleQueueRemove 撤回一条排队中消息（对标 t3 queued-run.cancel）：
+// 消息还没交给 agent，撤回不碰当前轮。
+func (s *Server) handleQueueRemove(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	_ = r.ParseForm()
+	idx, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("idx")))
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "排队序号不对"})
+		return
+	}
+	text, err := s.bridge.RemoveQueued(sid, idx)
+	if err != nil {
+		writeJSONStatus(w, http.StatusGone, map[string]string{"error": err.Error()})
+		return
+	}
+	_ = text
+	s.queueSnapshot(w, sid, "已从排队撤回："+clipText(text, 60))
+}
+
+// handleQueueEdit 改写一条排队中消息（对标 t3 queued-run.edit）。
+func (s *Server) handleQueueEdit(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	_ = r.ParseForm()
+	idx, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("idx")))
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "排队序号不对"})
+		return
+	}
+	msg := strings.TrimSpace(r.PostFormValue("msg"))
+	if msg == "" {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "改后的话不能为空；要取消请点撤回"})
+		return
+	}
+	if len([]rune(msg)) > 8000 {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "话太长了（8000 字以内）"})
+		return
+	}
+	if err := s.bridge.EditQueued(sid, idx, msg); err != nil {
+		writeJSONStatus(w, http.StatusGone, map[string]string{"error": err.Error()})
+		return
+	}
+	s.queueSnapshot(w, sid, "排队的话已改好")
+}
+
+// handleQueuePromote 插队立即发送（对标 t3 promote-to-steer / Send now）：
+// 中断当前轮，用这条排队句点火新一轮，其余排队句保留。
+func (s *Server) handleQueuePromote(w http.ResponseWriter, r *http.Request) {
+	sid := r.PathValue("sid")
+	if !sidOK(sid) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "会话不存在"})
+		return
+	}
+	_ = r.ParseForm()
+	idx, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("idx")))
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "排队序号不对"})
+		return
+	}
+	if err := s.bridge.PromoteQueued(sid, idx); err != nil {
+		if errors.Is(err, errSessionHeldElsewhere) {
+			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": "会话正在终端里开着，先在那边退出再插队"})
+			return
+		}
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	_ = s.V.UnmarkSession(sid)
+	s.queueSnapshot(w, sid, "已插队，会话按这句先跑")
 }
 
 // handleFleetDelete 删除会话（等效 CC 的 Ctrl-X）：停桥进程 + 从思港抹掉。

@@ -43,9 +43,11 @@ func fleetStateOf(online bool, status string) fleetState {
 	case "waiting":
 		return fleetState{Key: stateWaiting, Text: "待你输入"}
 	case "restarting":
-		return fleetState{Key: "restarting", Text: "重连中"}
+		return fleetState{Key: "restarting", Text: "连接中"}
 	default:
-		return fleetState{Key: stateIdle, Text: "已停止"}
+		// 进程在线、上一轮已收束 = 空闲可续跑（t3 Idle·resumable）；
+		// 进程不在线的情况走上面 offline = 已停止（Stopped）。
+		return fleetState{Key: stateIdle, Text: "空闲"}
 	}
 }
 

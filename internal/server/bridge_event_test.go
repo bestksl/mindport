@@ -1,6 +1,9 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -58,8 +61,10 @@ func TestReadLoopResultSettles(t *testing.T) {
 	b := newFleetBridge(nil)
 	fp := &fleetProc{
 		sid: "s2", state: bridgeWorking, gen: 1,
-		blocks: []partialBlock{{Kind: "text", Text: "半截"}},
-		queued: []string{"第一问", "第二问"},
+		blocks:   []partialBlock{{Kind: "text", Text: "半截"}},
+		queued:   []string{"第一问", "第二问"},
+		stdin:    nopCloserWriter{},
+		procDone: make(chan struct{}),
 	}
 	b.procs["s2"] = fp
 
@@ -139,19 +144,113 @@ func TestReadLoopStaleGenIgnored(t *testing.T) {
 	}
 }
 
-// 回归：中断全撤（pending 空）与仅剩点火句（长度 1）时重投不得越界 panic。
-func TestReinjectNoPanic(t *testing.T) {
+// 回归：pumpQueue 空队列/no-op、正常投递弹队首、写失败放回队首不丢话。
+func TestPumpQueue(t *testing.T) {
 	b := newFleetBridge(nil)
-	fp := &fleetProc{sid: "s6", stdin: nopCloserWriter{}}
-	b.reinject(fp, nil)
-	b.reinject(fp, []string{"只有点火句"})
-	b.reinject(fp, []string{"点火", "排队一", "排队二"})
+	fp := &fleetProc{sid: "s6", state: bridgeIdle, gen: 1, stdin: nopCloserWriter{}, procDone: make(chan struct{})}
+	b.procs["s6"] = fp
+	b.pumpQueue(fp) // 空队列不应 panic
+
+	fp.queued = []string{"只有一句"}
+	b.pumpQueue(fp)
+	if len(fp.queued) != 0 {
+		t.Fatalf("队头应已投出，剩 %v", fp.queued)
+	}
+
+	bad := &fleetProc{sid: "s7", state: bridgeIdle, gen: 1, stdin: errNopCloser{}, procDone: make(chan struct{})}
+	b.procs["s7"] = bad
+	bad.queued = []string{"写不进去", "第二"}
+	b.pumpQueue(bad)
+	if len(bad.queued) != 2 || bad.queued[0] != "写不进去" {
+		t.Fatalf("投递失败应原样放回队首，got %v", bad.queued)
+	}
+}
+
+// 服务端队列逐条撤回/编辑（对标 t3 queued-run.cancel/edit）。
+func TestQueuedRemoveEdit(t *testing.T) {
+	b := newFleetBridge(nil)
+	fp := &fleetProc{sid: "s8", state: bridgeWorking, gen: 1, stdin: nopCloserWriter{}, procDone: make(chan struct{})}
+	b.procs["s8"] = fp
+	fp.queued = []string{"一", "二", "三"}
+
+	got, err := b.RemoveQueued("s8", 1)
+	if err != nil || got != "二" || len(fp.queued) != 2 || fp.queued[1] != "三" {
+		t.Fatalf("撤回队中句失败: %q %v %v", got, err, fp.queued)
+	}
+	if err := b.EditQueued("s8", 1, " 改好的三 "); err != nil || fp.queued[1] != "改好的三" {
+		t.Fatalf("编辑排队句失败: %v %v", err, fp.queued)
+	}
+	if _, err := b.RemoveQueued("s8", 9); err == nil {
+		t.Fatal("越界撤回应报错")
+	}
+	if err := b.EditQueued("s8", 0, "  "); err == nil {
+		t.Fatal("改成空话应报错")
+	}
+	if _, err := b.RemoveQueued("nope", 0); err == nil {
+		t.Fatal("没桥应报错")
+	}
+}
+
+// waiting（AskUserQuestion 等人回答）时发话必须直写 stdin 放行当前轮，
+// 绝不能进服务端队列——队列要等 result 才投递，会死锁。
+func TestSayWhileWaitingDeliversImmediately(t *testing.T) {
+	b := newFleetBridge(nil)
+	var sink bytes.Buffer
+	fp := &fleetProc{
+		sid: "s9", state: bridgeWaiting, gen: 1,
+		stdin: bufWriteCloser{&sink}, procDone: make(chan struct{}),
+		queued: []string{"忙时排的一句"},
+	}
+	b.procs["s9"] = fp
+
+	queued, err := b.Say("s9", "这是我的答案")
+	if err != nil || queued {
+		t.Fatalf("waiting 时应直写不排队: queued=%v err=%v", queued, err)
+	}
+	if len(fp.queued) != 1 {
+		t.Fatalf("原排队内容不应动，got %v", fp.queued)
+	}
+	var line map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(sink.Bytes()), &line); err != nil {
+		t.Fatalf("stdin 应有一帧 user: %v (%q)", err, sink.String())
+	}
+	msg, _ := line["message"].(map[string]any)
+	if msg["content"] != "这是我的答案" {
+		t.Fatalf("写进 stdin 的答案不符: %v", msg["content"])
+	}
+}
+
+// 忙时发话只进服务端队列、不碰 stdin：排队句因此还能撤回/编辑。
+func TestSayWhileBusyEnqueues(t *testing.T) {
+	b := newFleetBridge(nil)
+	var sink bytes.Buffer
+	fp := &fleetProc{
+		sid: "s10", state: bridgeWorking, gen: 1,
+		stdin: bufWriteCloser{&sink}, procDone: make(chan struct{}),
+	}
+	b.procs["s10"] = fp
+
+	queued, err := b.Say("s10", "插话")
+	if err != nil || !queued {
+		t.Fatalf("忙时应入队: queued=%v err=%v", queued, err)
+	}
+	if sink.Len() != 0 {
+		t.Fatal("忙时不得写 stdin")
+	}
+	if len(fp.queued) != 1 || fp.queued[0] != "插话" {
+		t.Fatalf("队列不符: %v", fp.queued)
+	}
 }
 
 type nopCloserWriter struct{}
 
 func (nopCloserWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (nopCloserWriter) Close() error                { return nil }
+
+type errNopCloser struct{}
+
+func (errNopCloser) Write(p []byte) (int, error) { return 0, io.ErrClosedPipe }
+func (errNopCloser) Close() error                { return nil }
 
 // 空闲退役：超时 idle/cold 桥置 dead 但不杀复活资格（killed=false），
 // 年轻空闲桥与正忙/等人的桥不动。
@@ -215,7 +314,7 @@ func TestResumeSidRe(t *testing.T) {
 
 // restarting 对外三态映射与列表分组。
 func TestRestartingMapping(t *testing.T) {
-	if fs := fleetStateOf(true, "restarting"); fs.Key != "restarting" || fs.Text != "重连中" {
+	if fs := fleetStateOf(true, "restarting"); fs.Key != "restarting" || fs.Text != "连接中" {
 		t.Errorf("fleetStateOf restarting 映射错误: %+v", fs)
 	}
 	mkRow := func(sid, status string, online bool) dirRow {

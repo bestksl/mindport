@@ -1498,6 +1498,25 @@ a.chip:hover { border-color: var(--amber-line); }
   background: var(--amber-soft);
 }
 .badge.waiting .dot { animation: pulseDot 1.6s ease-in-out infinite; }
+/* t3 对齐：Pending Approval=琥珀（最高优先级），Awaiting Input=靛蓝（有具体问题） */
+.badge.approval {
+  color: var(--amber);
+  border-color: var(--amber-line);
+  background: var(--amber-soft);
+}
+.badge.approval .dot { animation: pulseDot 1.2s ease-in-out infinite; }
+.badge.input {
+  color: #8fa8e8;
+  border-color: rgba(143, 168, 232, .55);
+  background: rgba(143, 168, 232, .14);
+}
+.badge.input .dot { animation: pulseDot 1.6s ease-in-out infinite; }
+[data-theme="day"] .badge.input,
+[data-theme="porcelain"] .badge.input {
+  color: #3f579e;
+  border-color: rgba(63, 87, 158, .5);
+  background: rgba(63, 87, 158, .1);
+}
 /* 中断/掉线后 --resume 新桥接续中：蓝灯快闪，区别于常驻工作 */
 .badge.restarting {
   color: var(--busy);
@@ -1975,6 +1994,13 @@ button.regen-tag:hover { color: var(--ink); border-color: var(--amber-line); fil
   color: #081826;
 }
 #say-btn.is-stopfirst:hover { filter: brightness(1.1); }
+/* 停止令 8 秒无响应：露出的「⚡ 强制结束」强红脉冲 */
+#say-btn.is-force {
+  background: var(--block);
+  border-color: var(--block);
+  color: #2a0f08;
+  animation: pulseDot 1s ease-in-out infinite;
+}
 #say-btn:disabled { opacity: .55; }
 
 /* ---- 模式芯片 Auto/Plan：输入坞上方一颗不占地的小药丸 ---- */
@@ -2487,12 +2513,13 @@ html[data-stealth="1"] .dir-err-x { display: none; }
 .dir-row.is-working .st-working { display: inline; color: var(--busy); }
 .dir-row.is-waiting .st-waiting { display: inline; color: var(--amber); }
 .dir-row.is-restarting .st-restarting { display: inline; color: var(--busy); }
-.dir-row.is-idle .st-stopped,
+.dir-row.is-idle .st-idle { display: inline; color: var(--ok-ink); }
 .dir-row.is-offline .st-stopped { display: inline; }
 /* 结局标记覆盖实时状态文案 */
 .dir-row.has-mark .st-working,
 .dir-row.has-mark .st-waiting,
 .dir-row.has-mark .st-restarting,
+.dir-row.has-mark .st-idle,
 .dir-row.has-mark .st-stopped { display: none; }
 .dir-row.has-mark .st-mark { display: inline; }
 .dir-row.has-mark .st-mark-good { color: var(--ok-ink); }
@@ -2671,12 +2698,39 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
   font-size: 12.5px;
 }
 .q-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.q-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.q-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+/* 排队中的消息 = 还没交给 agent 的虚线卡：可撤回 / 取回编辑 / 插队立即发送（对标 t3 queued runs） */
 .q-item {
-  color: var(--ink); opacity: .85;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--amber-line);
+  border-radius: 8px;
+  background: var(--panel);
   font-size: 12.5px;
 }
+.q-text {
+  flex: 1; min-width: 0;
+  color: var(--ink); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.q-acts { flex: none; display: inline-flex; gap: 4px; }
+.q-act {
+  appearance: none; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel);
+  border-radius: 7px; padding: 2px 7px;
+  color: var(--muted); font: inherit; font-size: 11.5px; white-space: nowrap;
+}
+.q-act:hover { color: var(--amber); border-color: var(--amber-line); }
+.q-act.q-go:hover { color: var(--ok); border-color: var(--ok-line); }
+.q-act.q-rm:hover { color: var(--block); border-color: var(--block-line); background: var(--block-soft); }
+.q-act:disabled { opacity: .5; cursor: default; }
+.q-more {
+  appearance: none; cursor: pointer; align-self: center;
+  border: none; background: none; padding: 2px 6px;
+  color: var(--muted); font: inherit; font-size: 11.5px; text-decoration: underline;
+}
+.q-more:hover { color: var(--amber); }
 .tl-pending { opacity: .75; }
 .tl-pending .pend-tag {
   font-style: normal; font-size: 10.5px; color: var(--ok);

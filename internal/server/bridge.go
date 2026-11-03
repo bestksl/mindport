@@ -594,6 +594,8 @@ func (b *fleetBridge) spawn(fp *fleetProc, resume bool, name, firstMsg string) e
 		}
 		fp.mu.Unlock()
 		b.publishState(fp)
+		// 纯中断换代/掉线重起时队列里可能还有话：cold 即空闲，直接放队头点火。
+		b.pumpQueue(fp)
 		return nil
 	}
 	if err := b.writeUser(fp, firstMsg); err != nil {
@@ -659,7 +661,10 @@ func (b *fleetBridge) writeUser(fp *fleetProc, msg string) error {
 	return nil
 }
 
-// Say 向会话注入一句话。桥正忙时 CLI 自动排队（等价终端抢话），返回 queued=true。
+// Say 向会话注入一句话（对标 t3 派发：无活跃 run 立即开跑，有活跃 run 入
+// 服务端队列）。忙时消息只存在 fp.queued，当前轮 result 后由 pumpQueue
+// 按序投进 CLI——消息没提前交给 agent，所以排队期间可逐条撤回/编辑/插队。
+// 返回 queued=true 表示这句话进了队列而不是当场开跑。
 func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 	if b == nil {
 		return false, fmt.Errorf("即时桥未启用")
@@ -669,17 +674,6 @@ func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 	b.mu.Unlock()
 	if fp == nil {
 		return false, fmt.Errorf("这个会话没有桥")
-	}
-	// 中断收束/掉线重起中：等新一代就位（spawn 空会话是毫秒级，给 8s 兜底）。
-	if st := fp.curGenState(); st == bridgeRestarting || st == bridgeStarting {
-		deadline := time.Now().Add(8 * time.Second)
-		for time.Now().Before(deadline) {
-			time.Sleep(100 * time.Millisecond)
-			st = fp.curGenState()
-			if st != bridgeRestarting && st != bridgeStarting {
-				break
-			}
-		}
 	}
 	fp.mu.Lock()
 	if fp.state == bridgeDead {
@@ -692,26 +686,176 @@ func (b *fleetBridge) Say(sid, msg string) (queued bool, err error) {
 		fp.mu.Unlock()
 		return false, fmt.Errorf("桥还没接上")
 	}
-	// working/starting/waiting 写入由 CLI 自己排队续跑；cold/idle 直接开跑。
-	isWorking := fp.state == bridgeWorking || fp.state == bridgeStarting || fp.state == bridgeWaiting
-	if isWorking {
+	// 新一代接续中/起跑中/正在跑：进服务端队列，绝不抢写半接班的管道。
+	switch fp.state {
+	case bridgeWorking, bridgeStarting:
 		fp.queued = append(fp.queued, msg)
+		fp.mu.Unlock()
+		b.publishState(fp)
+		return true, nil
+	case bridgeRestarting:
+		fp.queued = append(fp.queued, msg)
+		fp.mu.Unlock()
+		b.publishState(fp)
+		// 换代 spawn 的 cold 分支有一脚 pumpQueue，可能赶在本句入队前空转；
+		// 半秒后若新桥已 cold/idle 补踢一次，避免冷桥抱着队列干等下一句话。
+		go b.kickQueuedAfter(sid, 500*time.Millisecond)
+		return true, nil
+	case bridgeWaiting:
+		// 等人回答（AskUserQuestion 等）：这句本身就是答案——必须立刻写 stdin
+		// 放行当前轮；若进队列，要等 result 才投递，而 result 恰恰卡在等这句，死锁。
+		fp.mu.Unlock()
+		if err := b.writeUser(fp, msg); err != nil {
+			return false, err
+		}
+		return false, nil
+	default: // idle/cold
+		// 队列里有货也续队尾（队头由 pumpQueue 在轮间投递）；完全空闲且队空
+		// 才当场写 stdin 开跑。
+		if len(fp.queued) > 0 {
+			fp.queued = append(fp.queued, msg)
+			st := fp.state
+			fp.mu.Unlock()
+			b.publishState(fp)
+			// cold 空会话没有「正在跑的轮」：换代路径里 spawn 那脚 pumpQueue
+			// 可能赶在本句入队前空转，补踢一次，免得冷桥抱着队列干等。
+			if st == bridgeCold {
+				b.pumpQueue(fp)
+			}
+			return true, nil
+		}
+		fp.mu.Unlock()
 	}
-	fp.mu.Unlock()
 
 	if err := b.writeUser(fp, msg); err != nil {
 		return false, err
 	}
-	return isWorking, nil
+	return false, nil
+}
+
+// pumpQueue 桥进入空闲的瞬间（一轮 result / 空会话 cold 就位）把队头投进
+// CLI 开跑。投递失败把队头放回，等下一次空闲/发话再试，话不丢。
+func (b *fleetBridge) pumpQueue(fp *fleetProc) {
+	fp.mu.Lock()
+	if len(fp.queued) == 0 {
+		fp.mu.Unlock()
+		return
+	}
+	next := fp.queued[0]
+	fp.queued = fp.queued[1:]
+	gen := fp.gen
+	fp.mu.Unlock()
+	if err := b.writeUser(fp, next); err != nil {
+		fp.mu.Lock()
+		if fp.gen == gen { // 没换代才放回，避免旧代把话塞回新一代队列
+			fp.queued = append([]string{next}, fp.queued...)
+		}
+		fp.mu.Unlock()
+		log.Printf("bridge: 队头投递失败 sid=%s: %v（已放回队首）", fp.sid, err)
+		return
+	}
+	b.publishState(fp)
+}
+
+// kickQueuedAfter 给换代竞态兜底：到点后新代已是 cold/idle（没有在跑的轮）
+// 却还抱着队列，就补一脚 pumpQueue。pumpQueue 自身按代数/写失败处理，重复
+// 踢几脚最坏只是把冷桥里本该开跑的话提前写进 CLI（它自己串行处理）。
+func (b *fleetBridge) kickQueuedAfter(sid string, d time.Duration) {
+	time.Sleep(d)
+	b.mu.Lock()
+	fp := b.procs[sid]
+	b.mu.Unlock()
+	if fp == nil {
+		return
+	}
+	switch fp.curGenState() {
+	case bridgeCold, bridgeIdle:
+		b.pumpQueue(fp)
+	}
+}
+
+// RemoveQueued 撤回排队中的第 idx 句（对标 t3 queued-run.cancel）。
+// 消息还没交给 agent，撤回不碰当前轮。返回被撤回的原文。
+func (b *fleetBridge) RemoveQueued(sid string, idx int) (string, error) {
+	fp, err := b.liveProc(sid)
+	if err != nil {
+		return "", err
+	}
+	fp.mu.Lock()
+	if idx < 0 || idx >= len(fp.queued) {
+		fp.mu.Unlock()
+		return "", fmt.Errorf("排队里没有这一句")
+	}
+	text := fp.queued[idx]
+	fp.queued = append(fp.queued[:idx], fp.queued[idx+1:]...)
+	fp.mu.Unlock()
+	b.publishState(fp) // 多端同看：撤回即时反映到所有页面
+	return text, nil
+}
+
+// EditQueued 改写排队中第 idx 句（对标 t3 queued-run.edit）。
+func (b *fleetBridge) EditQueued(sid string, idx int, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fmt.Errorf("改后的话不能为空")
+	}
+	fp, err := b.liveProc(sid)
+	if err != nil {
+		return err
+	}
+	fp.mu.Lock()
+	if idx < 0 || idx >= len(fp.queued) {
+		fp.mu.Unlock()
+		return fmt.Errorf("排队里没有这一句")
+	}
+	fp.queued[idx] = text
+	fp.mu.Unlock()
+	b.publishState(fp)
+	return nil
+}
+
+// PromoteQueued 插队立即发送（对标 t3 promote-to-steer）：中断当前轮，
+// 第 idx 句给新一代点火，队列里其余句子原样保留、继续等轮间投递。
+func (b *fleetBridge) PromoteQueued(sid string, idx int) error {
+	fp, err := b.liveProc(sid)
+	if err != nil {
+		return err
+	}
+	fp.mu.Lock()
+	if idx < 0 || idx >= len(fp.queued) {
+		fp.mu.Unlock()
+		return fmt.Errorf("排队里没有这一句")
+	}
+	text := fp.queued[idx]
+	keep := make([]string, 0, len(fp.queued)-1)
+	keep = append(keep, fp.queued[:idx]...)
+	keep = append(keep, fp.queued[idx+1:]...)
+	fp.mu.Unlock()
+	return b.interrupt(sid, text, false, keep, false)
+}
+
+// liveProc 取一个还活着的桥进程（排队操作只对在役桥有意义）。
+func (b *fleetBridge) liveProc(sid string) (*fleetProc, error) {
+	if b == nil {
+		return nil, fmt.Errorf("即时桥未启用")
+	}
+	b.mu.Lock()
+	fp := b.procs[sid]
+	b.mu.Unlock()
+	if fp == nil || fp.curGenState() == bridgeDead {
+		return nil, fmt.Errorf("这个会话没有在跑的桥")
+	}
+	return fp, nil
 }
 
 // Interrupt 中断当前轮（网页版 Esc）。CLI 2.1.310 实测：-p 进程收到
 // control_request/interrupt 会立即退出（无回执、rc=1），所以中断=旧代收束+
 // --resume 起新一代，网页只见同一 sid 短暂 restarting。
-// cancelQueued=true 连排队的话一起撤；false 时排队话由新桥原样重投（CLI
-// 内部队列随进程蒸发，且这些话尚未落 transcript，不重投就丢了）。
-func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
-	return b.interrupt(sid, "", !cancelQueued)
+// cancelQueued=true 连服务端排队的话一起撤；false 时排队话原样保留，
+// 队头给新一代点火，其余继续等轮间投递。
+// force=true 跳过协议取消，直接 SIGKILL 旧代（t3 Force stop：协议级停止无响应时用）。
+func (b *fleetBridge) Interrupt(sid string, cancelQueued, force bool) error {
+	return b.interrupt(sid, "", !cancelQueued, nil, force)
 }
 
 // ReplaceTurn 中断当前轮、丢弃排队，并用 first 作为新一轮的点火句（--resume 后
@@ -719,16 +863,17 @@ func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
 // 只见短暂「重连中」后新回答接上。first 为空时退化为纯中断（空闲等待）。
 func (b *fleetBridge) ReplaceTurn(sid, first string) error {
 	if strings.TrimSpace(first) == "" {
-		return b.interrupt(sid, "", false)
+		return b.interrupt(sid, "", false, nil, false)
 	}
-	return b.interrupt(sid, first, false)
+	return b.interrupt(sid, first, false, nil, false)
 }
 
 // interrupt 是中断/换轮的公共实现：
-//   - override 非空：用它点火新一代，排队旧话一律丢弃；
-//   - override 为空且 keepQueued：排队话原样留给新桥（首句点火，其余重投）；
-//   - 两者皆无：纯中断，新一代 --resume 空闲等待。
-func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
+//   - override 非空：用它点火新一代；keepList 是插队（promote）场景下要
+//     继续留在服务端队列里的其余句子，普通换轮为 nil（旧排队丢弃）；
+//   - override 为空且 keepQueued：队头点火新一代，其余留队列轮间投递；
+//   - 两者皆无：纯中断，排队清空，新一代 --resume 空闲等待。
+func (b *fleetBridge) interrupt(sid, override string, keepQueued bool, keepList []string, force bool) error {
 	if b == nil {
 		return fmt.Errorf("即时桥未启用")
 	}
@@ -746,13 +891,16 @@ func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 	fp.gen++ // 提前宣告旧代作废：旧 waitGen/readLoop 凭代数不等静默退场，不会误判「意外死亡」重复重起
 	oldDone := fp.procDone
 	oldProc := fp.cmd
-	var pending []string
-	if strings.TrimSpace(override) != "" {
-		pending = []string{override} // 换轮：新句独占点火，旧队列丢弃
-		fp.queued = nil
-	} else if keepQueued {
-		pending = append([]string(nil), fp.queued...) // 新桥原样重投（CLI 内部队列随旧进程蒸发）
-	} else {
+	oldQueued := append([]string(nil), fp.queued...)
+	first := ""
+	switch {
+	case strings.TrimSpace(override) != "":
+		first = override // 插队/换轮：新句独占点火
+		fp.queued = append([]string(nil), keepList...)
+	case keepQueued && len(oldQueued) > 0:
+		first = oldQueued[0]      // 队头给新一代点火
+		fp.queued = oldQueued[1:] // 其余继续在服务端队列等轮间投递
+	default:
 		fp.queued = nil
 	}
 	fp.blocks = nil
@@ -764,52 +912,54 @@ func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 
 	// 先礼后兵：协议中断 → 等旧代真退出 → 兜底 SIGKILL。
 	// 绝不能让两代 CLI 同时写同一份 transcript。
+	// force（网页「强制结束」）跳过协议取消，直接 SIGKILL——agent 对停止令
+	// 无响应时才用得到，语义同 t3 Force stop。
 	cancelQueued := override != "" || !keepQueued // 换轮/撤队时让旧代把它内部排队也丢掉
-	payload, _ := json.Marshal(map[string]any{
-		"type":          "control_request",
-		"action":        "interrupt",
-		"cancel_queued": cancelQueued,
-	})
-	payload = append(payload, '\n')
-	// 此刻 spawn 尚未开始，stdin 必是旧代管道；wmu 只防与并发 Say 写交错。
-	fp.wmu.Lock()
-	_, _ = fp.stdin.Write(payload)
-	fp.wmu.Unlock()
-	if oldDone != nil {
-		select {
-		case <-oldDone:
-		case <-time.After(1500 * time.Millisecond):
-			if oldProc != nil && oldProc.Process != nil {
-				_ = oldProc.Process.Kill()
+	switch {
+	case force:
+		if oldProc == nil || oldProc.Process == nil {
+			break // 半初始化桥：没有旧代可收，直接走下面 spawn
+		}
+		_ = oldProc.Process.Kill()
+		if oldDone != nil {
+			select {
+			case <-oldDone:
+			case <-time.After(2 * time.Second):
+				return fmt.Errorf("旧桥进程强杀后仍收不掉，先不重起，稍后重试")
 			}
+		}
+	default:
+		payload, _ := json.Marshal(map[string]any{
+			"type":          "control_request",
+			"action":        "interrupt",
+			"cancel_queued": cancelQueued,
+		})
+		payload = append(payload, '\n')
+		// 此刻 spawn 尚未开始，stdin 必是旧代管道；wmu 只防与并发 Say 写交错。
+		fp.wmu.Lock()
+		_, _ = fp.stdin.Write(payload)
+		fp.wmu.Unlock()
+		if oldDone != nil {
 			select {
 			case <-oldDone:
 			case <-time.After(1500 * time.Millisecond):
-				return fmt.Errorf("旧桥进程收不掉，先不重起，稍后重试")
+				if oldProc != nil && oldProc.Process != nil {
+					_ = oldProc.Process.Kill()
+				}
+				select {
+				case <-oldDone:
+				case <-time.After(1500 * time.Millisecond):
+					return fmt.Errorf("旧桥进程收不掉，先不重起，稍后重试")
+				}
 			}
 		}
 	}
 
-	// 新代 --resume 接续；有排队话则拿第一句点火，其余写进新 CLI 的队列。
-	first := ""
-	if len(pending) > 0 {
-		first = pending[0]
-	}
+	// 新代 --resume 接续：first 点火，队列其余句子等这一轮 result 后自动投递。
 	if err := b.spawn(fp, true, "", first); err != nil {
 		return fmt.Errorf("中断了但新桥没接上：%w", err)
 	}
-	b.reinject(fp, pending)
 	return nil
-}
-
-// reinject 把排队消息按序写进新桥：pending[0] 已用于 spawn 点火，
-// pending[1:] 写进新 CLI 的队列（忙时自动排队续跑）。
-func (b *fleetBridge) reinject(fp *fleetProc, pending []string) {
-	for i := 1; i < len(pending); i++ {
-		if err := b.writeUser(fp, pending[i]); err != nil {
-			break
-		}
-	}
 }
 
 // Kill 硬停桥进程（删除会话）：标记 killed，waitGen 见标记不再重起。
@@ -889,24 +1039,27 @@ func (b *fleetBridge) waitGen(fp *fleetProc, cmd *exec.Cmd, stderrBuf *limitedBu
 	}
 	time.Sleep(time.Duration(deaths) * 500 * time.Millisecond)
 
-	// 与中断同理：CLI 内部队列随进程蒸发，网页队列里的话没落过 transcript，
-	// 由新一代按序重投（第一句点火，其余进新 CLI 队列）。
+	// 服务端队列里的话从没提前交给 CLI，进程蒸发不受影响：队头给新一代
+	// 点火，其余留在 fp.queued，轮间由 pumpQueue 按序投递。
 	fp.mu.Lock()
-	pending := append([]string(nil), fp.queued...)
-	fp.mu.Unlock()
 	first := ""
-	if len(pending) > 0 {
-		first = pending[0]
+	if len(fp.queued) > 0 {
+		first = fp.queued[0]
+		fp.queued = fp.queued[1:]
 	}
+	fp.mu.Unlock()
 	if rerr := b.spawn(fp, true, "", first); rerr != nil {
 		fp.mu.Lock()
 		fp.state = bridgeDead
 		fp.errMsg = rerr.Error()
+		// 点火没成功：队头放回，话不丢，用户下句话/重启 watcher 再触发。
+		if first != "" {
+			fp.queued = append([]string{first}, fp.queued...)
+		}
 		fp.mu.Unlock()
 		b.publishState(fp)
 		return
 	}
-	b.reinject(fp, pending)
 }
 
 // readLoop 逐行解析 CLI 事件流，维护状态与流式块。
@@ -985,14 +1138,13 @@ func (b *fleetBridge) readLoop(fp *fleetProc, r io.Reader, gen uint64) {
 			fp.state = bridgeIdle
 			fp.idleAt = time.Now() // 开始空闲倒计时：60s 后给终端让席位
 			fp.blocks = nil
-			if len(fp.queued) > 0 {
-				fp.queued = fp.queued[1:] // 跑完一句，弹出队首
-			}
 			if ev.IsError {
 				fp.errMsg = "这一轮报错了，看下文详情"
 			}
 			fp.mu.Unlock()
 			b.publishState(fp)
+			// 服务端队列：上一轮已收束，把队头投进 CLI 开下一轮（不提前交）。
+			b.pumpQueue(fp)
 		}
 	}
 }

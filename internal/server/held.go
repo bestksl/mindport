@@ -65,9 +65,15 @@ func (b *fleetBridge) heldLoop(sid, dir string, ctx context.Context) {
 
 // heldTick 推进一步。返回 true 表示 watcher 可以收工。
 func (b *fleetBridge) heldTick(sid, dir string) bool {
-	// 1) 我们的桥已经在跑（另一条路先起了）：把留言认领出来直接注进桥。
-	if st, alive := b.stateOf(sid); alive && st != bridgeDead && st != bridgeRestarting {
-		b.deliverMailIntoBridge(sid)
+	// 1) 我们的桥已经在跑（另一条路先起了）：留言一条都没交给过它，
+	//    全部认领后走 Say（忙进队列、闲直接开跑、waiting 当作答案直写）。
+	//    换代中（restarting）则再等一个 tick：此刻入队可能错过 cold 那脚
+	//    pumpQueue，换代通常一两秒内完成。
+	if st, alive := b.stateOf(sid); alive && st != bridgeDead {
+		if st == bridgeRestarting {
+			return false
+		}
+		b.deliverMailIntoBridge(sid, false)
 		return true
 	}
 	// 2) 没有待投递留言（被 mail-pull 钩子拉走，或用户撤了）：收工。
@@ -96,7 +102,7 @@ func (b *fleetBridge) heldTick(sid, dir string) bool {
 		log.Printf("held watch: 起桥投递失败 sid=%s: %v（留言保留，下次发消息再试）", sid, err)
 		return true
 	}
-	b.deliverMailIntoBridge(sid)
+	b.deliverMailIntoBridge(sid, true)
 	return true
 }
 
@@ -113,33 +119,26 @@ func (b *fleetBridge) startWithFirst(dir, sid, first string) error {
 	return err
 }
 
-// deliverMailIntoBridge 原子认领全部未投递留言，首条已用于起桥点火，
-// 其余逐条写进桥 stdin（CLI 自动排队续跑）；若桥已不在则什么都不做。
-func (b *fleetBridge) deliverMailIntoBridge(sid string) {
+// deliverMailIntoBridge 原子认领全部未投递留言。skipFirst=true 表示首条已用于
+// 起桥点火（Start 写进了 stdin），只投递其余；其余走 Say——忙时进服务端队列
+// （可逐条撤回），空闲时直接开跑，waiting 时当作对提问的回答直写。
+func (b *fleetBridge) deliverMailIntoBridge(sid string, skipFirst bool) {
 	mails, err := b.srv.V.PullMail(sid)
 	if err != nil || len(mails) == 0 {
 		return
 	}
-	b.mu.Lock()
-	fp := b.procs[sid]
-	b.mu.Unlock()
-	if fp == nil {
-		// 桥在认领与此刻之间消失：留言已回标，只能等下一次发消息时重排。
-		log.Printf("held watch: 认领留言后桥消失 sid=%s，%d 条待人工重发", sid, len(mails))
-		return
+	start := 0
+	if skipFirst {
+		start = 1
 	}
-	for _, m := range mails[1:] {
-		fp.mu.Lock()
-		if fp.state == bridgeWorking || fp.state == bridgeStarting || fp.state == bridgeWaiting {
-			fp.queued = append(fp.queued, m.Text)
-		}
-		fp.mu.Unlock()
-		if err := b.writeUser(fp, m.Text); err != nil {
-			log.Printf("held watch: 追加留言写入失败 sid=%s: %v", sid, err)
+	for i := start; i < len(mails); i++ {
+		if _, err := b.Say(sid, mails[i].Text); err != nil {
+			// 桥在认领与此刻之间消失/换代失败：留言已回标，日志留痕，
+			// 下一次发话或重启 watcher 会重新排（人工也可再说一遍）。
+			log.Printf("held watch: 认领留言后投递失败 sid=%s n=%d: %v", sid, len(mails), err)
 			return
 		}
 	}
-	b.publishState(fp)
 }
 
 // resumeHeldWatches serve 启动时把「有未投递留言、且没有桥」的会话重新挂

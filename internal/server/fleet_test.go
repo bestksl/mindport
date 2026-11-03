@@ -18,7 +18,8 @@ func TestFleetStateMapping(t *testing.T) {
 	}{
 		{true, "busy", stateWorking, "工作中"},
 		{true, "waiting", stateWaiting, "待你输入"},
-		{true, "idle", stateIdle, "已停止"},
+		{true, "restarting", "restarting", "连接中"},
+		{true, "idle", stateIdle, "空闲"},
 		{false, "", stateOffline, "已停止"},
 	}
 	for _, c := range cases {
