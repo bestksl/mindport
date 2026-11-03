@@ -80,9 +80,9 @@ func (s *Server) handleSessionSay(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err := s.bridge.Start(info.dir, sid, "", msg)
 	if err != nil && !errors.Is(err, errBridgeWarming) {
-		// 会话正被终端/别的客户端占着：把原因原样还给用户，不能默默塞进留言。
+		// 会话正被终端/别的客户端占着：不报错，排队等席位空出自动续（t3 queue 语义）。
 		if errors.Is(err, errSessionHeldElsewhere) {
-			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			s.queueHeld(w, sid, info.dir, msg)
 			return
 		}
 		// 仅当 CLI 真的起不来（找不到可执行文件/登录态彻底坏）才退回留言；
@@ -151,7 +151,7 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 	_, _, err := s.bridge.Start(info.dir, sid, "", last)
 	if err != nil && !errors.Is(err, errBridgeWarming) {
 		if errors.Is(err, errSessionHeldElsewhere) {
-			writeJSONStatus(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			s.queueHeld(w, sid, info.dir, last)
 			return
 		}
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": "唤不起会话：" + err.Error()})

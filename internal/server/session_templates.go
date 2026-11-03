@@ -985,10 +985,12 @@ const sessionHTML = head + `
         if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
         input.value = '';
         input.style.height = 'auto';
-        if (d.delivered === 'mail') {
-          // 桥真起不来才落到待接收留言：话也要挂出来（标待接收），绝不能像没发过一样消失
-          pendingMine.push(appendPendingUser(msg, '待终端接收'));
-          flash('📬 ' + d.detail + '；你的话已留在画面上，终端会话下一轮会收到', 'note-mail');
+        if (d.delivered === 'mail' || d.delivered === 'held') {
+          // 被别处占着席位（held）/ 桥真起不来（mail）：话也要挂出来，绝不能像没发过一样消失。
+          // held 有 watcher 盯着席位，那边一退出自动起桥续跑，权威 transcript 行到了再顶替气泡。
+          var tag = d.delivered === 'held' ? '已排队·等那边退出' : '待终端接收';
+          pendingMine.push(appendPendingUser(msg, tag));
+          flash((d.delivered === 'held' ? '⏳ ' : '📬 ') + d.detail, 'note-mail');
         } else {
           // 即时桥：先挂乐观气泡，权威 transcript 行到了自动顶替
           pendingMine.push(appendPendingUser(msg, d.delivered === 'live' && d.detail && d.detail.indexOf('唤醒') >= 0 ? '唤醒中…' : '已送达'));
@@ -1029,6 +1031,7 @@ const sessionHTML = head + `
     }).then(function (r) { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
       .then(function (d) {
         if (d.error) { flash('⚠️ ' + d.error, 'note-err'); return; }
+        if (d.delivered === 'held') { flash('⏳ ' + d.detail, 'note-mail'); kickPoll(); return; }
         supersedeLastTurn();
         flash('🔄 ' + (d.detail || '已让助手重新作答'), 'note-ok');
         if (lastState) setStatus(Object.assign({}, lastState, { online: true, status: 'busy', mark: '' }));

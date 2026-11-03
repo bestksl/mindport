@@ -19,6 +19,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -141,6 +142,14 @@ type fleetBridge struct {
 
 	subMu sync.Mutex
 	subs  map[chan bridgeEvent]struct{}
+
+	heldMu sync.Mutex
+	held   map[string]context.CancelFunc // 等外部客户端让出会话席位的 watcher
+
+	// 测试替身：held watcher 的起桥动作（生产为 nil 走 Start）。
+	testStart func(dir, sid, first string) error
+	// 测试替身：外部席位占用探测（生产为 nil 走 claude agents + ps）。
+	testHolder func(sid string) bool
 }
 
 // bridgeEvent 推给浏览器的实时事件（/api/live SSE）。
@@ -154,8 +163,14 @@ type bridgeEvent struct {
 }
 
 func newFleetBridge(s *Server) *fleetBridge {
-	b := &fleetBridge{srv: s, procs: map[string]*fleetProc{}, subs: map[chan bridgeEvent]struct{}{}}
+	b := &fleetBridge{
+		srv:   s,
+		procs: map[string]*fleetProc{},
+		subs:  map[chan bridgeEvent]struct{}{},
+		held:  map[string]context.CancelFunc{},
+	}
 	go b.reaperLoop() // 空闲桥到点退役：给终端 TUI 让出同会话的席位
+	go b.resumeHeldWatches()
 	return b
 }
 
@@ -802,6 +817,7 @@ func (b *fleetBridge) Kill(sid string) bool {
 	if b == nil {
 		return false
 	}
+	b.stopHeld(sid) // 同时撤掉「等终端席位」watcher
 	b.mu.Lock()
 	fp := b.procs[sid]
 	b.mu.Unlock()

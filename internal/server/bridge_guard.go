@@ -31,6 +31,12 @@ var resumeSidRe = regexp.MustCompile(`--(?:resume|session-id)(?:=|\s+)([0-9a-fA-
 // externalHolder 报告 sid 是否被本桥以外的 claude 客户端占着。
 // 返回占用者 PID、给人看的来源描述。查不到/出错一律 ok=false（放行）。
 func (b *fleetBridge) externalHolder(sid string) (int, string, bool) {
+	if b.testHolder != nil { // 测试替身
+		if b.testHolder(sid) {
+			return -1, "测试占席客户端", true
+		}
+		return 0, "", false
+	}
 	own := b.ownPIDs()
 
 	// 第一路：claude agents 发现口（daemon 权威快照；实测 -p 桥也在其中）。

@@ -359,7 +359,7 @@ func (s *Server) handleSessionHistory(w http.ResponseWriter, r *http.Request) {
 // ---------- 继续输入 ----------
 
 type sayResp struct {
-	Delivered string `json:"delivered"` // resume=已唤醒续跑；mail=留言已排队
+	Delivered string `json:"delivered"` // live=即时桥；mail=兜底留言；held=会话在别处开着，已排队等席位
 	Pending   int    `json:"pending,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 }
@@ -374,6 +374,27 @@ func (s *Server) queueMail(w http.ResponseWriter, sid, msg string) {
 	}
 	n, _ := s.V.MailPending(sid)
 	writeJSON(w, sayResp{Delivered: "mail", Pending: n, Detail: "留言已排队，会话下一轮开工时自动收到"})
+}
+
+// queueHeld 会话正被终端 TUI / 桌面 / 另一个守护占着席位（对标 t3：用户输入
+// 永远被收下，从不弹「在别处开着」硬错误）。留言落盘 + watcher 等席位空出
+// 自动 --resume 起桥投递；装了 mail-pull 钩子则下一轮提交即被带走。
+func (s *Server) queueHeld(w http.ResponseWriter, sid, dir, msg string) {
+	if _, err := s.V.AppendMail(sid, msg); err != nil {
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "留言没存下：" + err.Error()})
+		return
+	}
+	s.bridge.holdWatch(sid, dir)
+	n, _ := s.V.MailPending(sid)
+	who := "另一个客户端"
+	if _, kind, held := s.bridge.externalHolder(sid); held && kind != "" {
+		who = kind
+	}
+	writeJSON(w, sayResp{
+		Delivered: "held",
+		Pending:   n,
+		Detail:    "会话正在「" + who + "」里开着，话已排队：那边一退出就自动接着跑；那边提交下一轮时也会直接收到",
+	})
 }
 
 // claudeExe 找官方 CLI：优先复用 poller 已定位的路径，再走 PATH 与常见安装位。

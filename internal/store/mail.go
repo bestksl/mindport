@@ -192,3 +192,21 @@ func (v *Vault) MailPending(sid string) (int, error) {
 	}
 	return n, nil
 }
+
+// FirstMail 返回最早一条未投递留言的原文（起桥点火用）；没有则返回空串。
+func (v *Vault) FirstMail(sid string) (string, error) {
+	p, err := mailPath(v.mailDir(), sid)
+	if err != nil {
+		return "", err
+	}
+	all, err := readMailFile(p)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range all {
+		if !m.Delivered {
+			return m.Text, nil
+		}
+	}
+	return "", nil
+}
