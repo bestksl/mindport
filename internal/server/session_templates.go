@@ -879,13 +879,11 @@ const sessionHTML = head + `
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var voiceOK = !!SR && window.isSecureContext !== false;
   if (mic) {
-    mic.hidden = false;
-    if (!SR) {
-      mic.classList.add('mic-na');
-      mic.title = '此浏览器不支持语音识别（建议手机 Chrome / iOS 14.5+ Safari）';
-    } else if (window.isSecureContext === false) {
-      mic.classList.add('mic-na');
-      mic.title = '语音识别要求 HTTPS 或本机 localhost（当前 http 地址会被浏览器禁用麦克风）';
+    if (voiceOK) {
+      // 浏览器自带语音可用（Chrome + https/localhost）才显示麦克风；
+      // http 局域网 IP（非安全上下文）或浏览器不支持时保持 hidden——
+      // 手机上改用输入法自带的麦克风说话即可，文字照样进框，不占 UI、不用 HTTPS。
+      mic.hidden = false;
     }
   }
   var recog = null, recFinal = '', recActive = false, recCancelled = false, startY = 0;

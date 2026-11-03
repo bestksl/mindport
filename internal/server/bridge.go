@@ -1151,10 +1151,12 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 		if status, online := s.bridge.bridgeStatus(row.SID); online {
 			row.Online = true
 			row.Status = status
-			fs := fleetStateOf(true, status)
-			row.Class = "is-" + fs.Key
-			row.StateText = fs.Text
 		}
+		// agents 口/桥都可能把「挂着等人回答」报成 busy，用 transcript 事实纠偏。
+		row.Status = s.reconcileBusy(row.SID, row.Dir, row.Status)
+		fs := fleetStateOf(row.Online, row.Status)
+		row.Class = "is-" + fs.Key
+		row.StateText = fs.Text
 	}
 	// 名册里的船名（-n「短码-需求」）优先于首句标题。
 	bySID := map[string]int{}
@@ -1197,6 +1199,7 @@ func (s *Server) enrichRows(rows []dirRow, home string) []dirRow {
 		case bridgeRestarting:
 			status = "restarting"
 		}
+		status = s.reconcileBusy(fp.sid, fp.dir, status)
 		name := fp.name
 		if fi, ok := s.V.Fleet(fp.sid); ok && fi.Name != "" {
 			name = fi.Name

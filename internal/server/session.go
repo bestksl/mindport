@@ -97,6 +97,8 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 			found = true
 		}
 	}
+	// agents 口/桥都可能把「挂着等人回答」报成 busy，以 transcript 事实兜底纠偏。
+	info.status = s.reconcileBusy(sid, info.dir, info.status)
 	return info, found
 }
 

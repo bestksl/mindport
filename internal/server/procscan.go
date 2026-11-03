@@ -301,19 +301,29 @@ func fillFromTranscript(ps *cliSession, f sidFile) {
 	ps.Name = m.Title
 }
 
-// inferStatus 推断发现口之外会话的状态：文件 20s 内还在写且末条是 assistant
-// 视为工作中，其余一律「待你输入」（交互会话停着就是在等人说话）。
+// inferStatus 推断发现口之外会话的状态。全部基于 transcript 尾部的幂等事实，
+// 不靠易漂移的内存标记：
+//   - 最后一轮挂着 AskUserQuestion/ExitPlanMode（无 tool_result）→ 待你输入，
+//     哪怕文件已静止（CLI agents 口在这期间误报 busy，见 tailstate.go）；
+//   - 挂着其他工具（Bash/Edit/MCP…，无 tool_result）→ 工作中，长跑命令无输出
+//     也保持工作中，不再因 20s mtime 静止反向下翻成「待你输入」；
+//   - 工具全闭合、文件 20s 内还在写且末条 assistant（流式落块中）→ 工作中；
+//   - 其余：交互会话停着就是在等人说话 → 待你输入。
 func inferStatus(f sidFile) string {
-	if f.path == "" || time.Since(f.mod) > 20*time.Second {
+	if f.path == "" {
 		return "waiting"
 	}
-	pg, err := transcript.ReadTail(f.path)
-	if err != nil || len(pg.Events) == 0 {
+	if _, pending := transcript.PendingHumanTool(f.path); pending {
 		return "waiting"
 	}
-	last := pg.Events[len(pg.Events)-1]
-	if last.Role == "assistant" {
+	if _, open := transcript.OpenToolUse(f.path); open {
 		return "busy"
+	}
+	if time.Since(f.mod) <= 20*time.Second {
+		pg, err := transcript.ReadTail(f.path)
+		if err == nil && len(pg.Events) > 0 && pg.Events[len(pg.Events)-1].Role == "assistant" {
+			return "busy"
+		}
 	}
 	return "waiting"
 }

@@ -45,11 +45,14 @@ type Server struct {
 	bridge    *fleetBridge // 网页船队的常驻 stream-json 桥（即时注入+逐字直播）
 	perm      *permManager // 可选：手机端工具权限审批（serve 经 EnablePerms 开启）
 	authToken string       // 非空即强制鉴权（ADR-0008）；serve 命令经 EnableAuth 设置
+
+	waitMu    sync.RWMutex
+	waitCache map[string]waitCacheEntry // sid → 尾部「等人回答」事实缓存（按文件签名失效）
 }
 
 // New 构造 Server 并启动 vault 文件监听（监听失败不影响主流程）。
 func New(v *store.Vault) *Server {
-	s := &Server{V: v, broker: newBroker()}
+	s := &Server{V: v, broker: newBroker(), waitCache: map[string]waitCacheEntry{}}
 	s.bridge = newFleetBridge(s)
 	go s.watchVault()
 	if p := newAgentPoller("claude@studio", v); p != nil {
