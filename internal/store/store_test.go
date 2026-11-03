@@ -25,7 +25,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatalf("标题未进入描述:\n%s", t1.Body)
 	}
 
-	// 草稿阶段可打磨验收标准
+	// 草稿阶段可编辑验收标准
 	bodyWithAccept := strings.Replace(t1.Body, "## 验收标准\n",
 		"## 验收标准\n\n- [ ] int8 单帧 ≤ 30ms\n- [ ] 三档结果记入日志\n", 1)
 	if _, err := v.UpdateTask("T0001", t1.Meta.Title, bodyWithAccept, ImpHigh, ""); err != nil {
@@ -85,19 +85,19 @@ func TestTaskLifecycle(t *testing.T) {
 
 func TestAnchorageDispatchReassign(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	rec, _ := v.NewTask("待命区任务", "", "", false)
+	rec, _ := v.NewTask("待办区任务", "", "", false)
 	id := rec.Meta.ID
 	if rec.Meta.Status != StatusAnchored {
-		t.Fatalf("非草稿建任务应进待命区，得到 %s", rec.Meta.Status)
+		t.Fatalf("非草稿建任务应进待办区，得到 %s", rec.Meta.Status)
 	}
-	// 待命区任务对所有助手不可见
+	// 待办区任务对所有助手不可见
 	if _, err := v.Next("claude@studio", ""); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("待命区任务不应进 next，得到 %v", err)
+		t.Fatalf("待办区任务不应进 next，得到 %v", err)
 	}
 	if _, err := v.Claim(id, "claude@studio", ""); !errors.Is(err, ErrInvalidTransition) {
-		t.Fatalf("待命区任务不能直接领取，得到 %v", err)
+		t.Fatalf("待办区任务不能直接领取，得到 %v", err)
 	}
-	// 指派必须点名
+	// 指派必须指定执行者
 	if _, err := v.Assign(id, "jmzx@studio", "  ", ""); err == nil {
 		t.Fatal("空执行者指派应报错")
 	}
@@ -129,7 +129,7 @@ func TestAnchorageDispatchReassign(t *testing.T) {
 	if _, err := v.Assign(id, "jmzx@studio", "claude@studio", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("进行中不应允许改派，得到 %v", err)
 	}
-	if _, err := v.UpdateTask(id, "待命区任务", r2.Body, "", ""); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := v.UpdateTask(id, "待办区任务", r2.Body, "", ""); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("指派锁定后不应允许编辑，得到 %v", err)
 	}
 }
@@ -224,7 +224,7 @@ func TestImportanceOrderingAndNext(t *testing.T) {
 func TestMigrationLegacyReadyAndEdit(t *testing.T) {
 	dir := t.TempDir()
 	v, _ := Open(dir)
-	// 旧版「已发布、任领取」（ready 无 assignee）→ 自动退回待命区
+	// 旧版「已发布、任领取」（ready 无 assignee）→ 自动退回待办区
 	old := "---\ntype: task\nid: T0001\ntitle: 旧文件\nstatus: ready\npriority: high\ncreated: 2026-10-25T20:00:00+08:00\n---\n\n## 描述\n旧正文\n"
 	mustWrite(t, dir+"/tasks/T0001-old.md", old)
 	r, err := v.GetTask("T0001")
@@ -235,9 +235,9 @@ func TestMigrationLegacyReadyAndEdit(t *testing.T) {
 		t.Fatalf("旧字段迁移失败: %+v", r.Meta)
 	}
 	if r.Meta.Status != StatusAnchored {
-		t.Fatalf("无指派的旧 ready 应退回待命区，得到 %s", r.Meta.Status)
+		t.Fatalf("无指派的旧 ready 应退回待办区，得到 %s", r.Meta.Status)
 	}
-	// 待命区阶段仍可编辑
+	// 待办区阶段仍可编辑
 	upd, err := v.UpdateTask("T0001", "新标题", "## 描述\n新正文\n", ImpCritical, "某个目标")
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +279,7 @@ func TestForceDoneEscapeHatch(t *testing.T) {
 	if _, err := v.Done(id, "a@studio", "", true, ""); err == nil {
 		t.Fatal("强制完成不带理由应拒绝")
 	}
-	// --force + 理由：放行且永久留痕
+	// --force + 理由：强制完成且永久留痕
 	r, err := v.Done(id, "a@studio", "", true, "验收项已失效，客户口头确认")
 	if err != nil {
 		t.Fatal(err)
@@ -317,17 +317,17 @@ func TestInvalidActionsAndMissing(t *testing.T) {
 
 func TestDraftPublishNoAssignee(t *testing.T) {
 	v, _ := Open(t.TempDir())
-	rec, _ := v.NewTask("打磨中", ImpHigh, "G", true)
+	rec, _ := v.NewTask("编辑中", ImpHigh, "G", true)
 	id := rec.Meta.ID
 	pub, err := v.Publish(id, "jmzx@studio", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pub.Meta.Status != StatusAnchored || pub.Meta.AssigneeValue() != "" {
-		t.Fatalf("无指派放行应进待命区，得到 %s/%q", pub.Meta.Status, pub.Meta.AssigneeValue())
+		t.Fatalf("无指派发布应进待办区，得到 %s/%q", pub.Meta.Status, pub.Meta.AssigneeValue())
 	}
 	if _, err := v.Publish(id, "jmzx@studio", "", ""); !errors.Is(err, ErrInvalidTransition) {
-		t.Fatalf("非草稿再次放行应拒绝，得到 %v", err)
+		t.Fatalf("非草稿再次发布应拒绝，得到 %v", err)
 	}
 }
 
@@ -480,11 +480,11 @@ func mustWrite(t *testing.T, path, content string) {
 func TestDeleteTask(t *testing.T) {
 	v, _ := Open(t.TempDir())
 
-	draft, err := v.NewTask("没打磨完的闪念", "", "", true)
+	draft, err := v.NewTask("没编辑完的闪念", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchored, _ := v.NewTask("待命中的任务", "", "", false)
+	anchored, _ := v.NewTask("待办的任务", "", "", false)
 	dispatched, _ := v.NewTask("已指派的任务", "", "", false)
 	if _, err := v.Assign(dispatched.Meta.ID, "test", "claude@studio", ""); err != nil {
 		t.Fatal(err)
@@ -501,12 +501,12 @@ func TestDeleteTask(t *testing.T) {
 		t.Fatalf("删除后草稿列表应为空，得到 %d 条", len(tasks))
 	}
 
-	// 待命区（未开始、无流转历史）同样可删
+	// 待办区（未开始、无流转历史）同样可删
 	if err := v.DeleteTask(anchored.Meta.ID); err != nil {
-		t.Fatalf("待命区任务应可删除: %v", err)
+		t.Fatalf("待办区任务应可删除: %v", err)
 	}
 	if _, err := v.GetTask(anchored.Meta.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("待命区任务删除后应 ErrNotFound，得到 %v", err)
+		t.Fatalf("待办区任务删除后应 ErrNotFound，得到 %v", err)
 	}
 
 	// 已指派、开始流转的任务有历史记录，不能直接删

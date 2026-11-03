@@ -167,7 +167,7 @@ func (s *Server) handleSessionRegenerate(w http.ResponseWriter, r *http.Request)
 }
 
 // handleFleetNew 一键新开会话：目录 + 会话名（短码-需求）+ 首句话，
-// 可选挂目标线/任务。返回 JSON 供前端就地报错与跳转，避免旧版 launch
+// 可选挂目标/任务。返回 JSON 供前端就地报错与跳转，避免旧版 launch
 // 「失败踢回首页丢表单 + 双击开出两个会话」。
 func (s *Server) handleFleetNew(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
@@ -346,7 +346,7 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	restarted := false
 	if s.bridge != nil {
 		if _, alive := s.bridge.stateOf(sid); alive {
-			// 纯中断→以新模式 --resume 待命。换代失败（如席位被终端占着）模式也已存下，
+			// 纯中断→以新模式 --resume 空闲等待。换代失败（如席位被终端占着）模式也已存下，
 			// 下轮冷启生效；不算硬错误，把情况作为 note 还给前端。
 			if err := s.bridge.ReplaceTurn(sid, ""); err != nil {
 				writeJSON(w, map[string]any{"ok": true, "mode": mode, "restarted": false, "note": err.Error()})

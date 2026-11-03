@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// dispatch 是指派命令：待命区指派、待领取改派、受阻重新指派（anchored/ready/blocked → ready）。
+// dispatch 是指派命令：待办区指派、待领取改派、受阻重新指派（anchored/ready/blocked → ready）。
 var (
 	dispatchTo    string
 	dispatchBerth string
@@ -15,7 +15,7 @@ var (
 
 var dispatchCmd = &cobra.Command{
 	Use:   "dispatch <T 编号> --to 执行者 [--berth 项目目录]",
-	Short: "指派/重新指派：待命区指派、待领取改派、受阻换人",
+	Short: "指派/重新指派：待办区指派、待领取改派、受阻换人",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()

@@ -55,7 +55,7 @@ port serve --host 0.0.0.0 --port 8787 --auth   # 或 PORT_AUTH=1
   （不进服务端日志）；登录/配对按 IP 限频（每分钟 10 次，本机豁免）。
 - 手机换机/丢 cookie：在本机重新 `port pair` 即可；旧设备可在 `port devices` 吊销。
 - ⚠ 无鉴权 + `--host 0.0.0.0` 时，同 WiFi 网段任何人都能读全部内容，
-  启动横幅会明示这一警告；组网网段（如 Tailscale 100.64/10、蒲公英 172.16/12，
+  启动横幅会明示这一警告；组网网段（如蒲公英 172.16/12 等，
   未开公网中继）只有自己的设备，日常默认模式即依赖这道网络边界，不做用户体系。
 
 `deploy/com.bestksl.mindport.plist` 是**存档备用**的 launchd 方案
@@ -98,7 +98,6 @@ A 档），发现口缺席时退回 2 分钟 TTL。升级到 v0.5 后若残留 v
 
 ## 远程访问
 
-见 [remote.md](remote.md)。用 Tailscale 时若 MagicDNS 域名走不通，通常是代理软件的
-fake-ip 把 `*.ts.net` / `100.64.0.0/10` 劫持了：给代理加两条 DIRECT 规则，
-或直接用 Tailscale IP `http://100.x.y.z:8787`。用蒲公英等其他组网时，
-直接以 `port serve` 横幅上的组网地址为准。
+见 [remote.md](remote.md)。组网地址连不通时，先在组网客户端里确认 Studio
+在线且组网 IP 与 `port serve` 横幅上的**组网地址**一致；若机器上跑着代理软件，
+检查它的 fake-ip 是否劫持了组网网段，必要时给该网段加 DIRECT 规则。

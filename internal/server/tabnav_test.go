@@ -50,7 +50,7 @@ func TestTabbarOnMainPages(t *testing.T) {
 	}
 }
 
-// 手机端看板分段：五个区（草稿/待命/待领/进行中/完成）都要渲染且带计数。
+// 手机端看板分段：五个区（草稿/待办/待领/进行中/完成）都要渲染且带计数。
 func TestBoardSegmentsRendered(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -76,7 +76,7 @@ func TestBoardSegmentsRendered(t *testing.T) {
 	if !strings.Contains(body, `data-seg="drafts" data-n="1"`) {
 		t.Fatalf("草稿分段计数应为 1，输出片段：%s", segSnippet(body))
 	}
-	for _, label := range []string{"📝 草稿", "⚓ 待命", "🚢 待领", "🌊 进行中", "🏁 完成"} {
+	for _, label := range []string{"📝 草稿", "⚓ 待办", "🚢 待领", "🌊 进行中", "🏁 完成"} {
 		if !strings.Contains(body, label) {
 			t.Fatalf("看板分段缺标签 %q", label)
 		}

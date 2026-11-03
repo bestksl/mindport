@@ -333,7 +333,7 @@ const sessionHTML = head + `
   }
   function stateText(k) {
     return k === 'working' ? '工作中' : k === 'waiting' ? '待你输入'
-      : k === 'restarting' ? '♻️ 重连中' : k === 'idle' ? '待命' : '已停止';
+      : k === 'restarting' ? '♻️ 重连中' : k === 'idle' ? '空闲' : '已停止';
   }
 
   // ---- 逐字直播：当前轮还没落进 transcript 的 thinking/text/tool 块 ----
@@ -559,7 +559,7 @@ const sessionHTML = head + `
       });
     }
     if (prevStatus === 'working' && s === 'idle') {
-      ping('✅ 助手跑完一轮', '回到待命，可以再发下一句', 'done-' + SID);
+      ping('✅ 助手跑完一轮', '已空闲，可以再发下一句', 'done-' + SID);
     } else if (prevStatus === 'working' && s === 'waiting') {
       ping('⏸ 助手待你输入', d.waiting_for || '它停下等你说话', 'wait-' + SID);
     }
@@ -687,7 +687,7 @@ const sessionHTML = head + `
       btn.setAttribute('data-debug', 'send');
     }
   }
-  // 「重新生成 / 复制」操作条：待命且画面里有助手回复时才出现
+  // 「重新生成 / 复制」操作条：空闲且画面里有助手回复时才出现
   function lastAssistantText() {
     var live = document.getElementById('tl-live');
     var nodes = (live && !live.hidden) ? live.querySelectorAll('.tl-text') : [];

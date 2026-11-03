@@ -1,7 +1,7 @@
 package server
 
 // 助手页（v0.8 单栏套壳）：一栏表达全部在用会话——
-// 🌊 工作中 / 🟡 待你输入 / ⚓ 待命 / 🏁 已完成（折叠）/ 🕒 历史（折叠）。
+// 🌊 工作中 / 🟡 待你输入 / ⚓ 空闲 / 🏁 已完成（折叠）/ 🕒 历史（折叠）。
 // 顶部一张「新建会话」表单，像 CLI 一样随时新开一个空会话。
 // 状态靠 /api/live SSE 即时翻灯（8s 轮询兜底），变化即按服务端数据全量重排。
 const dirListHTML = head + `
@@ -15,10 +15,10 @@ const dirListHTML = head + `
         <input name="dir" list="known-dir-list" required spellcheck="false" autocomplete="off"
                placeholder="项目目录（绝对路径）" enterkeyhint="go" aria-label="项目目录">
         <input name="name" required maxlength="40" spellcheck="false" autocomplete="off"
-               placeholder="会话名，如 数学-1加2（目标线短码-需求，≤40 字）" aria-label="会话名">
+               placeholder="会话名，如 数学-1加2（目标短码-需求，≤40 字）" aria-label="会话名">
         {{if .Routes}}
-        <select name="route" aria-label="挂到哪条目标线（可选）">
-          <option value="">不挂目标线</option>
+        <select name="route" aria-label="关联到哪个目标（可选）">
+          <option value="">不关联目标</option>
           {{range .Routes}}<option value="{{.Meta.ID}}">{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
         </select>
         {{end}}
@@ -55,9 +55,9 @@ const dirListHTML = head + `
       <p class="seg-empty">没有卡住等你的会话</p>
     </section>
     <section class="fleet-seg" data-seg="idle">
-      <h2 class="seg-head"><i class="dot"></i><span class="emo">⚓ </span>待命<b class="seg-n"></b></h2>
+      <h2 class="seg-head"><i class="dot"></i><span class="emo">⚓ </span>空闲<b class="seg-n"></b></h2>
       <div class="seg-body">{{range index .Groups "idle"}}{{template "dirRow" .}}{{end}}</div>
-      <p class="seg-empty">没有待命会话</p>
+      <p class="seg-empty">没有空闲会话</p>
     </section>
     <details class="fleet-seg seg-fold" data-seg="done">
       <summary class="seg-head"><i class="dot"></i><span class="emo">🏁 </span>已完成<b class="seg-n"></b></summary>
@@ -271,7 +271,7 @@ const dirListHTML = head + `
     }
   } catch (e) {}
 
-  // 新建表单首次新开会话成功后，折叠组自动展开待命组（落点在那里）
+  // 新建表单首次新开会话成功后，折叠组自动展开空闲组（落点在那里）
   document.addEventListener('mp-fleet-born', function () { tick(); });
 })();
 </script>

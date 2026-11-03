@@ -1,8 +1,8 @@
-// 目标线（v0.8）：既定的、长期反复推进的目标。目标线是「虚的概念」——一个 Markdown
-// 文件（短码 + 描述），下面挂一串临时性小任务；任务完成即收起，只在目标线页
-// 里回看。目标线本身不做事，干活的是为目标线新开的会话（CC 会话）。
+// 目标（v0.8）：既定的、长期反复推进的目标。目标是「虚的概念」——一个 Markdown
+// 文件（短码 + 描述），下面挂一串临时性小任务；任务完成即收起，只在目标页
+// 里回看。目标本身不做事，干活的是为目标新开的会话（CC 会话）。
 //
-// 与任务状态机正交：任务靠 Meta.Route 归属目标线，不改任务的任何流转。
+// 与任务状态机正交：任务靠 Meta.Route 归属目标，不改任务的任何流转。
 package store
 
 import (
@@ -22,23 +22,23 @@ const (
 	RouteArchived = "archived"
 )
 
-// MaxRouteCodeRunes 是目标线短码上限：会话名形如「数学-1加2」，短码最多 4 字。
+// MaxRouteCodeRunes 是目标短码上限：会话名形如「数学-1加2」，短码最多 4 字。
 const MaxRouteCodeRunes = 4
 
 var (
-	// ErrRouteNotFound 表示按编号找不到目标线。
-	ErrRouteNotFound = errors.New("目标线不存在")
+	// ErrRouteNotFound 表示按编号找不到目标。
+	ErrRouteNotFound = errors.New("目标不存在")
 	// ErrRouteCode 表示短码为空、超长或含不能进会话名的字符。
-	ErrRouteCode = errors.New("目标线短码非法")
+	ErrRouteCode = errors.New("目标短码非法")
 )
 
-// CreateRoute 建一条目标线（R 编号独立计数）。code 是 1–4 字短码，同 vault 内
-// 不能重码；title 是目标线全名，desc 是目标线描述（Markdown 正文）。
+// CreateRoute 建一个目标（R 编号独立计数）。code 是 1–4 字短码，同 vault 内
+// 不能重码；title 是目标全名，desc 是目标描述（Markdown 正文）。
 func (v *Vault) CreateRoute(title, code, desc string) (*Record, error) {
 	title = strings.TrimSpace(title)
 	code = cleanRouteCode(code)
 	if title == "" {
-		return nil, errors.New("目标线名不能为空")
+		return nil, errors.New("目标名不能为空")
 	}
 	if err := ValidateRouteCode(code); err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (v *Vault) CreateRoute(title, code, desc string) (*Record, error) {
 		}
 		for _, r := range routes {
 			if r.Meta.Code == code {
-				return fmt.Errorf("短码 %q 已被目标线「%s」占用", code, r.Meta.Title)
+				return fmt.Errorf("短码 %q 已被目标「%s」占用", code, r.Meta.Title)
 			}
 		}
 		id, err := v.nextRouteID()
@@ -74,7 +74,7 @@ func (v *Vault) CreateRoute(title, code, desc string) (*Record, error) {
 	return rec, err
 }
 
-// GetRoute 按 R 编号取目标线。
+// GetRoute 按 R 编号取目标。
 func (v *Vault) GetRoute(id string) (*Record, error) {
 	var r *Record
 	err := v.withLock(func() error {
@@ -92,7 +92,7 @@ func (v *Vault) GetRoute(id string) (*Record, error) {
 	return r, err
 }
 
-// ListRoutes 列出全部目标线（active 在前，再按编号升序）。
+// ListRoutes 列出全部目标（active 在前，再按编号升序）。
 func (v *Vault) ListRoutes() ([]Record, error) {
 	var out []Record
 	err := v.withLock(func() error {
@@ -112,12 +112,12 @@ func (v *Vault) ListRoutes() ([]Record, error) {
 	return out, err
 }
 
-// UpdateRoute 改目标线名/短码/描述。改短码同样查重（排除自身）。
+// UpdateRoute 改目标名/短码/描述。改短码同样查重（排除自身）。
 func (v *Vault) UpdateRoute(id, title, code, desc string) (*Record, error) {
 	title = strings.TrimSpace(title)
 	code = cleanRouteCode(code)
 	if title == "" {
-		return nil, errors.New("目标线名不能为空")
+		return nil, errors.New("目标名不能为空")
 	}
 	if err := ValidateRouteCode(code); err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (v *Vault) UpdateRoute(id, title, code, desc string) (*Record, error) {
 		}
 		for _, other := range routes {
 			if other.Meta.ID != id && other.Meta.Code == code {
-				return fmt.Errorf("短码 %q 已被目标线「%s」占用", code, other.Meta.Title)
+				return fmt.Errorf("短码 %q 已被目标「%s」占用", code, other.Meta.Title)
 			}
 		}
 		r.Meta.Title = title
@@ -154,10 +154,10 @@ func (v *Vault) UpdateRoute(id, title, code, desc string) (*Record, error) {
 	return rec, err
 }
 
-// SetRouteStatus 归档 / 恢复目标线。
+// SetRouteStatus 归档 / 恢复目标。
 func (v *Vault) SetRouteStatus(id, status string) error {
 	if status != RouteActive && status != RouteArchived {
-		return errors.New("目标线状态非法")
+		return errors.New("目标状态非法")
 	}
 	return v.withLock(func() error {
 		path, err := v.findRoutePathLocked(id)
@@ -177,7 +177,7 @@ func (v *Vault) SetRouteStatus(id, status string) error {
 	})
 }
 
-// ListTasksByRoute 返回挂在某条目标线下的全部任务（状态过滤同 ListTasks）。
+// ListTasksByRoute 返回挂在某个目标下的全部任务（状态过滤同 ListTasks）。
 func (v *Vault) ListTasksByRoute(routeID, status string) ([]Record, error) {
 	all, err := v.ListTasks(status)
 	if err != nil {
@@ -192,7 +192,7 @@ func (v *Vault) ListTasksByRoute(routeID, status string) ([]Record, error) {
 	return out, nil
 }
 
-// SetTaskRoute 把任务挂到目标线（routeID 空串=摘下）。
+// SetTaskRoute 把任务挂到目标（routeID 空串=摘下）。
 func (v *Vault) SetTaskRoute(id, routeID string) error {
 	routeID = strings.TrimSpace(routeID)
 	return v.withLock(func() error {

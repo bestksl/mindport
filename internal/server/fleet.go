@@ -209,7 +209,7 @@ func launchPrompt(rec *store.Record) string {
 	return b.String()
 }
 
-// fleetDefaultName 给任务派生默认会话名：关联目标线用「短码-需求」，否则用任务标题。
+// fleetDefaultName 给任务派生默认会话名：关联目标用「短码-需求」，否则用任务标题。
 func (s *Server) fleetDefaultName(rec *store.Record) string {
 	title := strings.TrimSpace(rec.Meta.Title)
 	if rec.Meta.Route != "" {
@@ -265,7 +265,7 @@ func (s *Server) handleTaskLaunch(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "会话名太长或含换行"})
 		return
 	}
-	// 目标线可在 launch 表单里现关联：校验通过后先落到任务上，再随会话登记。
+	// 目标可在 launch 表单里现关联：校验通过后先落到任务上，再随会话登记。
 	routeID := strings.TrimSpace(r.PostFormValue("route"))
 	if routeID != "" {
 		if _, err := s.V.GetRoute(routeID); err != nil {

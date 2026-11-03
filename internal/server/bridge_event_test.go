@@ -232,6 +232,6 @@ func TestRestartingMapping(t *testing.T) {
 	}
 	g := groupFleetRows(rows)
 	if len(g["working"]) != 2 {
-		t.Errorf("restarting 应归在航段，working 组实得 %d 行", len(g["working"]))
+		t.Errorf("restarting 应归工作中组，working 组实得 %d 行", len(g["working"]))
 	}
 }

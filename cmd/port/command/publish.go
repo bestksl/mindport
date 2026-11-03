@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// publish 是网页端的放行动作：draft → anchored（默认，待命区待指派）；
+// publish 是网页端的发布动作：draft → anchored（默认，待办区等待指派）；
 // 带 --to 时 draft → ready（直接指派）。
 var (
 	publishTo    string
@@ -16,7 +16,7 @@ var (
 
 var publishCmd = &cobra.Command{
 	Use:   "publish <T 编号> [--to 执行者] [--berth 项目目录]",
-	Short: "放行草稿：默认进待命区待指派；--to 直接指派给指定执行者",
+	Short: "发布草稿：默认进待办区等待指派；--to 直接指派给指定执行者",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()
@@ -35,14 +35,14 @@ var publishCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "🚢 %s 已指派 → %s%s（待领取）: %s\n",
 				r.Meta.ID, publishTo, where, r.Meta.Title)
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "⚓ %s 已进待命区待指派: %s\n", r.Meta.ID, r.Meta.Title)
+			fmt.Fprintf(cmd.OutOrStdout(), "⚓ %s 已进待办区，等待指派: %s\n", r.Meta.ID, r.Meta.Title)
 		}
 		return nil
 	},
 }
 
 func init() {
-	publishCmd.Flags().StringVar(&publishTo, "to", "", "直接指派（如 claude@studio / codex@studio），不填则进待命区")
+	publishCmd.Flags().StringVar(&publishTo, "to", "", "直接指派（如 claude@studio / codex@studio），不填则进待办区")
 	publishCmd.Flags().StringVar(&publishBerth, "berth", "", "指定工作目录（项目目录）：只在该目录的会话能领取")
 	rootCmd.AddCommand(publishCmd)
 }

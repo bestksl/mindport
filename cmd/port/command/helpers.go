@@ -19,7 +19,7 @@ func statusZH(s string) string {
 	case store.StatusDraft:
 		return "草稿  "
 	case store.StatusAnchored:
-		return "待命区"
+		return "待办区"
 	case store.StatusReady:
 		return "待领取"
 	case store.StatusInProgress:

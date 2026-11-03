@@ -2,7 +2,7 @@
 
 适用场景：Mac Studio 在家常开，人在公司，**Android 手机和笔记本都要从外网访问**
 思港 Web 与 Studio 命令行。方案：**组网**（加密虚拟内网，免费，免公网 IP、
-免路由器端口转发、免域名）。Tailscale、蒲公英、ZeroTier、WireGuard 任选——
+免路由器端口转发、免域名）。蒲公英、ZeroTier、WireGuard 等方案任选——
 思港不挑组网方案，`port serve` 启动时会自动识别组网网卡，横幅里分别给出
 **组网地址**和**局域网地址**。
 
@@ -23,12 +23,10 @@ Vs3 手机 ──┼── 组网虚拟内网（任何网络下如同同一局�
 
 1. 安装一个你用着顺手的组网客户端并登录，例如：
    - **蒲公英**（国内网络友好，手机端叫「蒲公英VPN」）；
-   - **Tailscale**（国际网络，WireGuard 内核，安装包曾下载到
-     `~/Downloads/Tailscale-*-macos.pkg`，也可从 Mac App Store 安装）；
-   - ZeroTier、自建 WireGuard 同理。
+   - ZeroTier、自建 WireGuard 等同理。
 
    手机和笔记本都要加入**同一个组网网络/账号**。记下 Studio 的组网地址
-   （客户端里能看到；Tailscale 通常是 100.x.x.x，蒲公英通常是 172.x.x.x）。
+   （客户端里能看到；蒲公英通常是 172.x.x.x）。
 2. 开启「远程登录」（系统 SSH）。二选一：
    - 系统设置 → 通用 → 共享 → 远程登录 → 打开；或
    - 终端执行：`sudo systemsetup -setremotelogin on`。
@@ -39,19 +37,11 @@ Vs3 手机 ──┼── 组网虚拟内网（任何网络下如同同一局�
    启动横幅会直接打印本机的**组网地址**和**局域网地址**。
    外网访问建议带上 `--auth` 上锁，手机扫码配对即可（见第五节）。
 
-Tailscale CLI 路径（不依赖菜单栏 App）：
-
-```bash
-/Applications/Tailscale.app/Contents/MacOS/Tailscale status   # 看组网成员与 IP
-/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4    # 本机组网地址
-```
-
 ## 二、Vs3 手机端（一次性）
 
 1. 安装同一个组网方案的手机客户端：
    - 蒲公英：应用市场搜「蒲公英VPN」，登录同一账号；
-   - Tailscale：荣耀无 Google 服务，装 F-Droid 版
-     （https://f-droid.org/packages/com.tailscale.ipn/ ，第一次需允许「安装未知来源应用」）。
+   - 其他组网方案装各自的 Android 客户端，登录同一账号/网络。
 2. 打开客户端，用**同一个账号**登录并连接。
 3. Chrome 访问横幅上的**组网地址**，如 `http://172.16.0.2:8787`：
    - 未上锁：直接打开，菜单「添加到主屏幕」即得到思港图标；
@@ -78,8 +68,7 @@ Tailscale CLI 路径（不依赖菜单栏 App）：
        User jmzx
        ServerAliveInterval 30
    ```
-   若用 Tailscale 且开了 MagicDNS，HostName 可直接写 Studio 的 tailnet
-   机器名，IP 变化也不用改配置。
+   组网客户端若支持固定域名/机器名，HostName 也可以直接写域名，IP 变化不用改配置。
 4. 登录后即可远程使用：
    ```bash
    ssh studio
@@ -112,9 +101,8 @@ Tailscale CLI 路径（不依赖菜单栏 App）：
 国内少数网络对 UDP 不友好会导致直连失败、中继偏慢，可换方案：
 
 1. **蒲公英**：国内服务器中继，对国内网络兼容性好，免费版有设备数/带宽上限；
-2. **Tailscale 中国版**（cn.tailscale.com，国内伙伴运营的独立网络，需另注册，
-   与国际版网络不互通）；
-3. **ZeroTier**：同类虚拟内网产品；
+2. **ZeroTier**：同类虚拟内网产品；
+3. **自建 WireGuard**：自己完全掌控，需要一台有公网 IP 的服务器做握手节点；
 4. **frp / rathole + 一台云服务器**：自建 TCP 隧道，SSH 与 HTTP 都能转发，
    最可控但需要 VPS。
 

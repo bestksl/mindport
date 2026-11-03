@@ -19,7 +19,7 @@ var (
 
 var nextCmd = &cobra.Command{
 	Use:   "next [--by 执行者]",
-	Short: "输出指派给我、待领取的最重要任务（agent pull 入口；待命区任务不可见）",
+	Short: "输出指派给我、待领取的最重要任务（agent pull 入口；待办区任务不可见）",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := openVault()

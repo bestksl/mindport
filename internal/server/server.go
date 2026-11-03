@@ -151,7 +151,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/live", s.handleLive)
 	mux.HandleFunc("GET /api/perms", s.handlePerms) // 手机端工具审批清单（?sid= 单个会话）
 
-	// 目标线（v0.8）：既定目标 + 描述，下面挂临时任务与会话。
+	// 目标（v0.8）：既定目标 + 描述，下面挂临时任务与会话。
 	mux.HandleFunc("GET /api/routes/summary", s.handleRoutesSummary)
 	mux.HandleFunc("GET /routes", s.handleRouteList)
 	mux.HandleFunc("POST /routes", s.handleRouteCreate)
@@ -259,7 +259,7 @@ type taskView struct {
 	LaunchDirs       []knownDir
 	LaunchDirDefault string
 	LaunchPrompt     string
-	LaunchRoutes     []store.Record // 在役目标线（launch 表单可关联）
+	LaunchRoutes     []store.Record // 进行中目标（launch 表单可关联）
 	LaunchName       string         // 默认会话名（短码-需求）
 }
 
@@ -278,7 +278,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Error: r.URL.Query().Get("error"),
 		Auth:  s.authOn(),
 		Cols: []column{
-			{Key: "anchored", Title: "⚓ 待命中", Seg: "⚓ 待命"},
+			{Key: "anchored", Title: "⚓ 待办", Seg: "⚓ 待办"},
 			{Key: "ready", Title: "🚢 待领取", Seg: "🚢 待领"},
 			{Key: "busy", Title: "🌊 进行中", Seg: "🌊 进行中"},
 			{Key: "done", Title: "🏁 已完成", Seg: "🏁 完成"},
@@ -454,7 +454,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if imp == "" {
 		imp = store.ImpNormal
 	}
-	// 网页建任务一律先进草稿打磨：放到待命区、指派都是后续显式命令。
+	// 网页建任务一律先进草稿编辑：放到待办区、指派都是后续显式命令。
 	rec, err := s.V.NewTask(r.PostFormValue("title"), imp, "", true)
 	if err != nil {
 		redirectErr(w, r, err.Error())
@@ -463,7 +463,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tasks/"+rec.Meta.ID, http.StatusSeeOther)
 }
 
-// handlePublish 放行草稿：assignee 为空进待命区，非空直接指派（draft → anchored/ready）。
+// handlePublish 发布草稿：assignee 为空进待办区，非空直接指派（draft → anchored/ready）。
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
@@ -483,7 +483,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// handleAssign 指派/改派：待命区指派、待领取改派、受阻换会话。
+// handleAssign 指派/改派：从待办区指派、待领取改派、受阻换会话。
 func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	id := r.PathValue("id")
@@ -853,7 +853,7 @@ func statusZH(s string) string {
 	case store.StatusDraft:
 		return "草稿"
 	case store.StatusAnchored:
-		return "待命中"
+		return "待办"
 	case store.StatusReady:
 		return "待领取"
 	case store.StatusInProgress:

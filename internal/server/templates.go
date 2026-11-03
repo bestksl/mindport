@@ -67,7 +67,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
 {{end}}
 
 {{/* 16×16 像素灯塔：塔灯按摩尔斯节奏硬闪，夜港两束扫光，日港只亮灯 */}}
-{{/* 底部主导航（类 app tab bar）：任务台 / 助手 / 目标线。
+{{/* 底部主导航（类 app tab bar）：任务台 / 助手 / 目标。
      高亮按路径本地判定，助手角标 20s 轻量轮询 /api/sessions。
      登录页不调用此模板。 */}}
 {{define "tabbar"}}
@@ -82,7 +82,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
   </a>
   <a class="tab tab-routes" href="/routes" data-tab="routes">
     <span class="tab-ic">🧭<i class="tab-badge" id="tab-route-badge" hidden></i></span>
-    <span class="tab-tx" data-debug="routes">目标线</span>
+    <span class="tab-tx" data-debug="routes">目标</span>
   </a>
 </nav>
 <script>
@@ -104,7 +104,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
       // 顶栏助手灯（sseBoot）复用同一份轮询，不重复请求
       window.dispatchEvent(new CustomEvent('mp-sessions', { detail: { rows: rows, live: n } }));
     }).catch(function () {});
-    // 目标线角标：在役目标线下未完成的需求数
+    // 目标角标：进行中的目标下未完成的需求数
     fetch('/api/routes/summary').then(function (r) { return r.json(); }).then(function (d) {
       var b = document.getElementById('tab-route-badge');
       if (!b) return;
@@ -281,7 +281,7 @@ try{if(sessionStorage.getItem('mpdbg')==='1'){document.documentElement.dataset.s
     <button class="mini" data-confirm="指派：{{$t.Meta.ID}} 交给所选助手？只有它能领取" data-debug="dispatch">指派</button>
   </form>
   <form method="post" action="/tasks/{{$t.Meta.ID}}/delete" class="del-form card-del">
-    <button class="danger mini" data-confirm="删除任务 {{$t.Meta.ID}}？它还在待命、还没开始，删除后不可恢复">🗑 删掉</button>
+    <button class="danger mini" data-confirm="删除任务 {{$t.Meta.ID}}？任务还没开始，删除后不可恢复">🗑 删掉</button>
   </form>
   {{end}}
 </article>
@@ -358,7 +358,7 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-confirm]');
   if (el && !window.confirm(el.getAttribute('data-confirm'))) e.preventDefault();
 });
-// 「打磨任务单」锚点：滚到编辑区并展开 details
+// 「编辑任务」锚点：滚到编辑区并展开 details
 document.addEventListener('click', function (e) {
   var a = e.target.closest('a.btn-edit[href^="#"]');
   if (!a) return;
@@ -447,11 +447,11 @@ const boardHTML = head + `
       {{if .Meta.Goal}}<div class="goal">🎯 {{.Meta.Goal}}</div>{{end}}
       <div class="draft-actions">
         <form method="post" action="/tasks/{{.Meta.ID}}/publish" class="publish-row">
-          <select name="assignee" aria-label="放行去向">
-            <option value="">⏸ 放进待命区</option>
+          <select name="assignee" aria-label="发布去向">
+            <option value="">⏸ 放进待办区</option>
             {{template "shipoptions" $.Ships}}
           </select>
-          <button class="primary mini" data-confirm="确认放行 {{.Meta.ID}}？" data-debug="publish">放行</button>
+          <button class="primary mini" data-confirm="确认发布 {{.Meta.ID}}？" data-debug="publish">发布</button>
         </form>
         <form method="post" action="/tasks/{{.Meta.ID}}/delete" class="del-form">
           <button class="danger mini" data-confirm="删除草稿 {{.Meta.ID}}？删除后不可恢复">🗑</button>
@@ -566,17 +566,17 @@ const taskHTML = head + `
     <div class="dispatch-box">
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
-        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进待命区？助手看不到待命中的任务" data-debug="anchor">⏸ 放进待命区</button>
+        <button name="assignee" value="" class="primary" data-confirm="把 {{.R.Meta.ID}} 放进待办区？助手看不到待办的任务" data-debug="anchor">⏸ 放进待办区</button>
       </form>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/publish" class="publish-row">
         <input type="hidden" name="from" value="task">
         <select name="assignee" aria-label="直接指派">
           {{template "shipoptions" .Ships}}
         </select>
-        <button class="primary" data-confirm="直接指派：{{.R.Meta.ID}} 将交给所选助手，只有它能领取" data-debug="dispatch">🚢 打磨完，直接指派</button>
+        <button class="primary" data-confirm="直接指派：{{.R.Meta.ID}} 将交给所选助手，只有它能领取" data-debug="dispatch">🚢 编辑完，直接指派</button>
       </form>
     </div>
-    <p class="hint">准备中：在下方「打磨任务单」的「## 验收标准」里补好完成定义。待命中的任务助手看不到；指派是定向的，其他人不能领取。</p>
+    <p class="hint">准备中：在下方「编辑任务」的「## 验收标准」里补好完成定义。待办的任务助手看不到；指派是定向的，其他人不能领取。</p>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
       <button class="danger" data-confirm="删除草稿 {{.R.Meta.ID}}？删除后不可恢复" data-debug="del">🗑 删除草稿</button>
     </form>
@@ -588,11 +588,11 @@ const taskHTML = head + `
       </select>
       <button class="primary" data-confirm="指派：{{.R.Meta.ID}} 交给所选助手？只有它能领取" data-debug="dispatch">🚢 指派</button>
     </form>
-    <p class="hint">待命中：助手在自己的终端上看不到这个任务。指派后进入「待领取」，助手用 port claim 领取后开始。</p>
+    <p class="hint">待办：助手在自己的终端上看不到这个任务。指派后进入「待领取」，助手用 port claim 领取后开始。</p>
     <div class="anchored-tools">
-      <a class="btn-edit" href="#edit">✏️ 重新打磨任务单（指派前都能改）</a>
+      <a class="btn-edit" href="#edit">✏️ 重新编辑任务（指派前都能改）</a>
       <form method="post" action="/tasks/{{.R.Meta.ID}}/delete" class="del-form detail-del">
-        <button class="danger mini" data-confirm="删除任务 {{.R.Meta.ID}}？它还在待命、还没开始，删除后不可恢复" data-debug="del">🗑 删除</button>
+        <button class="danger mini" data-confirm="删除任务 {{.R.Meta.ID}}？任务还没开始，删除后不可恢复" data-debug="del">🗑 删除</button>
       </form>
     </div>
 
@@ -603,7 +603,7 @@ const taskHTML = head + `
       </select>
       <button data-confirm="重新指派 {{.R.Meta.ID}}？原助手将不能再领取" data-debug="reassign">重新指派</button>
     </form>
-    <p class="hint">已指派 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 领取。指派时可点名具体项目工作目录，防止别的项目会话领错任务。网页不能代领。</p>
+    <p class="hint">已指派 · 等待 <b>{{.R.Meta.AssigneeValue}}</b>{{if .R.Meta.AssignCwd}} 在 <b>📍{{baseName .R.Meta.AssignCwd}}</b> 项目的会话{{end}}里 <code>port claim {{.R.Meta.ID}}</code> 领取。指派时可指定具体项目工作目录，防止别的项目会话领错任务。网页不能代领。</p>
 
     {{else if eq .R.Meta.Status "in_progress"}}
     <p class="banner sea">🌊 <b>{{.R.Meta.AssigneeValue}}</b> 已领取并开始。领取/完成/受阻只能由它在 CLI 操作；你在这里看进展、验收、批注。</p>
@@ -657,9 +657,9 @@ const taskHTML = head + `
           </span>
           {{if .LaunchRoutes}}
           <span class="launch-name-cell">
-            <label>挂到哪个目标线</label>
-            <select name="route" aria-label="挂到哪个目标线">
-              <option value="">不挂目标线</option>
+            <label>关联到哪个目标</label>
+            <select name="route" aria-label="关联到哪个目标">
+              <option value="">不关联目标</option>
               {{$cur := .R.Meta.Route}}
               {{range .LaunchRoutes}}<option value="{{.Meta.ID}}" {{if eq .Meta.ID $cur}}selected{{end}}>{{.Meta.Code}} · {{.Meta.Title}}</option>{{end}}
             </select>
@@ -678,7 +678,7 @@ const taskHTML = head + `
 
   {{if or (eq .R.Meta.Status "draft") (eq .R.Meta.Status "anchored")}}
   <details class="edit" id="edit" {{if eq .R.Meta.Status "draft"}}open{{end}}>
-    <summary>✏️ 打磨任务单：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>指派后锁定（点此折叠）</small></summary>
+    <summary>✏️ 编辑任务：标题 / 正文 / 验收标准 / 重要程度 / 目标 <small>指派后锁定（点此折叠）</small></summary>
     <form method="post" action="/tasks/{{.R.Meta.ID}}/edit">
       <label>标题</label>
       <input name="title" value="{{.R.Meta.Title}}" required>
@@ -694,7 +694,7 @@ const taskHTML = head + `
       <input name="goal" value="{{.R.Meta.Goal}}" placeholder="这个任务为哪个目标服务？">
       <label>正文（Markdown；在「## 验收标准」下加 - [ ] 即新增验收项）</label>
       <textarea name="body" rows="16">{{.R.Body}}</textarea>
-      <button type="submit" class="primary" data-debug="save">保存打磨结果</button>
+      <button type="submit" class="primary" data-debug="save">保存</button>
     </form>
   </details>
   {{end}}

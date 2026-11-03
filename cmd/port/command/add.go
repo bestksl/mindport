@@ -9,7 +9,7 @@ import (
 var addImp string
 
 // addCmd 记下即建草稿：一条念头进来直接就是草稿任务（占 T 编号），
-// 不再有独立的闪念/inbox 与「转任务」步骤。打磨与放行都在任务详情完成。
+// 不再有独立的闪念/inbox 与「转任务」步骤。编辑与发布都在任务详情完成。
 var addCmd = &cobra.Command{
 	Use:   "add <任务内容>",
 	Short: "快速记下：直接建一条草稿任务",

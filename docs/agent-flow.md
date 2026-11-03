@@ -2,25 +2,25 @@
 
 思港是一个**任务台**（当前协作模型）：
 
-- **你是指派者 + 客户**：把念头澄清成任务、打磨验收标准、
-  **定向指派**。网页端是纯任务台——只放行、指派/改派、验收、批注，
+- **你是指派者 + 验收人**：把念头澄清成任务、完善验收标准、
+  **定向指派**。网页端是纯任务台——只发布、指派/改派、验收、批注，
   **不能代助手领取或完成**。
 - **Claude / Codex 是助手**：只看得到**指派给自己**的任务；领取（claim）、
   汇报（log/check/block）、完成（done）都只能在它自己的 CLI 完成。
 - **指派是命令，不是建议**：一个任务指派给某位助手后，只有它能领取，
-  没有公共任务池、不能抢单。
+  没有公共任务池，别人看不到也领不走。
 
 视觉皮肤保留港口主题（灯塔、货轮、配色都在），但业务说法统一为
-任务/助手/工作目录/目标线，命令名不变。
+任务/助手/工作目录/目标，命令名不变。
 
 ## 状态流
 
 ```
-draft（草稿·打磨中）
-   │  publish（放行到待命区）
+draft（草稿·编辑中）
+   │  publish（发布到待办区）
    ▼
-anchored（待命中，其他助手看不到）
-   │  dispatch/assign（指派，必须点名）
+anchored（待办，其他助手看不到）
+   │  dispatch/assign（指派，必须指定助手）
    ▼
 ready（已指派 · 等待领取）
    │  claim（只有被指派的助手）
@@ -38,24 +38,24 @@ done（已完成：验收全勾，或附交付结果；网页验收）
 
 网页建任务一律先进**草稿（draft）**。在详情页补好「验收标准」（完成定义）后：
 
-- **放进待命区**：任务已打磨好但还没决定派给谁；待命区里的任务助手在 CLI 完全看不到；
+- **放进待办区**：任务已完善好但还没决定派给谁；待办区里的任务助手在 CLI 完全看不到；
 - **直接指派**：选 Claude / Codex（带在线状态），一步到「待领取」。
 
-待命区卡片/详情页随时可**指派**；待领取的任务可**重新指派**；助手受阻上浮后，
+待办区卡片/详情页随时可**指派**；待领取的任务可**重新指派**；助手受阻上浮后，
 任务停住，可**受阻重新指派**给别的助手（全程留痕）。
 
-指派即**锁定**：草稿/待命阶段可随意编辑标题、正文、验收标准；
+指派即**锁定**：草稿/待办阶段可随意编辑标题、正文、验收标准；
 一旦指派，任务单冻结，要调整只能批注或重新指派——验收标准以指派时为准。
 
 CLI 同义命令：
 
 ```bash
-port new "..."                       # 默认进待命区
-port new "..." --draft               # 先存草稿打磨
-port publish T0001                   # 草稿放行 → 待命区
+port new "..."                       # 默认进待办区
+port new "..." --draft               # 先存草稿
+port publish T0001                   # 草稿发布 → 待办区
 port publish T0001 --to claude@studio  # 草稿直接指派（任意会话可领）
-port dispatch T0001 --to codex@studio  # 待命区指派 / 改派 / 受阻换助手
-# 指定工作目录（旧称船位 berth）：只在该项目目录开会话的助手能领取
+port dispatch T0001 --to codex@studio  # 待办区指派 / 改派 / 受阻换助手
+# 指定工作目录（--berth）：只在该项目目录开会话的助手能领取
 # （防止别的项目会话领错任务）
 port dispatch T0001 --to claude@studio --berth /Users/jmzx/studio/jiepai-app
 ```
@@ -81,7 +81,7 @@ port dispatch T0001 --to claude@studio --berth /Users/jmzx/studio/jiepai-app
 # 0.（可选）声明身份，一次会话设置一次
 export PORT_ACTOR=claude@studio      # codex@studio / 你的助手名
 
-# 1. 领任务：只列出「指派给我、待我领取」的任务（待命区与别人的任务都看不到）
+# 1. 领任务：只列出「指派给我、待我领取」的任务（待办区与别人的任务都看不到）
 port next                            # 默认按当前工作目录过滤
 port next --json                     # 给程序用
 port next --by claude@studio         # 也可显式指定助手名
@@ -141,9 +141,9 @@ Codex 等没有钩子的 agent，可在项目提示里要求开工先 `port pres
 
 ## 设计原则
 
-1. **命令式指派，不是公共任务池**：你点名叫谁，`next` 只看自己的任务；
+1. **命令式指派，不是公共任务池**：你指定谁，`next` 只看自己的任务；
    非承担者的 claim 直接被 store 拒绝（`ErrNotAssignee`），网页根本没有这个按钮。
-   指派还能点名到**工作目录**（具体项目目录的会话）：街拍项目的会话领不到闲鱼的任务，
+   指派还能指定到**工作目录**（具体项目目录的会话）：街拍项目的会话领不到闲鱼的任务，
    错目录 claim 会得到 `ErrWrongBerth`。
 2. **目标导向，不是进度导向**：没有截止日期、没有紧急度、没有完成百分比。
    任务只有重要程度（`critical/high/normal/someday`）与所服务的目标（`goal`）。
@@ -165,7 +165,7 @@ Codex 等没有钩子的 agent，可在项目提示里要求开工先 `port pres
 | `GET /api/next?actor=claude@studio&cwd=/repo/x` | 指派给该助手、且工作目录匹配（cwd 为空或等于 assign_cwd）的最重要任务 |
 | `GET /api/tasks?status=anchored` | 任务列表（`draft/anchored/ready/in_progress/blocked/done`） |
 | `GET /api/agents` | 各会话在线状态列表（每条含在线标志、session_id、dir、任务号、状态行） |
-| `POST /tasks/{id}/publish` | 放行草稿（表单 `assignee` 空=进待命区；`actor`=直接指派任意会话；`actor|/项目目录`=指定工作目录） |
+| `POST /tasks/{id}/publish` | 发布草稿（表单 `assignee` 空=进待办区；`actor`=直接指派任意会话；`actor|/项目目录`=指定工作目录） |
 | `POST /tasks/{id}/assign` | 指派/改派/受阻换助手（表单 `assignee` 取值同上，可具体到在线会话） |
 | `POST /tasks/{id}/check` `/log` | 验收勾选、批注 |
 

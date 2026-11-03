@@ -57,7 +57,7 @@ func (b *fleetBridge) guard(fp *fleetProc, where string) {
 // 桥进程状态。
 const (
 	bridgeStarting   = "starting"   // 子进程已起，带着首条消息等 system/init
-	bridgeCold       = "cold"       // 空会话：CLI 收到第一条消息前不发 init，进程待命
+	bridgeCold       = "cold"       // 空会话：CLI 收到第一条消息前不发 init，进程空闲等待
 	bridgeWaiting    = "waiting"    // 等用户补充/确认（黄灯）
 	bridgeWorking    = "working"    // 一轮请求在跑（等同官方 busy）
 	bridgeIdle       = "idle"       // 上一轮 result 已回，等下一句
@@ -701,7 +701,7 @@ func (b *fleetBridge) Interrupt(sid string, cancelQueued bool) error {
 
 // ReplaceTurn 中断当前轮、丢弃排队，并用 first 作为新一轮的点火句（--resume 后
 // 立即开跑）。豆包式「重新生成」「生成中直接改发新请求」都走它：网页 sid 不变，
-// 只见短暂「重连中」后新回答接上。first 为空时退化为纯中断（待命）。
+// 只见短暂「重连中」后新回答接上。first 为空时退化为纯中断（空闲等待）。
 func (b *fleetBridge) ReplaceTurn(sid, first string) error {
 	if strings.TrimSpace(first) == "" {
 		return b.interrupt(sid, "", false)
@@ -712,7 +712,7 @@ func (b *fleetBridge) ReplaceTurn(sid, first string) error {
 // interrupt 是中断/换轮的公共实现：
 //   - override 非空：用它点火新一代，排队旧话一律丢弃；
 //   - override 为空且 keepQueued：排队话原样留给新桥（首句点火，其余重投）；
-//   - 两者皆无：纯中断，新一代 --resume 待命。
+//   - 两者皆无：纯中断，新一代 --resume 空闲等待。
 func (b *fleetBridge) interrupt(sid, override string, keepQueued bool) error {
 	if b == nil {
 		return fmt.Errorf("即时桥未启用")

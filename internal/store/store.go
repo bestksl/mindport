@@ -35,10 +35,10 @@ type Meta struct {
 	// 关联会话：一个任务挂到一个具体 Claude 会话上，与指派状态机正交。
 	Session    string `yaml:"session,omitempty" json:"session,omitempty"`
 	SessionDir string `yaml:"session_dir,omitempty" json:"session_dir,omitempty"`
-	// Route 是任务所属目标线（R 编号）；空串=不属于任何目标线。目标线下的小任务
-	// 完成即收起，只在目标线页内回看。
+	// Route 是任务所属目标（R 编号）；空串=不属于任何目标。目标下的小任务
+	// 完成即收起，只在目标页内回看。
 	Route string `yaml:"route,omitempty" json:"route,omitempty"`
-	// Code 是目标线的短码（≤4 字），会话统一命名「短码-需求」时使用；只对 type=route 有意义。
+	// Code 是目标的短码（≤4 字），会话统一命名「短码-需求」时使用；只对 type=route 有意义。
 	Code        string     `yaml:"code,omitempty" json:"code,omitempty"`
 	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Created     time.Time  `yaml:"created" json:"created"`
@@ -68,11 +68,11 @@ type Record struct {
 }
 
 // 任务状态（ADR-0003；v0.3 draft；v0.4 指派模型）。
-// 人在网页端把想法建成任务：任务先以 draft 打磨，可停在 anchored 待命区
+// 人在网页端把想法建成任务：任务先以 draft 草稿编辑，可停在 anchored 待办区
 // 等待指派；指派（ready，指名 assignee）后只有被指派的助手能领取。
 const (
-	StatusDraft      = "draft"       // 草稿：打磨描述与验收标准
-	StatusAnchored   = "anchored"    // 待命中：已就绪但未指派，助手看不到
+	StatusDraft      = "draft"       // 草稿：编辑描述与验收标准
+	StatusAnchored   = "anchored"    // 待办：已就绪但未指派，助手看不到
 	StatusReady      = "ready"       // 已指派待领取：assignee 必填且唯一可领取
 	StatusInProgress = "in_progress" // 进行中
 	StatusBlocked    = "blocked"     // 受阻上浮
@@ -99,8 +99,8 @@ var (
 	ErrNotAssignee = errors.New("任务未指派给你")
 	// ErrWrongBerth 表示任务指定了工作目录（项目会话目录），当前目录的会话无权领取。
 	ErrWrongBerth = errors.New("这个任务指派给了别的项目目录，请在对应目录领取")
-	// ErrNotDraft 表示只有未开始的任务（草稿/待命区）能删除，已指派的不能直接抹。
-	ErrNotDraft = errors.New("只有未开始的任务（草稿/待命区）能删除")
+	// ErrNotDraft 表示只有未开始的任务（草稿或待办）能删除，已指派的不能直接抹。
+	ErrNotDraft = errors.New("只有未开始的任务（草稿或待办）能删除")
 	// ErrResultRequired 表示完成缺少交付结果（除非带理由强制完成）。
 	ErrResultRequired = errors.New("完成必须交付结果")
 )
@@ -159,7 +159,7 @@ func touch(m *Meta) {
 
 // ---------- 任务 ----------
 
-// NewTask 创建任务并分配 T 编号。draft=true 时为草稿（打磨中，不可领取、
+// NewTask 创建任务并分配 T 编号。draft=true 时为草稿（编辑中，不可领取、
 // 不进 next），发布走 Publish；draft=false 直接进待领取泊位（CLI 常用）。
 func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, error) {
 	title = strings.TrimSpace(title)
@@ -181,7 +181,7 @@ func (v *Vault) NewTask(title, importance, goal string, draft bool) (*Record, er
 			imp = ImpNormal
 		}
 		status := StatusAnchored
-		createdNote := "created by port（待命中）"
+		createdNote := "created by port（待办）"
 		if draft {
 			status = StatusDraft
 			createdNote = "created as draft by port"
@@ -286,7 +286,7 @@ func (v *Vault) Done(id, by, result string, force bool, reason string) (*Record,
 	return rec, nil
 }
 
-// Publish 发布草稿：assignee 为空 → anchored（待命中，助手看不到）；
+// Publish 发布草稿：assignee 为空 → anchored（待办，助手看不到）；
 // assignee 非空 → ready（直接指派，只有被指派者能领取）。
 // berth 非空时同时指定工作目录（项目目录），只有该目录的会话能领取。
 func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
@@ -310,7 +310,7 @@ func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 		if assignee == "" {
 			r.Meta.Status = StatusAnchored
 			r.Meta.AssignCwd = ""
-			note = "published to anchorage by " + by + "（待命中）"
+			note = "published to anchorage by " + by + "（待办）"
 		} else {
 			a := assignee
 			r.Meta.Assignee = &a
@@ -332,12 +332,12 @@ func (v *Vault) Publish(id, by, assignee, berth string) (*Record, error) {
 // Assign 指派/改派：anchored → ready；ready 换助手（重新待领取）；
 // blocked 可改指派给别的助手（原助手受阻，任务回到待领取等新助手领取）。
 // in_progress 的任务正在进行，不能改派（先等它完成）。
-// berth 非空表示点名某个项目目录的会话；为空表示该助手在任意会话都可领取。
+// berth 非空表示指定某个项目目录的会话；为空表示该助手在任意会话都可领取。
 func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 	assignee = strings.TrimSpace(assignee)
 	berth = strings.TrimSpace(berth)
 	if assignee == "" {
-		return nil, errors.New("指派必须指定执行者（或先放进待命区）")
+		return nil, errors.New("指派必须指定执行者（或先放进待办区）")
 	}
 	var rec *Record
 	err := v.withLock(func() error {
@@ -356,7 +356,7 @@ func (v *Vault) Assign(id, by, assignee, berth string) (*Record, error) {
 		case StatusBlocked:
 			wasBlocked = true
 		default:
-			return fmt.Errorf("%w: %s 当前状态为 %s，只有待命中/待领取/受阻的任务可指派或改派",
+			return fmt.Errorf("%w: %s 当前状态为 %s，只有待办/待领取/受阻的任务可指派或改派",
 				ErrInvalidTransition, id, r.Meta.Status)
 		}
 		old := r.Meta.AssigneeValue()
@@ -402,7 +402,7 @@ func (v *Vault) Unblock(id, by string) (*Record, error) {
 func requireAssignee(r *Record, by string) error {
 	a := r.Meta.AssigneeValue()
 	if a == "" {
-		return fmt.Errorf("%w: %s 还在待命区，尚未指派", ErrNotAssignee, r.Meta.ID)
+		return fmt.Errorf("%w: %s 还在待办区，尚未指派", ErrNotAssignee, r.Meta.ID)
 	}
 	if a != by {
 		return fmt.Errorf("%w: %s 指派给了 %s，不是 %s", ErrNotAssignee, r.Meta.ID, a, by)
@@ -591,7 +591,7 @@ func (v *Vault) UpdateTask(id, title, body, importance, goal string) (*Record, e
 		if err != nil {
 			return err
 		}
-		// 指派即锁定：草稿/待命区阶段可随意打磨，一旦指派，验收标准以指派时为准。
+		// 指派即锁定：草稿/待办区阶段可随意编辑，一旦指派，验收标准以指派时为准。
 		if r.Meta.Status != StatusDraft && r.Meta.Status != StatusAnchored {
 			return fmt.Errorf("%w: %s 已指派（%s），锁定后不能改单；要调整请批注或改派",
 				ErrInvalidTransition, id, r.Meta.Status)
@@ -623,7 +623,7 @@ func actorSuffix(by string) string {
 }
 
 // Next 返回指派给某个助手、待它领取的最重要一个任务（重要程度升序，同级按编号）。
-// 待命区里未指派的任务对助手不可见；指定了项目目录（assign_cwd）的任务只在对应项目目录出现。
+// 待办区里未指派的任务对助手不可见；指定了项目目录（assign_cwd）的任务只在对应项目目录出现。
 func (v *Vault) Next(actor, cwd string) (*Record, error) {
 	actor = strings.TrimSpace(actor)
 	if actor == "" {
@@ -660,7 +660,7 @@ func (v *Vault) GetTask(id string) (*Record, error) {
 	return r, err
 }
 
-// DeleteTask 删除还没开始的任务文件（draft 草稿 / anchored 待命区可删；
+// DeleteTask 删除还没开始的任务文件（draft 草稿 / anchored 待办区可删；
 // ready 及以后有指派与流转历史，不能直接抹掉，要撤销请批注/改派/完成）。
 func (v *Vault) DeleteTask(id string) error {
 	return v.withLock(func() error {
@@ -849,7 +849,7 @@ func canonicalize(m *Meta) {
 			m.Importance = ImpNormal
 		}
 	}
-	// v0.4 迁移：ready 必须有承担助手；旧版「已发布、任领取」的任务退回待命区。
+	// v0.4 迁移：ready 必须有承担助手；旧版「已发布、任领取」的任务退回待办区。
 	if m.Type == "task" && m.Status == StatusReady && m.AssigneeValue() == "" {
 		m.Status = StatusAnchored
 	}

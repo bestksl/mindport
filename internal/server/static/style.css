@@ -1,6 +1,6 @@
 /* 思港 MindPort — 复古像素海港主题。
    夜港（默认）：深棕木舱 + 灯塔暖光；日港：羊皮纸海图。
-   v0.4 任务台：桌面四列（待命中/待领取/进行中/已完成）；
+   v0.4 任务台：桌面四列（待办/待领取/进行中/已完成）；
    ≤1000px 两列；≤720px（直板手机，Vs3 不展开）全部纵向单列，大触控区。
    UI 走 Q 版像素极客风：硬边投影、方块状态灯、像素码头全景（帆船对开/吊机搬箱/灯塔摩尔斯闪）。 */
 
@@ -570,7 +570,7 @@ a { color: inherit; }
   50% { box-shadow: 0 0 0 5px var(--pulse-2); }
 }
 
-/* 草稿/待命区详情的显眼打磨入口 */
+/* 草稿/待办区详情的显眼编辑入口 */
 .btn-edit {
   display: inline-block;
   margin-top: 10px;
@@ -959,12 +959,12 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
 .launch-form label { font-size: 12px; color: var(--muted); }
 .launch-form button { justify-self: start; }
 
-/* 待命任务详情：打磨 + 删除一排 */
+/* 待办任务详情：编辑 + 删除一排 */
 .anchored-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .anchored-tools .btn-edit { margin: 0; }
 .anchored-tools .detail-del { margin-top: 0; }
 
-/* 看板待命卡片上的删除钮 */
+/* 看板待办卡片上的删除钮 */
 .card-del { margin-top: 6px; }
 .card-del button.mini { width: 100%; min-height: 30px; font-size: 12px; padding: 3px 10px; }
 
@@ -1012,7 +1012,7 @@ button.mini { padding: 5px 12px; min-height: 32px; font-size: 13px; border-radiu
   letter-spacing: 1px;
 }
 
-/* ---------- 草稿：放行 + 删除并排；删除是危险操作，单色描边 ---------- */
+/* ---------- 草稿：发布 + 删除并排；删除是危险操作，单色描边 ---------- */
 .draft-actions { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
 .draft-actions .publish-row { flex: 1; margin-top: 0; min-width: 0; }
 .del-form { margin: 0; display: inline-flex; }
@@ -2543,7 +2543,7 @@ html[data-stealth="1"] .dir-err-x { display: none; }
 }
 
 /* ============================================================
-   v0.8 即时桥套壳：单栏助手页 / 逐字会话页 / 目标线
+   v0.8 即时桥套壳：单栏助手页 / 逐字会话页 / 目标
    ============================================================ */
 
 /* —— 单栏助手页 —— */
@@ -2716,7 +2716,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
   background: var(--block); animation: pulseDot 1.2s infinite;
 }
 
-/* —— 目标线页 —— */
+/* —— 目标页 —— */
 .routes-page, .route-page { max-width: 880px; margin: 0 auto; padding: 16px 16px 70px; }
 .page-title { font-size: 20px; margin: 4px 0 6px; color: var(--amber); }
 .page-sub { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 16px; }
@@ -2847,7 +2847,7 @@ details.fleet-seg[open] > summary.seg-head::before { content: '▾ '; }
 }
 .ghost-btn:hover { color: var(--amber); border-color: var(--amber-line); }
 
-/* 任务页 launch 表单：会话名 + 目标线并排 */
+/* 任务页 launch 表单：会话名 + 目标并排 */
 .launch-name-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; }
 .launch-name-cell { display: flex; flex-direction: column; gap: 4px; }
 .launch-name-cell input, .launch-name-cell select {

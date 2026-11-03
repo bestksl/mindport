@@ -72,7 +72,7 @@ func (s *Server) resolveSession(sid, dirHint string) (sessInfo, bool) {
 			info.online = true
 			switch st {
 			case bridgeIdle, bridgeCold:
-				info.status = "idle" // cold=空会话进程待命，不是工作中
+				info.status = "idle" // cold=空会话进程空闲等待，不是工作中
 			case bridgeWaiting:
 				info.status = "waiting"
 			case bridgeRestarting:

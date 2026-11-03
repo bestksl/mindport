@@ -49,13 +49,13 @@ type dirListPage struct {
 	Rows      []dirRow
 	Groups    map[string][]dirRow // working|waiting|idle|done|offline 单栏分组
 	KnownDirs []knownDir
-	Routes    []store.Record // 新建会话时可关联的在役目标线
+	Routes    []store.Record // 新建会话时可关联的进行中目标
 	RecentDir []string       // 本机最近浏览（前端 localStorage 注入，服务端只给在线状态目录）
 	NoDir     bool           // 没传 dir：展示输入框 + 已知目录 + 最近会话聚合
 	Error     string
 }
 
-// groupFleetRows 把会话行按「进行中 / 待输入 / 待命 / 完成 / 历史」分五组，
+// groupFleetRows 把会话行按「进行中 / 待输入 / 空闲 / 完成 / 历史」分五组，
 // 单栏表达全部在用会话；完成（圆满结束）默认折叠。
 func groupFleetRows(rows []dirRow) map[string][]dirRow {
 	g := map[string][]dirRow{}
