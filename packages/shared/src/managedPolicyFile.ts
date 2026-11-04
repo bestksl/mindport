@@ -21,7 +21,7 @@ export class ManagedPolicyFileError extends Schema.TaggedError<ManagedPolicyFile
   },
 ) {
   override get message(): string {
-    return `T3 Code cannot use the managed policy at ${this.path}: ${this.reason}. It will not start until an administrator fixes this.`;
+    return `Demo零一 cannot use the managed policy at ${this.path}: ${this.reason}. It will not start until an administrator fixes this.`;
   }
 }
 
@@ -294,7 +294,7 @@ const readPlatformPolicy = Effect.fnUntraced(function* (platform: NodeJS.Platfor
                 cause.code === ERROR_UNSUPPORTED_TYPE
                   ? "its Policy value is not a string (REG_SZ)"
                   : cause.code === undefined
-                    ? "this T3 Code install cannot load its registry reader; reinstall T3 Code"
+                    ? "this Demo零一 install cannot load its registry reader; reinstall Demo零一"
                     : `the registry cannot be read (${cause.message})`,
               cause,
             }),
