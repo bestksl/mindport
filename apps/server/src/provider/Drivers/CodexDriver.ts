@@ -122,6 +122,9 @@ export const CodexDriver: ProviderDriver<
   metadata: {
     displayName: "Codex",
     supportsMultipleInstances: true,
+    // Demo零一 shell: the bundled story is local Claude Code; don't register a
+    // half-configured Codex instance that fails health checks on first run.
+    hasDefaultInstance: false,
   },
   configSchema: CodexSettings,
   defaultConfig: (): CodexSettings => decodeCodexSettings({}),

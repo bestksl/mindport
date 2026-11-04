@@ -49,9 +49,10 @@ export function isModelSelectionProviderEnabled(
   return isUnconfiguredDefaultInstanceEnabled(selection.instanceId);
 }
 
+// Demo零一 shell: prefer the bundled local Claude Code CLI.
 const TEXT_GENERATION_FALLBACK_DRIVERS = [
-  "codex",
   "claudeAgent",
+  "codex",
   "cursor",
   "grok",
   "muse",

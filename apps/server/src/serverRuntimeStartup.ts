@@ -1,6 +1,5 @@
 import {
   CommandId,
-  DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_SERVER_SETTINGS,
   isListedThreadLineage,
@@ -180,8 +179,9 @@ const recordStartupHeartbeat = Effect.gen(function* () {
 });
 
 const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
-  instanceId: ProviderInstanceId.make("codex"),
-  model: DEFAULT_MODEL,
+  // Demo零一 shell: the bundled story is the local Claude Code CLI, not Codex.
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  model: "claude-opus-5-5",
 });
 
 interface AutoBootstrapWelcomeTargets {
