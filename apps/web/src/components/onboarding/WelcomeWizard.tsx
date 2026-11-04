@@ -91,7 +91,7 @@ import { TerminalViewport } from "../ThreadTerminalDrawer";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
 import { presentSavedCloudEnvironmentConnection } from "../cloud/cloudEnvironmentConnectionPresentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
-import { T3Wordmark } from "../T3Wordmark";
+import { APP_BASE_NAME } from "../../branding";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { CommandBlock } from "../CommandBlock";
@@ -241,12 +241,13 @@ export function WelcomeWizard({
         <WizardHeader
           title="Set up Demo零一"
           identity={
-            <div className="flex items-baseline gap-1.5" role="img" aria-label="Demo零一">
-              <T3Wordmark className="h-4 w-auto shrink-0" aria-hidden />
-              <span className="text-2xl font-medium tracking-tight text-muted-foreground">
-                Code
-              </span>
-            </div>
+            <span
+              className="text-2xl font-medium tracking-tight text-muted-foreground"
+              role="img"
+              aria-label={APP_BASE_NAME}
+            >
+              {APP_BASE_NAME}
+            </span>
           }
         >
           <WizardSteps

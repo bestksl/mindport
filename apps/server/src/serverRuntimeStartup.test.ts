@@ -48,7 +48,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 
 it.effect.each([
-  "disabled-codex",
+  "disabled-claude",
   "disabled-default",
   "launch-failure",
   "project-failure",
@@ -57,7 +57,7 @@ it.effect.each([
     Effect.gen(function* () {
       const projectId = ProjectId.make("bootstrap-project");
       const instanceId = ProviderInstanceId.make(
-        scenario === "disabled-default" ? "custom" : "codex",
+        scenario === "disabled-default" ? "custom" : "claudeAgent",
       );
       const events: ServerLifecycleStreamEvent[] = [];
       const recovery = {
@@ -135,7 +135,9 @@ it.effect.each([
               scenario === "disabled-default" ? { instanceId, model: "custom-model" } : null,
             providerInstances: {
               [instanceId]: {
-                driver: ProviderDriverKind.make("codex"),
+                driver: ProviderDriverKind.make(
+                  scenario === "disabled-default" ? "codex" : "claudeAgent",
+                ),
                 enabled: false,
                 config: {},
               },
