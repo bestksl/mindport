@@ -91,6 +91,7 @@ import { TerminalViewport } from "../ThreadTerminalDrawer";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
 import { presentSavedCloudEnvironmentConnection } from "../cloud/cloudEnvironmentConnectionPresentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+import { HarborBoatMark } from "../BrandGlyph";
 import { APP_BASE_NAME } from "../../branding";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -242,10 +243,11 @@ export function WelcomeWizard({
           title="Set up Demo零一"
           identity={
             <span
-              className="text-2xl font-medium tracking-tight text-muted-foreground"
+              className="flex items-center gap-2 text-2xl font-medium tracking-tight text-muted-foreground"
               role="img"
               aria-label={APP_BASE_NAME}
             >
+              <HarborBoatMark className="size-7" aria-hidden />
               {APP_BASE_NAME}
             </span>
           }

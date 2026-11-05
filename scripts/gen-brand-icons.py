@@ -2,38 +2,44 @@
 # -*- coding: utf-8 -*-
 """Demo零一 brand icon generator.
 
-Blue glossy rounded square (matching the legacy icon family) with a bold
-white 零 glyph. Every size is rendered natively so FreeType hinting keeps
-the complex glyph legible at 16px.
+Night-harbour rounded square with a lighthouse translated from MindPort's
+pixel mark: brick tower with cream stripes, warm lamp, wooden base and a
+teal sea. The geometry mirrors BrandGlyph's 24-unit SVG so favicon and UI
+mark read as the same shape. Tiny sizes drop beams and merge the lamp room
+into one amber block so the mark stays legible at 16px.
 
 Outputs (overwritten in place):
   apps/web/public/favicon.ico, favicon-16/32.png, apple-touch-icon.png
   assets/prod/t3-black-web-favicon.ico, t3-black-web-favicon-16/32.png,
-  assets/prod/t3-black-web-apple-touch-180.png, t3-black-windows.ico
+  t3-black-web-apple-touch-180.png, t3-black-windows.ico
 
 Run from the repo root with the system Python 3 + Pillow:
   python3 scripts/gen-brand-icons.py [repo-root]
 
 The ICO container is assembled manually because Pillow 11.3's ICO writer
 silently drops append_images frames and otherwise downscales a single base
-image itself (blurring the glyph). PNG-in-ICO entries are supported by every
+image itself (blurring the mark). PNG-in-ICO entries are supported by every
 browser and by Windows Vista+, so each embedded size keeps its native render.
 """
 import io
-import os
+import math
 import struct
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
-FONT_PATH = "/System/Library/Fonts/Hiragino Sans GB.ttc"
-FONT_INDEX = 2  # Hiragino Sans GB W6 (bold)
-TOP = (166, 206, 250)      # #a6cefa
-MID = (153, 183, 238)      # #99b7ee
-BOTTOM = (112, 134, 207)   # deeper periwinkle
+TOP = (43, 74, 85)         # #2b4a55 night-sea top
+BOTTOM = (18, 31, 37)      # #121f25 night-sea bottom
+TOWER = (192, 106, 69)     # #c06a45 brick red
+TOWER_DARK = (156, 70, 50)  # #9c4632 cap
+STRIPE = (240, 228, 205)   # #f0e4cd cream
+FRAME = (74, 53, 32)       # #4a3520 dark wood
+LAMP = (255, 214, 104)     # #ffd668 warm amber
+BASE = (107, 79, 48)       # #6b4f30 wooden base
+SEA = (58, 90, 99)         # #3a5a63
+SEA_DEEP = (36, 57, 68)    # #243944
 RADIUS_RATIO = 0.224
-GLYPH_RATIO = 0.64
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 
@@ -42,12 +48,7 @@ def vertical_gradient(size):
     px = grad.load()
     for y in range(size):
         t = y / max(1, size - 1)
-        if t < 0.55:
-            k = t / 0.55
-            c = tuple(round(TOP[i] + (MID[i] - TOP[i]) * k) for i in range(3))
-        else:
-            k = (t - 0.55) / 0.45
-            c = tuple(round(MID[i] + (BOTTOM[i] - MID[i]) * k) for i in range(3))
+        c = tuple(round(TOP[i] + (BOTTOM[i] - TOP[i]) * t) for i in range(3))
         px[0, y] = c
     return grad.resize((size, size))
 
@@ -61,23 +62,79 @@ def render_icon(size, full_bleed):
         gd = ImageDraw.Draw(gloss)
         gd.ellipse(
             [int(size * 0.12), int(-size * 0.28), int(size * 0.88), int(size * 0.42)],
-            fill=70,
+            fill=60,
         )
         gloss = gloss.filter(ImageFilter.GaussianBlur(size * 0.06))
         white = Image.new("RGBA", (size, size), (255, 255, 255, 0))
         white.putalpha(gloss)
         base = Image.alpha_composite(base, white)
 
-    # glyph, hinted natively at this size; smaller ratio at tiny sizes for breathing room
-    ratio = 0.6 if size < 32 else GLYPH_RATIO
-    font = ImageFont.truetype(FONT_PATH, max(8, int(size * ratio)), index=FONT_INDEX)
     layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
-    bbox = ld.textbbox((0, 0), "零", font=font)
-    gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x = (size - gw) / 2 - bbox[0]
-    y = (size - gh) / 2 - bbox[1] - size * 0.01
-    ld.text((x, y), "零", font=font, fill=(255, 255, 255, 255))
+    s = size / 24
+    detailed = size >= 32
+    beams = size >= 64
+    tiny = size < 32
+
+    def box(x0, y0, x1, y1):
+        return [x0 * s, y0 * s, x1 * s, y1 * s]
+
+    def poly(points, fill):
+        ld.polygon([(x * s, y * s) for x, y in points], fill=fill)
+
+    # sea: wave band at full detail, flat strips where pixels cannot carry the curve
+    if tiny:
+        ld.rectangle(box(0, 20.2, 24, 24), fill=SEA)
+        ld.rectangle(box(0, 22.6, 24, 24), fill=SEA_DEEP)
+    else:
+        wave = [(0, 24), (0, 21.4)]
+        for step in range(49):
+            x = step * 0.5
+            wave.append((x, 21.0 + 0.45 * math.sin(2 * math.pi * x / 6)))
+        wave.append((24, 24))
+        poly(wave, SEA)
+        ld.rectangle(box(0, 22.7, 24, 24), fill=SEA_DEEP)
+
+    # wooden base
+    poly([(7.6, 18), (16.4, 18), (17.3, 20.3), (6.7, 20.3)], BASE)
+
+    # tower, narrowing toward the lamp room
+    poly([(10.7, 6.4), (13.3, 6.4), (15.0, 18), (9.0, 18)], TOWER)
+
+    # cream stripes: two at full detail, one centred band at tiny sizes
+    if detailed:
+        ld.rectangle(box(9.9, 10.55, 14.1, 11.25), fill=STRIPE)
+        ld.rectangle(box(9.4, 14.35, 14.6, 15.05), fill=STRIPE)
+    else:
+        ld.rectangle(box(9.5, 12.2, 14.5, 13.0), fill=STRIPE)
+
+    # gallery platform under the lamp room; skipped below 48px where the
+    # overhang reads as white ears beside the lamp
+    if size >= 48:
+        ld.line([(9.5 * s, 6.4 * s), (14.5 * s, 6.4 * s)], fill=STRIPE, width=max(1, round(0.45 * s)))
+
+    # lamp room: framed block with an amber lamp (solid amber at tiny sizes)
+    if tiny:
+        ld.rounded_rectangle(box(10.3, 3.6, 13.7, 5.6), radius=max(1, round(0.5 * s)), fill=LAMP)
+    else:
+        ld.rounded_rectangle(box(10.1, 3.4, 13.9, 5.9), radius=max(1, round(0.7 * s)), fill=FRAME)
+        lamp_r = 0.7 * s
+        cx, cy = 12 * s, 4.65 * s
+        ld.ellipse([cx - lamp_r, cy - lamp_r, cx + lamp_r, cy + lamp_r], fill=LAMP)
+
+    # cap
+    ld.line(
+        [(10.6 * s, 2.85 * s), (13.4 * s, 2.85 * s)],
+        fill=TOWER_DARK,
+        width=max(1, round(0.7 * s)),
+    )
+
+    # light beams, only where there are pixels to spare
+    if beams:
+        beam = (*STRIPE, 150)
+        ld.line([(9.4 * s, 4.6 * s), (7.4 * s, 3.5 * s)], fill=beam, width=max(1, round(0.5 * s)))
+        ld.line([(14.6 * s, 4.6 * s), (16.6 * s, 3.5 * s)], fill=beam, width=max(1, round(0.5 * s)))
+
     base = Image.alpha_composite(base, layer)
 
     if not full_bleed:
