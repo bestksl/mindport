@@ -533,6 +533,7 @@ export default defineConfig({
                 "fill-[#F5F5F5]",
                 "fill-[#d97757]",
                 "text-[#d97757]",
+                "fill-[#f2372f]",
               ],
             },
           ],

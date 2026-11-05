@@ -153,6 +153,7 @@ import {
   compileClaudeModelSelection,
   type CompiledClaudeModelSelection,
 } from "../../claudeModelOptions.ts";
+import { resolveClaudeConfiguredModel } from "../../provider/claudeConfiguredModel.ts";
 import * as ServerConfig from "../../config.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import * as ServerSettings from "../../serverSettings.ts";
@@ -4082,6 +4083,8 @@ interface ActiveClaudeTurnContext {
   // Ledger growth of the steered segments; undefined once any segment's growth is unknown.
   steeredLedgerUsage: ClaudeLedgerUsage | undefined;
   readonly rootModels: Set<string>;
+  // The id Claude Code's configuration maps this turn's selection to; undefined without an override.
+  readonly configuredModel: string | undefined;
   readonly subagentsByTaskId: Map<string, ActiveClaudeSubagent>;
   readonly subagentsByToolUseId: Map<string, ActiveClaudeSubagent>;
   readonly promptUuid: string | null;
@@ -4703,6 +4706,34 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       return claudeToolSearchOverride(adapterOptions.environment.ENABLE_TOOL_SEARCH);
     },
   );
+  // The CLI's settings env block beats the process environment; read the same settings files
+  // resolveToolSearchOverride walks, low to high precedence, instead of spawning the SDK resolver.
+  const resolveConfiguredModel = Effect.fn("ClaudeAdapterV2.resolveConfiguredModel")(function* (
+    cwd: string | null,
+    selectedModel: string,
+  ) {
+    const env: Record<string, unknown> = { ...adapterOptions.environment };
+    let settingsFiles: ReadonlyArray<string>;
+    if (cwd === null) {
+      settingsFiles = [path.join(homePath, "settings.json")];
+    } else {
+      const localDirectory = yield* localSettingsDirectory(cwd);
+      settingsFiles = [
+        path.join(homePath, "settings.json"),
+        path.join(cwd, ".claude", "settings.json"),
+        path.join(localDirectory, ".claude", "settings.local.json"),
+        ...(localDirectory === cwd ? [] : [path.join(cwd, ".claude", "settings.local.json")]),
+      ];
+    }
+    for (const settingsFile of settingsFiles) {
+      const decoded = yield* fileSystem.readFileString(settingsFile).pipe(
+        Effect.flatMap(decodeClaudeEnvSettings),
+        Effect.orElseSucceed(() => null),
+      );
+      if (decoded?.env !== undefined) Object.assign(env, decoded.env);
+    }
+    return resolveClaudeConfiguredModel({ selectedModel, env });
+  });
 
   const userInvocableSkills = (cwd: string | null) =>
     discoverClaudeSkills(
@@ -7634,6 +7665,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     input.context.steeredSegmentUsage,
                     {
                       rootModels: input.context.rootModels,
+                      ...(input.context.configuredModel === undefined
+                        ? {}
+                        : { configuredModel: input.context.configuredModel }),
                       ...(input.result === undefined
                         ? {}
                         : {
@@ -10679,6 +10713,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               steeredSegmentUsage: [],
               steeredLedgerUsage: { inputTokens: 0, outputTokens: 0 },
               rootModels: new Set(),
+              configuredModel: yield* resolveConfiguredModel(
+                turnInput.runtimePolicy.cwd,
+                turnInput.modelSelection.model,
+              ),
               subagentsByTaskId: new Map(),
               subagentsByToolUseId: new Map(),
               promptUuid,

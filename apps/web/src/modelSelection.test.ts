@@ -27,7 +27,9 @@ import {
   getAppModelOptionsForInstance,
   resolveAppModelSelectionForInstance,
   resolveAppModelSelectionState,
+  resolveConfiguredModel,
   resolveEffectiveDefaultModelSelection,
+  resolveEffectiveModelVendor,
   resolveReportedNativeModel,
 } from "./modelSelection";
 
@@ -1326,5 +1328,87 @@ describe("resolveReportedNativeModel", () => {
         selectedModel: null,
       }),
     ).toBe("doubao-seed-2-1-pro-260915");
+  });
+});
+
+describe("resolveConfiguredModel", () => {
+  const turnWithConfigured = (ordinal: number, configuredModel?: string) => ({
+    ordinal,
+    ...(configuredModel === undefined ? {} : { turnTokenUsage: { configuredModel } }),
+  });
+
+  it("returns null when no turn carried a configured model", () => {
+    expect(
+      resolveConfiguredModel([
+        { ordinal: 1 },
+        { ordinal: 2, turnTokenUsage: { models: ["doubao-seed-2-1-pro-260915"] } },
+      ]),
+    ).toBeNull();
+  });
+
+  it("returns the newest turn's configured model id", () => {
+    expect(
+      resolveConfiguredModel([
+        turnWithConfigured(1, "ark-code-latest"),
+        turnWithConfigured(2, "ark-code-v2"),
+      ]),
+    ).toBe("ark-code-v2");
+  });
+
+  it("skips turns without the field and keeps an earlier report", () => {
+    expect(
+      resolveConfiguredModel([
+        turnWithConfigured(1, "ark-code-latest"),
+        { ordinal: 2, turnTokenUsage: { models: ["doubao-seed-2-1-pro-260915"] } },
+      ]),
+    ).toBe("ark-code-latest");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(resolveConfiguredModel([turnWithConfigured(1, "  ark-code-latest  ")])).toBe(
+      "ark-code-latest",
+    );
+  });
+});
+
+describe("resolveEffectiveModelVendor", () => {
+  it("returns null when neither id names a known vendor", () => {
+    expect(
+      resolveEffectiveModelVendor({
+        configuredModel: "claude-opus-5-5",
+        nativeModel: "claude-opus-4-8",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null with no remap ids", () => {
+    expect(resolveEffectiveModelVendor({})).toBeNull();
+    expect(resolveEffectiveModelVendor({ configuredModel: "  ", nativeModel: null })).toBeNull();
+  });
+
+  it("matches the configured ark alias before the native id", () => {
+    expect(
+      resolveEffectiveModelVendor({
+        configuredModel: "ark-code-latest",
+        nativeModel: "doubao-seed-2-1-pro-260915",
+      }),
+    ).toBe("volcengineArk");
+  });
+
+  it("matches a doubao native id when there is no configured alias", () => {
+    expect(resolveEffectiveModelVendor({ nativeModel: "doubao-seed-2-1-pro-260915" })).toBe(
+      "volcengineArk",
+    );
+  });
+
+  it("is case-insensitive and tolerates surrounding whitespace", () => {
+    expect(resolveEffectiveModelVendor({ configuredModel: " ARK-Code-Latest " })).toBe(
+      "volcengineArk",
+    );
+  });
+
+  it("does not match ark or doubao inside another word", () => {
+    expect(resolveEffectiveModelVendor({ configuredModel: "polaris-dark-v2" })).toBeNull();
+    expect(resolveEffectiveModelVendor({ nativeModel: "marker-spark-7" })).toBeNull();
   });
 });

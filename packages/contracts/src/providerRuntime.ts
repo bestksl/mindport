@@ -62,6 +62,10 @@ const TurnTokenUsageCommonFields = {
   hasSubagents: Schema.Boolean,
   // Native model ids the provider reported for the main agent's work. Absent means unknown.
   models: Schema.optional(Schema.Array(TrimmedNonEmptyStringSchema)),
+  // Model id the CLI configuration maps the catalog selection to before the request is sent
+  // (ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_*_MODEL). A gateway may remap it again; that result is
+  // in models. Absent means the catalog selection is sent unchanged.
+  configuredModel: Schema.optional(TrimmedNonEmptyStringSchema),
   // The provider ran a local command; its counters describe that result, not model work.
   localCommand: Schema.optional(Schema.Boolean),
   // Provider-ledger counts beyond the main agent, such as native subagents and compaction.

@@ -114,6 +114,8 @@ export function addClaudeLedgerUsage(
 export interface ClaudeTurnObservations {
   // Models on the turn's root assistant messages.
   readonly rootModels?: ReadonlySet<string>;
+  // Model id the CLI configuration maps the selection to before the request is sent.
+  readonly configuredModel?: string | undefined;
   // Ledger growth across every result this turn consumed, including steered segments.
   readonly ledger?: ClaudeLedgerUsage | undefined;
 }
@@ -134,6 +136,9 @@ export function normalizeClaudeTurnTokenUsage(
   const observedFields = {
     ...(observed.rootModels !== undefined && observed.rootModels.size > 0
       ? { models: [...observed.rootModels] }
+      : {}),
+    ...(observed.configuredModel !== undefined
+      ? { configuredModel: observed.configuredModel }
       : {}),
     ...(typeof result?.local_command === "string" && result.local_command.length > 0
       ? { localCommand: true }

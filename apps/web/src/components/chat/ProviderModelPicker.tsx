@@ -14,6 +14,8 @@ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPick
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
+import { VolcengineArkIcon, type Icon } from "../Icons";
+import { resolveEffectiveModelVendor } from "../../modelSelection";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
@@ -101,6 +103,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    * model that actually ran instead of the catalog selection the gateway aliases onto it.
    */
   nativeModelLabel?: string | null;
+  /**
+   * Model id the CLI configuration maps the catalog selection to before the request is sent
+   * (ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_*_MODEL). Takes the trigger over the native id so the
+   * name the user configured stays primary while the native id moves to the tooltip.
+   */
+  configuredModelLabel?: string | null;
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
@@ -234,15 +242,34 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
   const nativeModelLabel = props.nativeModelLabel ?? null;
+  const configuredModelLabel = props.configuredModelLabel ?? null;
   // Multi-select rows and callers owning triggerLabel keep their text; only the single composer
-  // selection names the model a gateway actually ran when it remaps the catalog selection.
+  // selection names what a CLI alias or gateway remapped the catalog selection onto.
+  const remapsSelection = props.triggerLabel === undefined && selectedEntries === undefined;
+  const showsConfiguredModel = configuredModelLabel !== null && remapsSelection;
   const showsNativeModel =
-    nativeModelLabel !== null && props.triggerLabel === undefined && selectedEntries === undefined;
+    nativeModelLabel !== null && remapsSelection && nativeModelLabel !== configuredModelLabel;
   const catalogTriggerLabel = props.triggerLabel ?? allModelNames ?? triggerLabel;
-  const triggerTooltipContent = [
-    showsNativeModel
+  // A remapped request is served by another vendor, so its mark replaces the harness icon.
+  const effectiveVendor = remapsSelection
+    ? resolveEffectiveModelVendor({
+        configuredModel: configuredModelLabel,
+        nativeModel: nativeModelLabel,
+      })
+    : null;
+  const EffectiveVendorIcon: Icon | null =
+    effectiveVendor === "volcengineArk" ? VolcengineArkIcon : null;
+  const remapTooltip = showsConfiguredModel
+    ? [
+        `Configured model ${configuredModelLabel}`,
+        ...(showsNativeModel ? [`actual model ${nativeModelLabel}`] : []),
+        `catalog selection ${catalogTriggerLabel}`,
+      ].join(" · ")
+    : showsNativeModel
       ? `Actual model ${nativeModelLabel} · catalog selection ${catalogTriggerLabel}`
-      : catalogTriggerLabel,
+      : null;
+  const triggerTooltipContent = [
+    remapTooltip ?? catalogTriggerLabel,
     props.triggerDetail,
     shortcutLabel,
   ]
@@ -250,7 +277,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     .join(" · ");
 
   const triggerText =
-    props.triggerLabel ?? multipleLabel ?? (showsNativeModel ? nativeModelLabel : triggerTitle);
+    props.triggerLabel ??
+    multipleLabel ??
+    (showsConfiguredModel
+      ? configuredModelLabel
+      : showsNativeModel
+        ? nativeModelLabel
+        : triggerTitle);
   const triggerTextProps = {
     className: cn(
       "min-w-0 flex-1 overflow-hidden truncate",
@@ -321,9 +354,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControl
             ref={triggerRef}
             aria-label={[
-              showsNativeModel
-                ? `Actual model ${nativeModelLabel}, catalog selection ${catalogTriggerLabel}`
-                : (props.triggerAriaLabel ?? catalogTriggerLabel),
+              showsConfiguredModel
+                ? [
+                    `Configured model ${configuredModelLabel}`,
+                    ...(showsNativeModel ? [`actual model ${nativeModelLabel}`] : []),
+                    `catalog selection ${catalogTriggerLabel}`,
+                  ].join(", ")
+                : showsNativeModel
+                  ? `Actual model ${nativeModelLabel}, catalog selection ${catalogTriggerLabel}`
+                  : (props.triggerAriaLabel ?? catalogTriggerLabel),
               props.triggerDetail,
             ]
               .filter(Boolean)
@@ -386,21 +425,28 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : activeEntry && props.triggerLabel === undefined ? (
             // Narrow compacted composers hide the provider icon before truncating the name.
             <span data-chat-provider-model-picker-icon className="contents">
-              <ProviderInstanceIcon
-                driverKind={activeEntry.driverKind}
-                displayName={activeEntry.displayName}
-                accentColor={activeEntry.accentColor}
-                acpRegistryAgentId={activeEntry.acpRegistryAgentId}
-                acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
-                showBadge={showInstanceBadge}
-                className="size-4"
-                iconClassName={cn("size-4", props.activeProviderIconClassName)}
-                indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
-                badgeClassName={cn(
-                  "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
-                  size === "xs" && "shadow-none",
-                )}
-              />
+              {EffectiveVendorIcon ? (
+                <EffectiveVendorIcon
+                  className={cn("size-4 shrink-0", props.activeProviderIconClassName)}
+                  aria-hidden
+                />
+              ) : (
+                <ProviderInstanceIcon
+                  driverKind={activeEntry.driverKind}
+                  displayName={activeEntry.displayName}
+                  accentColor={activeEntry.accentColor}
+                  acpRegistryAgentId={activeEntry.acpRegistryAgentId}
+                  acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
+                  showBadge={showInstanceBadge}
+                  className="size-4"
+                  iconClassName={cn("size-4", props.activeProviderIconClassName)}
+                  indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
+                  badgeClassName={cn(
+                    "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
+                    size === "xs" && "shadow-none",
+                  )}
+                />
+              )}
             </span>
           ) : null}
           {props.isComposerOwned ? (

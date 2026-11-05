@@ -106,6 +106,32 @@ describe("billable native turn usage", () => {
     });
   });
 
+  it("carries the configured model alias alongside reported native models", () => {
+    const complete = normalizeClaudeTurnTokenUsage(
+      { subtype: "success", usage: { input_tokens: 4, output_tokens: 2 } },
+      false,
+      "completed",
+      [],
+      {
+        rootModels: new Set(["doubao-seed-2-1-pro-260915"]),
+        configuredModel: "ark-code-latest",
+      },
+    );
+    expect(complete).toMatchObject({
+      configuredModel: "ark-code-latest",
+      models: ["doubao-seed-2-1-pro-260915"],
+    });
+
+    const unavailable = normalizeClaudeTurnTokenUsage(undefined, false, "failed", [], {
+      configuredModel: "ark-code-latest",
+    });
+    expect(unavailable).toMatchObject({
+      usageStatus: "unavailable",
+      configuredModel: "ark-code-latest",
+    });
+    expect(unavailable).not.toHaveProperty("models");
+  });
+
   it("does not turn a zeroed Claude crash result into a measured zero-cost turn", () => {
     expect(
       normalizeClaudeTurnTokenUsage(

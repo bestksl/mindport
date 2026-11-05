@@ -3041,6 +3041,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-claude-v2-wake-",
       });
+      // Keep reads of ~/.claude settings (model aliases, tool search) off the developer's real config.
+      const isolatedClaudeHome = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-claude-v2-home-",
+      });
       const sdkMessages = yield* Queue.unbounded<SDKMessage>();
       const processQueues: Array<Queue.Queue<SDKMessage>> = [];
       const processedMessages = new WeakMap<SDKMessage, Deferred.Deferred<void>>();
@@ -3089,7 +3093,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-        settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
+        settings: options?.settings ?? { ...DEFAULT_CLAUDE_SETTINGS, homePath: isolatedClaudeHome },
         environment: options?.environment ?? {},
         attachmentsDir,
         fileSystem,

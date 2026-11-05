@@ -372,8 +372,57 @@ export function selectsPlanAgent(options: ModelSelection["options"]): boolean {
 
 type ReportedModelTurn = {
   readonly ordinal: number;
-  readonly turnTokenUsage?: { readonly models?: ReadonlyArray<string> | undefined } | undefined;
+  readonly turnTokenUsage?:
+    | {
+        readonly models?: ReadonlyArray<string> | undefined;
+        readonly configuredModel?: string | undefined;
+      }
+    | undefined;
 };
+
+/**
+ * The model id the CLI configuration mapped the newest turn's selection to before the request was
+ * sent. Null when no turn reported one, so threads keep their catalog label without an override.
+ */
+export function resolveConfiguredModel(
+  providerTurns: ReadonlyArray<ReportedModelTurn>,
+): string | null {
+  let configuredModel: string | null = null;
+  let latestOrdinal = -1;
+  for (const turn of providerTurns) {
+    if (turn.ordinal <= latestOrdinal) continue;
+    const id = turn.turnTokenUsage?.configuredModel?.trim();
+    if (!id) continue;
+    latestOrdinal = turn.ordinal;
+    configuredModel = id;
+  }
+  return configuredModel;
+}
+
+export type EffectiveModelVendor = "volcengineArk";
+
+const EFFECTIVE_MODEL_VENDOR_PATTERNS: ReadonlyArray<{
+  readonly vendor: EffectiveModelVendor;
+  readonly pattern: RegExp;
+}> = [{ vendor: "volcengineArk", pattern: /(?:^|[^a-z0-9])(?:ark|doubao)(?:[^a-z0-9]|$)/i }];
+
+/**
+ * Vendor serving the remapped request, inferred from the ids the CLI alias and gateway report.
+ * The configured alias is checked first so the trigger icon matches the trigger label. Null when
+ * nothing matches, leaving the harness provider's own icon in place.
+ */
+export function resolveEffectiveModelVendor(input: {
+  readonly configuredModel?: string | null;
+  readonly nativeModel?: string | null;
+}): EffectiveModelVendor | null {
+  for (const id of [input.configuredModel, input.nativeModel]) {
+    const normalized = id?.trim();
+    if (!normalized) continue;
+    const match = EFFECTIVE_MODEL_VENDOR_PATTERNS.find(({ pattern }) => pattern.test(normalized));
+    if (match) return match.vendor;
+  }
+  return null;
+}
 
 /**
  * The native model id the provider reported for the newest turn. Null when nothing ran yet or
