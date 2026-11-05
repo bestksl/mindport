@@ -1,0 +1,20 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="mindport-bg" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#2b4a55"/>
+<stop offset="1" stop-color="#121f25"/>
+</linearGradient>
+</defs>
+<rect width="128" height="128" rx="28.7" fill="url(#mindport-bg)"/>
+<path d="M0 112.0 C10.7 107.5 21.3 107.5 32.0 112.0 C42.7 116.5 53.3 116.5 64.0 112.0 C74.7 107.5 85.3 107.5 96.0 112.0 C106.7 116.5 117.3 116.5 128.0 112.0 L128.0 128.0 L0 128.0 Z" fill="#3a5a63"/>
+<rect x="0" y="121.1" width="128" height="6.9" fill="#243944"/>
+<polygon points="40.5,96.0 87.5,96.0 92.3,108.3 35.7,108.3" fill="#6b4f30"/>
+<polygon points="57.1,34.1 70.9,34.1 80.0,96.0 48.0,96.0" fill="#c06a45"/>
+<rect x="52.8" y="56.3" width="22.4" height="3.7" fill="#f0e4cd"/>
+<rect x="50.1" y="76.5" width="27.7" height="3.7" fill="#f0e4cd"/>
+<rect x="53.9" y="18.1" width="20.3" height="13.3" rx="3.7" fill="#4a3520"/>
+<circle cx="64.0" cy="24.8" r="3.7" fill="#ffd668"/>
+<rect x="56.5" y="13.9" width="15.0" height="2.7" rx="1.3" fill="#9c4632"/>
+<path d="M50.1 24.5 L39.5 18.7" stroke="#f0e4cd" stroke-opacity="0.6" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M77.9 24.5 L88.5 18.7" stroke="#f0e4cd" stroke-opacity="0.6" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
