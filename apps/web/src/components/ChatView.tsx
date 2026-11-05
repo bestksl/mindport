@@ -195,6 +195,7 @@ import {
   resolveProjectDefaultProviderModelSelection,
   shouldShowInstanceBadge,
 } from "../providerInstances";
+import { resolveReportedNativeModel } from "../modelSelection";
 import {
   useClientSettings,
   useClientSettingsHydrated,
@@ -1738,6 +1739,17 @@ export default function ChatView(props: ChatViewProps) {
           providerSubagentModels,
           reportedModelSelection,
         );
+  const reportedNativeModel = resolveReportedNativeModel({
+    providerTurns: serverProjection?.providerTurns ?? [],
+    selectedModel: (() => {
+      const slug = composerSelectedModelSelection?.model ?? activeThread?.modelSelection.model;
+      const catalogModel =
+        slug !== undefined
+          ? selectedProviderEntry?.models.find((model) => model.slug === slug)
+          : undefined;
+      return catalogModel ? { slug: catalogModel.slug, aliases: catalogModel.aliases } : null;
+    })(),
+  });
   const showComposerContextStrip =
     !embedded &&
     shouldShowComposerContextStrip({
@@ -3578,6 +3590,7 @@ export default function ChatView(props: ChatViewProps) {
                             <ChatComposer
                               canOperateThread={canOperateThread}
                               reportedModelSelection={reportedModelSelection}
+                              reportedNativeModel={reportedNativeModel}
                               multipleModelSelections={multipleModelSelections}
                               supportsMultipleModels={
                                 serverConfig?.environment.capabilities.requiredWorktreeBootstrap ===

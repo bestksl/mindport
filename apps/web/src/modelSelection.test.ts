@@ -28,6 +28,7 @@ import {
   resolveAppModelSelectionForInstance,
   resolveAppModelSelectionState,
   resolveEffectiveDefaultModelSelection,
+  resolveReportedNativeModel,
 } from "./modelSelection";
 
 function provider(input: {
@@ -1252,5 +1253,78 @@ describe("composer fallback to another instance of the same driver", () => {
 
     expect(selectedInstanceId).toBe(ProviderInstanceId.make("codex"));
     expect(state.modelOptions?.[selectedInstanceId]).toBeUndefined();
+  });
+});
+
+describe("resolveReportedNativeModel", () => {
+  const turnWithModel = (ordinal: number, models: ReadonlyArray<string>) => ({
+    ordinal,
+    turnTokenUsage: { models },
+  });
+
+  it("returns null when no turn reported a model", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [{ ordinal: 1 }, { ordinal: 2, turnTokenUsage: {} }],
+        selectedModel: { slug: "claude-opus-5-5" },
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the report matches the selected slug", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [turnWithModel(1, ["Claude-Opus-5-5"])],
+        selectedModel: { slug: "claude-opus-5-5" },
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the report matches a configured alias", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [turnWithModel(1, ["claude-opus-5-5-20260101"])],
+        selectedModel: { slug: "claude-opus-5-5", aliases: ["claude-opus-5-5-20260101"] },
+      }),
+    ).toBeNull();
+  });
+
+  it("treats dated id variants of the slug as the same model", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [turnWithModel(3, ["claude-opus-5-5-20260101"])],
+        selectedModel: { slug: "claude-opus-5-5" },
+      }),
+    ).toBeNull();
+  });
+
+  it("surfaces the gateway-remapped native model id", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [turnWithModel(5, ["doubao-seed-2-1-pro-260915"])],
+        selectedModel: { slug: "claude-opus-5-5", aliases: ["claude-opus-5-5-20260101"] },
+      }),
+    ).toBe("doubao-seed-2-1-pro-260915");
+  });
+
+  it("uses the newest turn's report", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [
+          turnWithModel(1, ["doubao-seed-2-1-pro-260915"]),
+          turnWithModel(2, ["doubao-seed-2-1-pro-261001"]),
+        ],
+        selectedModel: { slug: "claude-opus-5-5" },
+      }),
+    ).toBe("doubao-seed-2-1-pro-261001");
+  });
+
+  it("still reports the native id when no catalog selection is known", () => {
+    expect(
+      resolveReportedNativeModel({
+        providerTurns: [turnWithModel(1, ["doubao-seed-2-1-pro-260915"])],
+        selectedModel: null,
+      }),
+    ).toBe("doubao-seed-2-1-pro-260915");
   });
 });

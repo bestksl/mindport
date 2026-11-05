@@ -96,6 +96,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerClassName?: string;
   triggerLabel?: string;
   triggerAriaLabel?: string;
+  /**
+   * Native model id the provider reported for the newest turn. When set, the trigger names the
+   * model that actually ran instead of the catalog selection the gateway aliases onto it.
+   */
+  nativeModelLabel?: string | null;
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
@@ -228,15 +233,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
     : undefined;
+  const nativeModelLabel = props.nativeModelLabel ?? null;
+  // Multi-select rows and callers owning triggerLabel keep their text; only the single composer
+  // selection names the model a gateway actually ran when it remaps the catalog selection.
+  const showsNativeModel =
+    nativeModelLabel !== null && props.triggerLabel === undefined && selectedEntries === undefined;
+  const catalogTriggerLabel = props.triggerLabel ?? allModelNames ?? triggerLabel;
   const triggerTooltipContent = [
-    props.triggerLabel ?? allModelNames ?? triggerLabel,
+    showsNativeModel
+      ? `Actual model ${nativeModelLabel} · catalog selection ${catalogTriggerLabel}`
+      : catalogTriggerLabel,
     props.triggerDetail,
     shortcutLabel,
   ]
     .filter(Boolean)
     .join(" · ");
 
-  const triggerText = props.triggerLabel ?? multipleLabel ?? triggerTitle;
+  const triggerText =
+    props.triggerLabel ?? multipleLabel ?? (showsNativeModel ? nativeModelLabel : triggerTitle);
   const triggerTextProps = {
     className: cn(
       "min-w-0 flex-1 overflow-hidden truncate",
@@ -307,7 +321,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControl
             ref={triggerRef}
             aria-label={[
-              props.triggerAriaLabel ?? props.triggerLabel ?? allModelNames ?? triggerLabel,
+              showsNativeModel
+                ? `Actual model ${nativeModelLabel}, catalog selection ${catalogTriggerLabel}`
+                : (props.triggerAriaLabel ?? catalogTriggerLabel),
               props.triggerDetail,
             ]
               .filter(Boolean)

@@ -370,6 +370,43 @@ export function selectsPlanAgent(options: ModelSelection["options"]): boolean {
   return options?.some((option) => option.id === "agent" && option.value === "plan") ?? false;
 }
 
+type ReportedModelTurn = {
+  readonly ordinal: number;
+  readonly turnTokenUsage?: { readonly models?: ReadonlyArray<string> | undefined } | undefined;
+};
+
+/**
+ * The native model id the provider reported for the newest turn. Null when nothing ran yet or
+ * the report is just the selected catalog model (including dated id variants), so a gateway that
+ * aliases every selection to one backend model is the only case that changes the trigger label.
+ */
+export function resolveReportedNativeModel(input: {
+  providerTurns: ReadonlyArray<ReportedModelTurn>;
+  selectedModel: Readonly<{
+    slug: string;
+    aliases?: ReadonlyArray<string> | undefined;
+  }> | null;
+}): string | null {
+  let reportedId: string | null = null;
+  let latestOrdinal = -1;
+  for (const turn of input.providerTurns) {
+    if (turn.ordinal <= latestOrdinal) continue;
+    const id = turn.turnTokenUsage?.models?.[0]?.trim();
+    if (!id) continue;
+    latestOrdinal = turn.ordinal;
+    reportedId = id;
+  }
+  if (reportedId === null || input.selectedModel === null) return reportedId;
+  const normalized = reportedId.toLowerCase();
+  const knownIds = [input.selectedModel.slug, ...(input.selectedModel.aliases ?? [])].map((id) =>
+    id.toLowerCase(),
+  );
+  const isKnownModel = knownIds.some(
+    (id) => normalized === id || normalized.startsWith(`${id}-`) || id.startsWith(`${normalized}-`),
+  );
+  return isKnownModel ? null : reportedId;
+}
+
 export function resolveAppModelSelectionState(
   settings: UnifiedSettings,
   providers: ReadonlyArray<ServerProvider>,

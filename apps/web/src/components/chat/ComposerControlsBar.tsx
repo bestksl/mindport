@@ -49,6 +49,7 @@ export function ComposerControlsBar(props: {
   selectedProviderModels: ServerProvider["models"];
   composerModelOptions: ReturnType<typeof useComposerProviderModel>["composerModelOptions"];
   reportedModelSelection: ChatComposerProps["reportedModelSelection"];
+  reportedNativeModel: ChatComposerProps["reportedNativeModel"];
   promptUltrathink: PromptUltrathink;
   onPromptEdit: (edit: (prompt: string) => string) => void;
   planModeEnabled: boolean;
@@ -100,6 +101,7 @@ export function ComposerControlsBar(props: {
     selectedProviderModels,
     composerModelOptions,
     reportedModelSelection,
+    reportedNativeModel,
     promptUltrathink,
     onPromptEdit,
     planModeEnabled,
@@ -201,6 +203,7 @@ export function ComposerControlsBar(props: {
       onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
       selectedModelSelection={selectedModelSelection}
       onProviderModelSelect={onProviderModelSelect}
+      nativeModelLabel={reportedNativeModel ?? null}
       activeInstanceId={
         providerCatalogPending
           ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)

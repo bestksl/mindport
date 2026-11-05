@@ -426,6 +426,8 @@ export interface ChatComposerProps {
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
   reportedModelSelection?: ModelSelection | null;
+  /** Native model id the provider reported for the newest turn, when a gateway remaps the selection. */
+  reportedNativeModel?: string | null;
   activeProjectId: ProjectId | null;
 
   contextWindowEntries: Parameters<typeof deriveLatestContextWindowSnapshot>[0];
@@ -553,6 +555,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
     reportedModelSelection,
+    reportedNativeModel,
     activeProjectId,
     contextWindowEntries,
     contextWindowLiveUsage,
@@ -2327,6 +2330,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedProviderModels={selectedProviderModels}
       composerModelOptions={composerModelOptions}
       reportedModelSelection={reportedModelSelection}
+      reportedNativeModel={reportedNativeModel ?? null}
       promptUltrathink={promptUltrathink}
       onPromptEdit={editPromptFromTraitsStable}
       planModeEnabled={settings.planModeEnabled}
