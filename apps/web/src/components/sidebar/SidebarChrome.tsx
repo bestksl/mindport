@@ -15,6 +15,7 @@ import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { APP_BASE_NAME } from "../../branding";
+import { HarborLighthouseTile } from "../BrandGlyph";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -182,11 +183,12 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
     <span
       aria-label={APP_BASE_NAME}
       className={cn(
-        "truncate text-sm font-medium tracking-tight [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
+        "flex min-w-0 items-center gap-1.5 truncate text-sm font-medium tracking-tight [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
         onBackdrop ? "text-white/70" : "text-muted-foreground",
       )}
     >
-      {APP_BASE_NAME}
+      <HarborLighthouseTile className="size-[18px] shrink-0 drop-shadow-sm" />
+      <span className="truncate">{APP_BASE_NAME}</span>
     </span>
   );
 }

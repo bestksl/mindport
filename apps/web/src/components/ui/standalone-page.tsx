@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
+import { BrandGlyph } from "../BrandGlyph";
 
 export function StandalonePage({ children }: { readonly children: ReactNode }) {
   return (
@@ -24,10 +25,11 @@ export function StandalonePageHeader({
     <>
       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
         <span
-          className="text-lg font-medium tracking-tight text-foreground"
+          className="flex items-center gap-1.5 text-lg font-medium tracking-tight text-foreground"
           role="img"
           aria-label={APP_BASE_NAME}
         >
+          <BrandGlyph className="size-5" />
           {APP_BASE_NAME}
         </span>
         {context ? <span className="text-sm">{context}</span> : null}
