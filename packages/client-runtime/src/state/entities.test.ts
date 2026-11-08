@@ -22,6 +22,21 @@ import { canSnooze, effectiveSnoozed } from "./threadSettled.ts";
 const environmentId = EnvironmentId.make("environment-v2");
 
 describe("V2 client presentation", () => {
+  it("carries the shell's latest model report through and leaves it absent for older servers", () => {
+    const report = {
+      configuredModel: "ark-code-latest",
+      nativeModel: "doubao-seed-2-1-pro",
+    };
+    const reported = presentThreadShell(environmentId, {
+      ...v2ThreadShell,
+      latestModelReport: report,
+    });
+    expect(reported.latestModelReport).toEqual(report);
+    const legacy = presentThreadShell(environmentId, { ...v2ThreadShell });
+    expect(legacy.latestModelReport).toBeUndefined();
+    expect("latestModelReport" in legacy).toBe(false);
+  });
+
   it("an async question blocks snooze and wakes a snoozed thread", () => {
     const runId = RunId.make("run-async-question");
     const running = {

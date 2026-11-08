@@ -38,6 +38,7 @@ import type {
   OrchestrationV2ThreadShellSnapshot,
   OrchestrationV2ShellThreadStatus,
   OrchestrationV2ThreadShell,
+  OrchestrationV2ThreadLatestModelReport,
   OrchestrationV2ThreadProjection,
   OrchestrationV2TurnItem,
   GuestShareId,
@@ -997,6 +998,8 @@ type ShellThreadRow = {
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
   readonly has_actionable_proposed_plan: number;
+  readonly latest_configured_model: string | null;
+  readonly latest_native_model: string | null;
 };
 
 type ShellRunRow = {
@@ -1456,6 +1459,25 @@ const linkCardStillAsks = (
   latestUserAuthoredMessageAt === null ||
   !DateTime.isGreaterThan(latestUserAuthoredMessageAt, item.startedAt ?? item.updatedAt);
 
+// The newest turn that reported token usage is the same source the open thread's composer reads,
+// so list surfaces name the same configured alias / native model without loading every turn.
+function latestModelReportForShell(
+  providerTurns: ReadonlyArray<OrchestrationV2ProviderTurn>,
+): OrchestrationV2ThreadLatestModelReport | null {
+  const latestTurn = providerTurns
+    .filter((turn) => turn.turnTokenUsage !== undefined)
+    .toSorted((left, right) => right.ordinal - left.ordinal)[0];
+  if (latestTurn === undefined) return null;
+  const usage = latestTurn.turnTokenUsage!;
+  const configuredModel = usage.configuredModel?.trim() || null;
+  const nativeModel = usage.models?.[0]?.trim() || null;
+  if (configuredModel === null && nativeModel === null) return null;
+  return {
+    ...(configuredModel !== null ? { configuredModel } : {}),
+    ...(nativeModel !== null ? { nativeModel } : {}),
+  };
+}
+
 export function threadShellFromProjection(
   projection: OrchestrationV2ThreadProjection,
 ): OrchestrationV2ThreadShell {
@@ -1523,6 +1545,7 @@ export function threadShellFromProjection(
     runs,
     pullRequests: projection.thread.pullRequests,
   });
+  const latestModelReport = latestModelReportForShell(projection.providerTurns);
   return {
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
@@ -1613,6 +1636,7 @@ export function threadShellFromProjection(
     lastVisitedAt: projection.thread.lastVisitedAt,
     opens: projection.thread.opens ?? null,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
+    ...(latestModelReport !== null ? { latestModelReport } : {}),
     limitRecovery: projection.thread.limitRecovery ?? null,
     deletedAt: projection.thread.deletedAt,
   };
@@ -1695,6 +1719,7 @@ type ShellThreadState = {
   readonly latestUserMessageAt: DateTime.Utc | null;
   readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
   readonly hasActionableProposedPlan: boolean;
+  readonly latestModelReport: OrchestrationV2ThreadLatestModelReport | null;
   readonly pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
   readonly providerInstanceHistory: OrchestrationV2ThreadShell["providerInstanceHistory"];
   readonly goal: OrchestrationV2ThreadShell["goal"];
@@ -1879,6 +1904,9 @@ function shellFromState(input: {
     lastVisitedAt: input.state.thread.lastVisitedAt,
     opens: input.state.thread.opens ?? null,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
+    ...(input.state.latestModelReport !== null
+      ? { latestModelReport: input.state.latestModelReport }
+      : {}),
     limitRecovery: input.state.thread.limitRecovery ?? null,
     deletedAt: input.state.thread.deletedAt,
   };
@@ -6152,7 +6180,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE plan.thread_id = t.thread_id
                   AND plan.kind = 'proposed_plan'
                   AND plan.status = 'active'
-              ) AS has_actionable_proposed_plan
+              ) AS has_actionable_proposed_plan,
+              (
+                -- Newest token-bearing turn; mirrors latestModelReportForShell so both shell paths agree.
+                SELECT json_extract(latest_turn.payload_json, '$.turnTokenUsage.configuredModel')
+                FROM orchestration_v2_projection_provider_turns latest_turn
+                WHERE latest_turn.thread_id = t.thread_id
+                  AND json_extract(latest_turn.payload_json, '$.turnTokenUsage') IS NOT NULL
+                ORDER BY latest_turn.ordinal DESC, latest_turn.provider_turn_id DESC
+                LIMIT 1
+              ) AS latest_configured_model,
+              (
+                SELECT json_extract(latest_turn.payload_json, '$.turnTokenUsage.models[0]')
+                FROM orchestration_v2_projection_provider_turns latest_turn
+                WHERE latest_turn.thread_id = t.thread_id
+                  AND json_extract(latest_turn.payload_json, '$.turnTokenUsage') IS NOT NULL
+                ORDER BY latest_turn.ordinal DESC, latest_turn.provider_turn_id DESC
+                LIMIT 1
+              ) AS latest_native_model
             FROM orchestration_v2_projection_threads t
             LEFT JOIN orchestration_v2_projection_runs active ON active.run_id = (
               SELECT r.run_id
@@ -6692,6 +6737,17 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             pullRequests: thread.pullRequests,
           }),
         ];
+        const latestModelReport =
+          row.latest_configured_model === null && row.latest_native_model === null
+            ? null
+            : {
+                ...(row.latest_configured_model !== null
+                  ? { configuredModel: row.latest_configured_model }
+                  : {}),
+                ...(row.latest_native_model !== null
+                  ? { nativeModel: row.latest_native_model }
+                  : {}),
+              };
         return {
           thread,
           latestRunId,
@@ -6730,6 +6786,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               : DateTime.makeUnsafe(row.latest_user_message_at),
           latestUserAuthoredMessageAt,
           hasActionableProposedPlan: row.has_actionable_proposed_plan === 1,
+          latestModelReport,
           pendingBackgroundTasks,
           providerInstanceHistory: providerInstanceHistoryForShell({
             threadId: thread.id,

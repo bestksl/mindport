@@ -5547,6 +5547,152 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 
+  it.effect("surfaces the newest token-bearing turn's model report on SQL and memory shells", () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const addThread = (suffix: string) =>
+        Effect.gen(function* () {
+          const threadId = ThreadId.make(`thread:model-report:${suffix}`);
+          yield* store.apply({
+            id: EventId.make(`event:model-report:${suffix}:thread`),
+            type: "thread.created",
+            threadId,
+            occurredAt: now,
+            payload: {
+              createdBy: "user",
+              creationSource: "web",
+              id: threadId,
+              projectId: ProjectId.make(`project:model-report:${suffix}`),
+              title: `Model report ${suffix}`,
+              providerInstanceId,
+              modelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              activeProviderThreadId: null,
+              lineage: {
+                parentThreadId: null,
+                relationshipToParent: null,
+                rootThreadId: threadId,
+              },
+              forkedFrom: null,
+              createdAt: now,
+              updatedAt: now,
+              archivedAt: null,
+              settledOverride: null,
+              settledAt: null,
+              lastVisitedAt: null,
+              deletedAt: null,
+            },
+          });
+          yield* store.apply({
+            id: EventId.make(`event:model-report:${suffix}:provider-thread`),
+            type: "provider-thread.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: ProviderThreadId.make(`provider-thread:model-report:${suffix}`),
+              appThreadId: threadId,
+              driver,
+              providerInstanceId,
+              providerSessionId: null,
+              ownerNodeId: null,
+              nativeThreadRef: null,
+              nativeConversationHeadRef: null,
+              lastRunOrdinal: null,
+              handoffIds: [],
+              forkedFrom: null,
+              status: "active",
+              firstRunOrdinal: 1,
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+          return threadId;
+        });
+      const addTurn = (
+        suffix: string,
+        ordinal: number,
+        report: { configuredModel?: string; models?: ReadonlyArray<string> } | null,
+      ) =>
+        store.apply({
+          id: EventId.make(`event:model-report:${suffix}:turn:${ordinal}`),
+          type: "provider-turn.updated",
+          threadId: ThreadId.make(`thread:model-report:${suffix}`),
+          occurredAt: now,
+          payload: {
+            id: ProviderTurnId.make(`turn:model-report:${suffix}:${ordinal}`),
+            providerThreadId: ProviderThreadId.make(`provider-thread:model-report:${suffix}`),
+            nodeId: NodeId.make(`node:model-report:${suffix}:${ordinal}`),
+            runAttemptId: null,
+            nativeTurnRef: null,
+            ordinal,
+            status: "completed",
+            startedAt: now,
+            completedAt: now,
+            ...(report === null
+              ? {}
+              : {
+                  turnTokenUsage: {
+                    usageScope: "main_agent",
+                    hasSubagents: false,
+                    usageStatus: "complete",
+                    inputTokens: 10,
+                    outputTokens: 5,
+                    ...(report.configuredModel !== undefined
+                      ? { configuredModel: report.configuredModel }
+                      : {}),
+                    ...(report.models !== undefined ? { models: report.models } : {}),
+                  },
+                }),
+          },
+        });
+
+      yield* addThread("rerouted");
+      yield* addTurn("rerouted", 1, {
+        configuredModel: "ark-code-latest",
+        models: ["doubao-seed-2-1-pro"],
+      });
+      yield* addTurn("rerouted", 2, {
+        configuredModel: "ark-code-latest-2",
+        models: ["doubao-seed-2-1-pro-2"],
+      });
+      yield* addTurn("rerouted", 3, null);
+      yield* addThread("partial");
+      yield* addTurn("partial", 1, { configuredModel: "ark-code-latest" });
+      const emptyThreadId = yield* addThread("empty");
+
+      const snapshot = yield* store.getShellSnapshot();
+      const shellPair = (threadId: ThreadId) =>
+        Effect.gen(function* () {
+          const projection = yield* store.getThreadProjection(threadId);
+          const memoryShell = ProjectionStore.threadShellFromProjection(projection);
+          const sqlShell = snapshot.threads.find((row) => row.id === threadId)!;
+          return [memoryShell, sqlShell] as const;
+        });
+
+      const reroutedShells = yield* shellPair(ThreadId.make("thread:model-report:rerouted"));
+      for (const shell of reroutedShells) {
+        assert.equal(shell.modelSelection.model, "gpt-5.4");
+        assert.deepEqual(shell.latestModelReport, {
+          configuredModel: "ark-code-latest-2",
+          nativeModel: "doubao-seed-2-1-pro-2",
+        });
+      }
+      const partialShells = yield* shellPair(ThreadId.make("thread:model-report:partial"));
+      for (const shell of partialShells) {
+        assert.deepEqual(shell.latestModelReport, { configuredModel: "ark-code-latest" });
+        assert.notProperty(shell.latestModelReport!, "nativeModel");
+      }
+      const emptyShells = yield* shellPair(emptyThreadId);
+      for (const shell of emptyShells) {
+        assert.notProperty(shell, "latestModelReport");
+      }
+    }),
+  );
+
   it.effect("does not freshly arm limit recovery for a subagent of a settled parent", () =>
     Effect.gen(function* () {
       const store = yield* ProjectionStore.ProjectionStoreV2;

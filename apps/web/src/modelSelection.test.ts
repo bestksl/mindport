@@ -31,6 +31,7 @@ import {
   resolveEffectiveDefaultModelSelection,
   resolveEffectiveModelVendor,
   resolveReportedNativeModel,
+  resolveShellModelLabel,
 } from "./modelSelection";
 
 function provider(input: {
@@ -1368,6 +1369,51 @@ describe("resolveConfiguredModel", () => {
     expect(resolveConfiguredModel([turnWithConfigured(1, "  ark-code-latest  ")])).toBe(
       "ark-code-latest",
     );
+  });
+});
+
+describe("resolveShellModelLabel", () => {
+  it("falls back to the catalog label when no turn reported a model", () => {
+    expect(resolveShellModelLabel({ catalogLabel: "Claude Opus 5.5" })).toBe("Claude Opus 5.5");
+    expect(
+      resolveShellModelLabel({ latestModelReport: null, catalogLabel: "Claude Opus 5.5" }),
+    ).toBe("Claude Opus 5.5");
+  });
+
+  it("prefers the configured CLI alias, matching the open thread's composer", () => {
+    expect(
+      resolveShellModelLabel({
+        latestModelReport: {
+          configuredModel: "ark-code-latest",
+          nativeModel: "doubao-seed-2-1-pro",
+        },
+        catalogLabel: "Claude Opus 5.5",
+      }),
+    ).toBe("ark-code-latest");
+  });
+
+  it("uses the native model when only the gateway reported one", () => {
+    expect(
+      resolveShellModelLabel({
+        latestModelReport: { nativeModel: "doubao-seed-2-1-pro" },
+        catalogLabel: "Claude Opus 5.5",
+      }),
+    ).toBe("doubao-seed-2-1-pro");
+  });
+
+  it("skips blank ids and trims surrounding whitespace", () => {
+    expect(
+      resolveShellModelLabel({
+        latestModelReport: { configuredModel: "  ", nativeModel: " doubao-seed-2-1-pro " },
+        catalogLabel: "Claude Opus 5.5",
+      }),
+    ).toBe("doubao-seed-2-1-pro");
+    expect(
+      resolveShellModelLabel({
+        latestModelReport: { configuredModel: " ark-code-latest " },
+        catalogLabel: "Claude Opus 5.5",
+      }),
+    ).toBe("ark-code-latest");
   });
 });
 

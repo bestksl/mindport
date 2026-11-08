@@ -106,6 +106,7 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
+import { resolveShellModelLabel } from "../../modelSelection";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
@@ -795,9 +796,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const selectedModel = providerEntry?.models.find(
     (model) => model.slug === thread.modelSelection.model,
   );
-  const modelLabel = selectedModel
-    ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
-    : thread.modelSelection.model;
+  const modelLabel = resolveShellModelLabel({
+    latestModelReport: thread.latestModelReport,
+    catalogLabel: selectedModel
+      ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
+      : thread.modelSelection.model,
+  });
 
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
@@ -1662,9 +1666,12 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   const selectedModel = providerEntry?.models.find(
     (model) => model.slug === thread.modelSelection.model,
   );
-  const modelLabel = selectedModel
-    ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
-    : thread.modelSelection.model;
+  const modelLabel = resolveShellModelLabel({
+    latestModelReport: thread.latestModelReport,
+    catalogLabel: selectedModel
+      ? getTriggerDisplayModelName(selectedModel, providerEntry?.driverKind)
+      : thread.modelSelection.model,
+  });
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,

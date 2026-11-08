@@ -4,6 +4,7 @@ import {
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
   type ModelSelection,
+  type OrchestrationV2ThreadLatestModelReport,
   type ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -454,6 +455,22 @@ export function resolveReportedNativeModel(input: {
     (id) => normalized === id || normalized.startsWith(`${id}-`) || id.startsWith(`${normalized}-`),
   );
   return isKnownModel ? null : reportedId;
+}
+
+/**
+ * Label for a thread list row, read from the same turn report the open thread's composer shows.
+ * The server shell folds the newest token-bearing turn into latestModelReport; the catalog name
+ * stays the fallback for threads that have not run or servers that predate the field.
+ */
+export function resolveShellModelLabel(input: {
+  readonly latestModelReport?: OrchestrationV2ThreadLatestModelReport | null | undefined;
+  readonly catalogLabel: string;
+}): string {
+  const configured = input.latestModelReport?.configuredModel?.trim();
+  if (configured) return configured;
+  const native = input.latestModelReport?.nativeModel?.trim();
+  if (native) return native;
+  return input.catalogLabel;
 }
 
 export function resolveAppModelSelectionState(

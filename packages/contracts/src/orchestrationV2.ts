@@ -2069,6 +2069,20 @@ export const OrchestrationV2LatestVisibleMessageSummary = Schema.Struct({
 export type OrchestrationV2LatestVisibleMessageSummary =
   typeof OrchestrationV2LatestVisibleMessageSummary.Type;
 
+/**
+ * Effective model the newest token-bearing provider turn reported, so thread lists name the same
+ * CLI alias / gateway model as the open thread without loading its turns. Null on threads that
+ * have not run a turn; absent on older servers. The catalog modelSelection stays the fallback.
+ */
+export const OrchestrationV2ThreadLatestModelReport = Schema.Struct({
+  // CLI configuration alias the catalog selection was mapped to before the request (ANTHROPIC_MODEL).
+  configuredModel: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  // Native model id the gateway reported serving the turn.
+  nativeModel: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type OrchestrationV2ThreadLatestModelReport =
+  typeof OrchestrationV2ThreadLatestModelReport.Type;
+
 export const OrchestrationV2ThreadShell = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -2147,6 +2161,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
       }),
     ),
   ),
+  latestModelReport: Schema.optional(Schema.NullOr(OrchestrationV2ThreadLatestModelReport)),
   deletedAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type OrchestrationV2ThreadShell = typeof OrchestrationV2ThreadShell.Type;
