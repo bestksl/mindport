@@ -37,6 +37,7 @@ import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
+import { BrandGlyph } from "../BrandGlyph";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
 
@@ -179,14 +180,19 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
-    <span
-      aria-label={APP_BASE_NAME}
-      className={cn(
-        "truncate text-sm font-medium tracking-tight [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
-        onBackdrop ? "text-white/70" : "text-muted-foreground",
-      )}
-    >
-      {APP_BASE_NAME}
+    <span aria-label={APP_BASE_NAME} className="flex h-7 items-center gap-1.5">
+      <BrandGlyph
+        aria-hidden
+        className={cn("size-[18px] shrink-0", onBackdrop ? "text-white" : "text-foreground")}
+      />
+      <span
+        className={cn(
+          "truncate text-sm font-medium tracking-tight [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
+          onBackdrop ? "text-white/70" : "text-muted-foreground",
+        )}
+      >
+        {APP_BASE_NAME}
+      </span>
     </span>
   );
 }
